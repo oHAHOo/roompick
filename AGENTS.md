@@ -31,8 +31,8 @@
 ## 도메인 담당자
 
 - IMSUN9: accommodation, room, reservation, integration
-- oHAHOo: payment
-- minjae123123: member, auth, security
+- minjae123123: payment
+- oHAHOo: member, auth, security
 
 공통 파일이나 다른 담당자의 영역을 변경해야 하면 PR에 이유와 영향 범위를 명시한다.
 

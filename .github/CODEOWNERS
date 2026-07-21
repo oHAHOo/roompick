@@ -3,6 +3,6 @@
 /src/main/java/com/roompick/domain/accommodation/ @IMSUN9
 /src/main/java/com/roompick/domain/room/ @IMSUN9
 /src/main/java/com/roompick/domain/reservation/ @IMSUN9
-/src/main/java/com/roompick/domain/payment/ @oHAHOo
-/src/main/java/com/roompick/domain/member/ @minjae123123
-/src/main/java/com/roompick/global/config/SecurityConfig.java @minjae123123
+/src/main/java/com/roompick/domain/payment/ @minjae123123
+/src/main/java/com/roompick/domain/member/ @oHAHOo
+/src/main/java/com/roompick/global/config/SecurityConfig.java @oHAHOo
