@@ -37,7 +37,7 @@ docker compose up -d
 MySQL에 직접 접속할 때는 로그인부터 시작합니다.
 
 ```bash
-mysql -h 127.0.0.1 -P 3306 -u roompick -p
+mysql -h 127.0.0.1 -P 3307 -u roompick -p
 ```
 
 비밀번호는 `.env`의 `DB_PASSWORD` 값이며 기본 예시는 `roompick`입니다.
