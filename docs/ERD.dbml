@@ -1,0 +1,120 @@
+Project RoomPick {
+  database_type: 'MySQL'
+  Note: 'RoomPick MVP 전체 ERD v0.1'
+}
+
+Enum member_role {
+  USER
+  ADMIN
+}
+
+Enum accommodation_status {
+  ACTIVE
+  INACTIVE
+}
+
+Enum room_status {
+  ACTIVE
+  INACTIVE
+}
+
+Enum reservation_status {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELED
+  EXPIRED
+  COMPLETED
+}
+
+Enum payment_status {
+  READY
+  PAID
+  FAILED
+  REFUNDED
+}
+
+Table members {
+  member_id bigint [pk, increment]
+  email varchar(255) [not null, unique]
+  password varchar(255) [not null]
+  name varchar(50) [not null]
+  role member_role [not null, default: 'USER']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table accommodations {
+  accommodation_id bigint [pk, increment]
+  name varchar(100) [not null]
+  address varchar(255) [not null]
+  description text
+  check_in_time time [not null]
+  check_out_time time [not null]
+  status accommodation_status [not null, default: 'ACTIVE']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table rooms {
+  room_id bigint [pk, increment]
+  accommodation_id bigint [not null]
+  room_number varchar(30) [not null]
+  name varchar(100) [not null]
+  description text
+  price_per_night bigint [not null, note: '원 단위, 0 이상']
+  standard_capacity int [not null, note: '1명 이상']
+  max_capacity int [not null, note: '기준 인원 이상']
+  status room_status [not null, default: 'ACTIVE']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Indexes {
+    (accommodation_id, room_number) [unique, name: 'uk_room_accommodation_number']
+  }
+}
+
+Table reservations {
+  reservation_id bigint [pk, increment]
+  member_id bigint [not null]
+  room_id bigint [not null]
+  check_in_date date [not null]
+  check_out_date date [not null]
+  guest_count int [not null, note: '1명 이상']
+  price_per_night bigint [not null, note: '예약 당시 가격 스냅샷']
+  night_count int [not null, note: '1박 이상']
+  total_amount bigint [not null, note: '원 단위 최종 금액 스냅샷']
+  status reservation_status [not null]
+  expires_at datetime
+  canceled_at datetime
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Indexes {
+    (member_id, created_at) [name: 'idx_reservation_member_created']
+    (room_id, status, check_in_date, check_out_date) [name: 'idx_reservation_room_period']
+  }
+}
+
+Table payments {
+  payment_id bigint [pk, increment]
+  reservation_id bigint [not null]
+  amount bigint [not null, note: '원 단위, 예약 금액과 일치']
+  method varchar(30) [not null]
+  provider varchar(30) [not null, note: 'MVP는 FAKE']
+  provider_payment_key varchar(255) [unique]
+  status payment_status [not null]
+  failure_reason varchar(500)
+  paid_at datetime
+  refunded_at datetime
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Indexes {
+    (reservation_id, created_at) [name: 'idx_payment_reservation_created']
+  }
+}
+
+Ref: rooms.accommodation_id > accommodations.accommodation_id [delete: restrict, update: cascade]
+Ref: reservations.member_id > members.member_id [delete: restrict, update: cascade]
+Ref: reservations.room_id > rooms.room_id [delete: restrict, update: cascade]
+Ref: payments.reservation_id > reservations.reservation_id [delete: restrict, update: cascade]
