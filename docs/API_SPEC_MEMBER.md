@@ -1,8 +1,8 @@
-# RoomPick API 명세서 — oHAHOo 담당
+# RoomPick API 명세서 — 황정후 담당
 
 - 문서 버전: `v0.1`
 - 작성일: 2026-07-22
-- 담당자: oHAHOo
+- 담당자: 황정후
 - 담당 기능: 회원가입·로그인, JWT 인증·인가
 - 협업 도메인: 관리자(minjae123123), 숙소·객실·예약(임선구)
 
@@ -197,11 +197,11 @@ Authorization: Bearer {accessToken}
 
 | 담당자 | 구현 범위 |
 | --- | --- |
-| oHAHOo | Member Entity·Repository, `AuthController`·`AuthFacade`·`MemberService`, JWT 발급·검증, `SecurityConfig`, 인증·인가 예외 처리 |
+| 황정후 | Member Entity·Repository, `AuthController`·`AuthFacade`·`MemberService`, JWT 발급·검증, `SecurityConfig`, 인증·인가 예외 처리 |
 | minjae123123 | 관리자 전용 API에서 `ADMIN` 권한 검증 사용 (`docs/API_SPEC_ADMIN.md`) |
 | 임선구 | 예약 API에서 `AuthMember`로 회원 ID를 식별 (`docs/API_SPEC_OWNER.md`) |
 
-- oHAHOo는 다른 도메인의 Entity·Repository를 직접 호출하지 않는다.
+- 황정후는 다른 도메인의 Entity·Repository를 직접 호출하지 않는다.
 - 다른 담당자는 `AuthMember`를 통해서만 인증 정보를 사용하고, 회원 Repository를 직접 호출하지 않는다.
 
 ---
