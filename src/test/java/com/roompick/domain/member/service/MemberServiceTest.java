@@ -32,7 +32,6 @@ class MemberServiceTest {
     @Test
     void 회원가입에_성공한다() {
         given(memberRepository.existsByEmail("test@example.com")).willReturn(false);
-        given(memberRepository.existsByName("길동")).willReturn(false);
         given(passwordEncoder.encode("Password123!")).willReturn("encoded-password");
         given(memberRepository.save(any(Member.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -52,17 +51,6 @@ class MemberServiceTest {
             .isInstanceOf(BusinessException.class)
             .extracting(exception -> ((BusinessException)exception).getErrorCode())
             .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
-    }
-
-    @Test
-    void 닉네임이_중복되면_회원가입에_실패한다() {
-        given(memberRepository.existsByEmail("test@example.com")).willReturn(false);
-        given(memberRepository.existsByName("길동")).willReturn(true);
-
-        assertThatThrownBy(() -> memberService.signup("test@example.com", "Password123!", "길동"))
-            .isInstanceOf(BusinessException.class)
-            .extracting(exception -> ((BusinessException)exception).getErrorCode())
-            .isEqualTo(ErrorCode.DUPLICATED_NICKNAME);
     }
 
     @Test

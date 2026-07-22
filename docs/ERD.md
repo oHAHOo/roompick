@@ -121,7 +121,7 @@ erDiagram
 | `member_id` | `BIGINT` | N | PK | 회원 식별자 |
 | `email` | `VARCHAR(255)` | N | UK | 로그인 이메일 |
 | `password` | `VARCHAR(255)` | N |  | 암호화된 비밀번호 |
-| `name` | `VARCHAR(50)` | N | UK | 회원 이름(닉네임 겸용) |
+| `name` | `VARCHAR(50)` | N |  | 회원 실명 |
 | `role` | `VARCHAR(20)` | N |  | `USER`, `ADMIN` |
 | `created_at` | `DATETIME(6)` | N |  | 생성 시각 |
 | `updated_at` | `DATETIME(6)` | N |  | 수정 시각 |
@@ -129,7 +129,7 @@ erDiagram
 ### 제약·인덱스
 
 - `UNIQUE(email)`
-- `UNIQUE(name)` — 회원가입 시 중복 이름을 허용하지 않는다.
+- `name`은 실명 필드이므로 중복을 허용한다.
 - 비밀번호 원문 저장 금지
 - 탈퇴 기능 도입 시 물리 삭제보다 상태 컬럼 추가를 검토
 

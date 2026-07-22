@@ -51,7 +51,7 @@ class AuthControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)));
 
-        SignupRequestDto duplicated = new SignupRequestDto("dup@example.com", "Password123!", "다른닉네임");
+        SignupRequestDto duplicated = new SignupRequestDto("dup@example.com", "Password123!", "김철수");
 
         mockMvc.perform(post("/api/v1/auth/signup")
                 .contentType(MediaType.APPLICATION_JSON)

@@ -21,7 +21,6 @@ public class MemberService {
     @Transactional
     public Member signup(String email, String rawPassword, String name) {
         validateEmailNotDuplicated(email);
-        validateNameNotDuplicated(name);
 
         String encodedPassword = passwordEncoder.encode(rawPassword);
         Member member = Member.create(email, encodedPassword, name);
@@ -43,12 +42,6 @@ public class MemberService {
     private void validateEmailNotDuplicated(String email) {
         if (memberRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.DUPLICATED_EMAIL);
-        }
-    }
-
-    private void validateNameNotDuplicated(String name) {
-        if (memberRepository.existsByName(name)) {
-            throw new BusinessException(ErrorCode.DUPLICATED_NICKNAME);
         }
     }
 }
