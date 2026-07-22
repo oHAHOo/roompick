@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 public class JwtTokenProvider {
 
     private static final String CLAIM_ROLE = "role";
+    private static final String CLAIM_TOKEN_TYPE = "tokenType";
 
     private final SecretKey key;
     private final long accessTokenValiditySeconds;
@@ -33,22 +34,23 @@ public class JwtTokenProvider {
     }
 
     public String createAccessToken(Long memberId, MemberRole role) {
-        return createToken(memberId, accessTokenValiditySeconds, role);
+        return createToken(memberId, accessTokenValiditySeconds, role, TokenType.ACCESS);
     }
 
     public String createRefreshToken(Long memberId) {
-        return createToken(memberId, refreshTokenValiditySeconds, null);
+        return createToken(memberId, refreshTokenValiditySeconds, null, TokenType.REFRESH);
     }
 
-    private String createToken(Long memberId, long validitySeconds, MemberRole role) {
+    private String createToken(Long memberId, long validitySeconds, MemberRole role, TokenType tokenType) {
         Date now = new Date();
         Date expiration = new Date(now.getTime() + validitySeconds * 1000);
 
         JwtBuilder builder = Jwts.builder()
-            .subject(String.valueOf(memberId))
-            .issuedAt(now)
-            .expiration(expiration)
-            .signWith(key);
+                .subject(String.valueOf(memberId))
+                .issuedAt(now)
+                .expiration(expiration)
+                .claim(CLAIM_TOKEN_TYPE, tokenType.name())
+                .signWith(key);
 
         if (role != null) {
             builder.claim(CLAIM_ROLE, role.name());
@@ -67,6 +69,15 @@ public class JwtTokenProvider {
         }
     }
 
+    public boolean isAccessToken(String token) {
+        return getTokenType(token) == TokenType.ACCESS;
+    }
+
+    public TokenType getTokenType(String token) {
+        String tokenType = parseClaims(token).get(CLAIM_TOKEN_TYPE, String.class);
+        return tokenType != null ? TokenType.valueOf(tokenType) : null;
+    }
+
     public Long getMemberId(String token) {
         return Long.valueOf(parseClaims(token).getSubject());
     }
@@ -78,9 +89,9 @@ public class JwtTokenProvider {
 
     private Claims parseClaims(String token) {
         return Jwts.parser()
-            .verifyWith(key)
-            .build()
-            .parseSignedClaims(token)
-            .getPayload();
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

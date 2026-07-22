@@ -30,13 +30,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(
-        HttpServletRequest request,
-        HttpServletResponse response,
-        FilterChain filterChain
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
     ) throws ServletException, IOException {
         String token = resolveToken(request);
 
-        if (token != null && jwtTokenProvider.validateToken(token)) {
+        if (token != null && jwtTokenProvider.validateToken(token) && jwtTokenProvider.isAccessToken(token)) {
             authenticate(token);
         }
 
@@ -49,8 +49,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         AuthMember authMember = new AuthMember(memberId, role);
 
         List<GrantedAuthority> authorities = role != null
-            ? List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
-            : List.of();
+                ? List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
+                : List.of();
 
         Authentication authentication = new UsernamePasswordAuthenticationToken(authMember, null, authorities);
         SecurityContextHolder.getContext().setAuthentication(authentication);
