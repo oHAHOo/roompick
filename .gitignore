@@ -18,5 +18,10 @@ out/
 
 ### Environment ###
 .env
+.env.*
+!.env.example
 application-secret.yml
 src/main/resources/application-secret.yml
+
+### AWS ###
+*.pem

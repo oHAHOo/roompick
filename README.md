@@ -61,6 +61,10 @@ docker compose down
 
 테스트는 별도의 H2 인메모리 데이터베이스를 사용하므로 로컬 MySQL이 없어도 실행할 수 있습니다.
 
+## 배포
+
+AWS EC2 + RDS 배포 절차는 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)에서 확인합니다.
+
 ## 브랜치와 PR
 
 1. `develop`에서 작업 브랜치를 만듭니다.
