@@ -5,7 +5,7 @@
 - 최종 수정일: 2026-07-22
 - 담당자: 임선구
 - 담당 도메인: 숙소, 객실, 예약
-- MVP 기준: 관리자 숙소·객실 등록, 검색 기능 없음
+- MVP 기준: 관리자가 등록한 숙소·객실 사용, 검색 기능 없음
 
 이 문서는 RoomPick MVP에서 임선구 담당 API만 정의한다. 회원·인증 API와 결제 API는 각 담당자의 별도 명세에서 관리한다.
 
@@ -14,18 +14,16 @@
 ## 1. 설계 전제
 
 1. API 기본 경로는 코드 컨벤션 초안에 따라 `/api/v1`을 사용한다.
-2. 관리자는 숙소를 등록하고 등록된 숙소에 실제 객실을 등록할 수 있다.
-3. MVP 시연에는 관리자가 등록한 숙소와 실제 객실을 최소 1개씩 사용한다.
+2. 관리자 숙소·객실 등록 API는 minjae123123 담당의 `docs/API_SPEC_ADMIN.md`에서 정의한다.
+3. 이 문서는 관리자가 등록한 숙소와 실제 객실을 조회·예약하는 API를 정의한다.
 4. 숙소 목록, 객실 목록 검색, 필터, 정렬 API는 MVP에서 제외한다.
-5. 객실은 실제로 예약되는 물리적 객실 1개를 의미한다.
-6. 숙소·객실 등록 API는 `ADMIN` 권한이 필요하다.
-7. 일반 회원가입 요청으로 `ADMIN` 권한을 선택할 수 없다.
-8. 예약 생성 시 상태는 `PENDING_PAYMENT`가 된다.
-9. 결제 성공·실패 API는 팀원 A의 결제 API 명세에서 정의한다.
-10. 결제 성공 시 예약은 `CONFIRMED`, 결제 실패 시 `CANCELED`로 변경한다.
-11. 예약 취소 API는 예약 도메인 소유이므로 이 문서에 포함한다.
-12. 인증 방식과 `AuthMember` 구현은 팀원 B의 회원·인증 설계를 따른다.
-13. 아래 값 중 `결제 대기 10분`은 초안이며 팀 회의에서 최종 확정한다.
+5. `ROOM` 한 행은 실제로 예약되는 물리적 객실 한 개를 의미한다.
+6. 예약 생성 시 상태는 `PENDING_PAYMENT`가 된다.
+7. 결제 성공·실패 API는 minjae123123 담당의 결제 API 명세에서 정의한다.
+8. 결제 성공 시 예약은 `CONFIRMED`, 결제 실패 시 `CANCELED`로 변경한다.
+9. 예약 취소 API는 예약 도메인 소유이므로 이 문서에 포함한다.
+10. 인증 방식과 `AuthMember` 구현은 oHAHOo 담당의 회원·인증 설계를 따른다.
+11. 아래 값 중 `결제 대기 10분`은 초안이며 팀 회의에서 최종 확정한다.
 
 ---
 
@@ -39,15 +37,13 @@ Content-Type: application/json
 
 ### 인증 헤더
 
-예약 API와 관리자 등록 API는 인증이 필요하다.
+예약 API는 인증이 필요하다.
 
 ```http
 Authorization: Bearer {accessToken}
 ```
 
 숙소·객실 조회와 예약 가능 여부 확인은 비로그인 사용자도 호출할 수 있다.
-
-관리자 등록 API는 인증된 `ADMIN`만 호출할 수 있다. 비로그인 요청은 `401 Unauthorized`, `USER` 권한의 요청은 `403 Forbidden`으로 처리한다.
 
 ### 날짜 형식
 
@@ -106,7 +102,7 @@ HH:mm:ss
 | `201 Created` | 예약 생성 성공 |
 | `400 Bad Request` | 날짜·인원 등 요청 값 오류 |
 | `401 Unauthorized` | 인증되지 않은 요청 |
-| `403 Forbidden` | 관리자 권한 부족 또는 다른 회원의 예약 접근 |
+| `403 Forbidden` | 다른 회원의 예약 접근 |
 | `404 Not Found` | 숙소·객실·예약을 찾지 못함 |
 | `409 Conflict` | 객실 예약 불가 또는 예약 상태 충돌 |
 | `500 Internal Server Error` | 예상하지 못한 서버 오류 |
@@ -117,188 +113,21 @@ HH:mm:ss
 
 | 번호 | Method | URL | 기능 | 인증 |
 | --- | --- | --- | --- | --- |
-| 1 | `POST` | `/api/v1/admin/accommodations` | 관리자 숙소 등록 | `ADMIN` 필요 |
-| 2 | `POST` | `/api/v1/admin/accommodations/{accommodationId}/rooms` | 관리자 객실 등록 | `ADMIN` 필요 |
-| 3 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
-| 4 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
-| 5 | `GET` | `/api/v1/rooms/{roomId}/availability` | 객실 예약 가능 여부 확인 | 불필요 |
-| 6 | `POST` | `/api/v1/reservations` | 예약 생성 | 필요 |
-| 7 | `GET` | `/api/v1/reservations` | 내 예약 목록 조회 | 필요 |
-| 8 | `GET` | `/api/v1/reservations/{reservationId}` | 내 예약 상세 조회 | 필요 |
-| 9 | `PATCH` | `/api/v1/reservations/{reservationId}/cancel` | 예약 취소 | 필요 |
+| 1 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
+| 2 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
+| 3 | `GET` | `/api/v1/rooms/{roomId}/availability` | 객실 예약 가능 여부 확인 | 불필요 |
+| 4 | `POST` | `/api/v1/reservations` | 예약 생성 | 필요 |
+| 5 | `GET` | `/api/v1/reservations` | 내 예약 목록 조회 | 필요 |
+| 6 | `GET` | `/api/v1/reservations/{reservationId}` | 내 예약 상세 조회 | 필요 |
+| 7 | `PATCH` | `/api/v1/reservations/{reservationId}/cancel` | 예약 취소 | 필요 |
 
-검색 API와 관리자용 숙소·객실 수정·삭제·관리 목록 API는 MVP에 포함하지 않는다.
-
----
-
-# 관리자 숙소·객실 등록 API
-
-## 5. 관리자 숙소 등록
-
-인증된 관리자가 숙소를 등록한다. 생성된 숙소의 초기 상태는 `ACTIVE`이다.
-
-### Request
-
-```http
-POST /api/v1/admin/accommodations
-Authorization: Bearer {accessToken}
-Content-Type: application/json
-```
-
-```json
-{
-  "name": "룸픽 호텔",
-  "address": "서울특별시 강남구 테헤란로 123",
-  "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
-  "checkInTime": "15:00:00",
-  "checkOutTime": "11:00:00"
-}
-```
-
-### Request Field
-
-| 이름 | 타입 | 필수 | 제약 |
-| --- | --- | --- | --- |
-| `name` | `String` | O | 공백 제외 1자 이상, 최대 100자 |
-| `address` | `String` | O | 공백 제외 1자 이상, 최대 255자 |
-| `description` | `String` | X | 숙소 설명 |
-| `checkInTime` | `LocalTime` | O | `HH:mm:ss` |
-| `checkOutTime` | `LocalTime` | O | `HH:mm:ss` |
-
-`status`와 관리자 ID는 Request Body로 받지 않는다. 상태는 서버에서 `ACTIVE`로 정하고 관리자 여부는 인증 정보로 검증한다.
-
-### Response — 201 Created
-
-```json
-{
-  "success": true,
-  "message": "숙소가 등록되었습니다.",
-  "data": {
-    "accommodationId": 1,
-    "name": "룸픽 호텔",
-    "address": "서울특별시 강남구 테헤란로 123",
-    "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
-    "checkInTime": "15:00:00",
-    "checkOutTime": "11:00:00",
-    "status": "ACTIVE"
-  }
-}
-```
-
-### Error
-
-| HTTP | Error Code | 조건 |
-| --- | --- | --- |
-| `400` | `ACCOMMODATION_NAME_REQUIRED` | 숙소명이 없거나 공백임 |
-| `400` | `ACCOMMODATION_ADDRESS_REQUIRED` | 숙소 주소가 없거나 공백임 |
-| `400` | `ACCOMMODATION_TIME_REQUIRED` | 체크인 또는 체크아웃 시간이 없음 |
-| `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
-| `403` | `ADMIN_ACCESS_DENIED` | `ADMIN` 권한이 없는 회원의 요청 |
-
-### 처리 순서
-
-```text
-인증 회원의 ADMIN 권한 확인
-→ 요청 값 검증
-→ ACTIVE 상태의 숙소 생성
-→ 숙소 저장
-→ 생성 결과 반환
-```
-
----
-
-## 6. 관리자 객실 등록
-
-인증된 관리자가 기존 숙소에 실제 객실을 등록한다. 생성된 객실의 초기 상태는 `ACTIVE`이다.
-
-### Request
-
-```http
-POST /api/v1/admin/accommodations/1/rooms
-Authorization: Bearer {accessToken}
-Content-Type: application/json
-```
-
-```json
-{
-  "roomNumber": "101",
-  "name": "디럭스 더블룸",
-  "description": "2인이 이용할 수 있는 더블룸입니다.",
-  "pricePerNight": 100000,
-  "standardCapacity": 2,
-  "maxCapacity": 2
-}
-```
-
-### Path Variable
-
-| 이름 | 타입 | 필수 | 설명 |
-| --- | --- | --- | --- |
-| `accommodationId` | `Long` | O | 객실을 등록할 숙소 ID |
-
-### Request Field
-
-| 이름 | 타입 | 필수 | 제약 |
-| --- | --- | --- | --- |
-| `roomNumber` | `String` | O | 같은 숙소 안에서 중복 불가, 최대 30자 |
-| `name` | `String` | O | 공백 제외 1자 이상, 최대 100자 |
-| `description` | `String` | X | 객실 설명 |
-| `pricePerNight` | `long` | O | 0원 이상 |
-| `standardCapacity` | `int` | O | 1명 이상 |
-| `maxCapacity` | `int` | O | 기준 인원 이상 |
-
-`status`는 Request Body로 받지 않고 서버에서 `ACTIVE`로 정한다.
-
-### Response — 201 Created
-
-```json
-{
-  "success": true,
-  "message": "객실이 등록되었습니다.",
-  "data": {
-    "roomId": 1,
-    "accommodationId": 1,
-    "roomNumber": "101",
-    "name": "디럭스 더블룸",
-    "description": "2인이 이용할 수 있는 더블룸입니다.",
-    "pricePerNight": 100000,
-    "standardCapacity": 2,
-    "maxCapacity": 2,
-    "status": "ACTIVE"
-  }
-}
-```
-
-### Error
-
-| HTTP | Error Code | 조건 |
-| --- | --- | --- |
-| `400` | `ROOM_NUMBER_REQUIRED` | 객실 번호가 없거나 공백임 |
-| `400` | `ROOM_NAME_REQUIRED` | 객실명이 없거나 공백임 |
-| `400` | `INVALID_ROOM_PRICE` | 1박 가격이 0원 미만임 |
-| `400` | `INVALID_ROOM_CAPACITY` | 기준·최대 인원 조건이 올바르지 않음 |
-| `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
-| `403` | `ADMIN_ACCESS_DENIED` | `ADMIN` 권한이 없는 회원의 요청 |
-| `404` | `ACCOMMODATION_NOT_FOUND` | 숙소가 존재하지 않음 |
-| `409` | `ACCOMMODATION_INACTIVE` | 운영 중지된 숙소에 객실 등록을 요청함 |
-| `409` | `ROOM_NUMBER_DUPLICATED` | 같은 숙소에 동일한 객실 번호가 이미 존재함 |
-
-### 처리 순서
-
-```text
-인증 회원의 ADMIN 권한 확인
-→ 숙소 조회 및 운영 상태 확인
-→ 요청 값 검증
-→ 같은 숙소의 객실 번호 중복 확인
-→ ACTIVE 상태의 객실 생성 및 저장
-→ 생성 결과 반환
-```
+관리자 등록 API는 `docs/API_SPEC_ADMIN.md`에서 관리한다. 검색과 관리자용 숙소·객실 수정·삭제·관리 목록 API는 MVP에 포함하지 않는다.
 
 ---
 
 # 숙소 API
 
-## 7. 숙소 상세 조회
+## 5. 숙소 상세 조회
 
 등록된 숙소의 기본 정보와 소속 객실 요약을 조회한다.
 
@@ -359,7 +188,7 @@ GET /api/v1/accommodations/1
 
 # 객실 API
 
-## 8. 객실 상세 조회
+## 6. 객실 상세 조회
 
 객실과 소속 숙소의 기본 정보를 조회한다.
 
@@ -413,7 +242,7 @@ GET /api/v1/rooms/1
 
 ---
 
-## 9. 객실 예약 가능 여부 확인
+## 7. 객실 예약 가능 여부 확인
 
 객실, 숙박 기간, 인원 조건을 기준으로 예약 가능 여부와 예상 금액을 확인한다.
 
@@ -512,7 +341,7 @@ CONFIRMED
 
 # 예약 API
 
-## 10. 예약 생성
+## 8. 예약 생성
 
 인증된 회원이 객실을 결제 대기 상태로 예약한다.
 
@@ -614,7 +443,7 @@ Content-Type: application/json
 
 ---
 
-## 11. 내 예약 목록 조회
+## 9. 내 예약 목록 조회
 
 인증된 회원이 자신이 생성한 예약 목록을 최신순으로 조회한다.
 
@@ -677,7 +506,7 @@ MVP에서는 상태 검색과 사용자 지정 정렬을 제공하지 않는다.
 
 ---
 
-## 12. 내 예약 상세 조회
+## 10. 내 예약 상세 조회
 
 인증된 회원이 자신의 예약 상세 정보를 조회한다.
 
@@ -741,7 +570,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 13. 예약 취소
+## 11. 예약 취소
 
 인증된 회원이 자신의 결제 대기 또는 확정 예약을 취소한다.
 
@@ -803,7 +632,7 @@ Request Body는 사용하지 않는다.
 
 ---
 
-## 14. 예약 상태 전이
+## 12. 예약 상태 전이
 
 ```text
 PENDING_PAYMENT
@@ -821,23 +650,13 @@ CONFIRMED
 
 ---
 
-## 15. 에러 코드 목록
+## 13. 에러 코드 목록
 
 | Error Code | HTTP | 메시지 초안 |
 | --- | --- | --- |
-| `ADMIN_ACCESS_DENIED` | `403` | 관리자 권한이 필요합니다. |
 | `ACCOMMODATION_NOT_FOUND` | `404` | 숙소를 찾을 수 없습니다. |
-| `ACCOMMODATION_INACTIVE` | `409` | 운영 중지된 숙소에는 객실을 등록할 수 없습니다. |
-| `ACCOMMODATION_NAME_REQUIRED` | `400` | 숙소명은 필수입니다. |
-| `ACCOMMODATION_ADDRESS_REQUIRED` | `400` | 숙소 주소는 필수입니다. |
-| `ACCOMMODATION_TIME_REQUIRED` | `400` | 체크인·체크아웃 시간은 필수입니다. |
 | `ROOM_NOT_FOUND` | `404` | 객실을 찾을 수 없습니다. |
 | `ROOM_INACTIVE` | `409` | 현재 이용할 수 없는 객실입니다. |
-| `ROOM_NUMBER_REQUIRED` | `400` | 객실 번호는 필수입니다. |
-| `ROOM_NAME_REQUIRED` | `400` | 객실명은 필수입니다. |
-| `INVALID_ROOM_PRICE` | `400` | 객실 가격은 0원 이상이어야 합니다. |
-| `INVALID_ROOM_CAPACITY` | `400` | 객실 인원 조건이 올바르지 않습니다. |
-| `ROOM_NUMBER_DUPLICATED` | `409` | 같은 숙소에 동일한 객실 번호가 존재합니다. |
 | `INVALID_STAY_PERIOD` | `400` | 숙박 기간이 올바르지 않습니다. |
 | `INVALID_GUEST_COUNT` | `400` | 예약 인원은 1명 이상이어야 합니다. |
 | `ROOM_CAPACITY_EXCEEDED` | `400` | 객실 최대 인원을 초과했습니다. |
@@ -850,19 +669,16 @@ CONFIRMED
 
 ---
 
-## 16. 담당 도메인 연결 계약
+## 14. 담당 도메인 연결 계약
 
 ### 회원·인증 도메인에서 필요한 값
 
 ```text
 AuthMember.memberId()
-AuthMember.role() 또는 동등한 권한 정보
 ```
 
 - 예약 API는 Request Body에서 `memberId`를 받지 않는다.
 - 인증 컨텍스트의 회원 ID만 사용한다.
-- 관리자 등록 API는 인증 컨텍스트의 권한이 `ADMIN`인지 확인한다.
-- 일반 회원가입 요청에서 관리자 권한을 받지 않는다.
 
 ### 결제 도메인에 제공해야 하는 값
 
@@ -885,7 +701,7 @@ failureReason
 
 ---
 
-## 17. 팀 회의에서 최종 확정할 항목
+## 15. 팀 회의에서 최종 확정할 항목
 
 - [ ] API 기본 경로를 `/api/v1`로 사용할지
 - [ ] 결제 대기 시간을 10분으로 할지
@@ -895,6 +711,5 @@ failureReason
 - [ ] 숙소 상세 API와 객실 상세 API를 모두 유지할지
 - [ ] 예약 목록에 페이지네이션을 MVP부터 적용할지
 - [ ] 실제 인증 객체 이름을 `AuthMember`로 사용할지
-- [ ] 최초 관리자 계정을 어떤 방식으로 준비할지
 
 팀 결정이 끝나면 이 문서를 `v0.2`로 갱신하고 ERD와 코드 컨벤션에도 동일하게 반영한다.

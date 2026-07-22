@@ -7,7 +7,8 @@
 1. `docs/MVP_CONTEXT.md`
 2. `docs/CODE_CONVENTION.md`
 3. `docs/ERD.md`
-4. 변경 대상 API가 있다면 `docs/API_SPEC_OWNER.md`
+4. 임선구 담당 API는 `docs/API_SPEC_OWNER.md`
+5. 관리자 담당 API는 `docs/API_SPEC_ADMIN.md`
 
 ## 고정된 MVP 범위
 
@@ -34,10 +35,12 @@
 ## 도메인 담당자
 
 - IMSUN9: accommodation, room, reservation, integration
-- minjae123123: payment
+- minjae123123: payment, admin
 - oHAHOo: member, auth, security
 
 공통 파일이나 다른 담당자의 영역을 변경해야 하면 PR에 이유와 영향 범위를 명시한다.
+
+관리자 숙소·객실 등록은 minjae123123이 Controller·Facade·DTO를 담당하고, IMSUN9이 소유한 Accommodation·Room Service를 통해 처리한다. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다. `ADMIN` 권한과 접근 제어는 oHAHOo가 담당한다.
 
 ## 작업 완료 조건
 
