@@ -37,7 +37,7 @@ Table members {
   member_id bigint [pk, increment]
   email varchar(255) [not null, unique]
   password varchar(255) [not null]
-  name varchar(50) [not null]
+  name varchar(50) [not null, unique]
   role member_role [not null, default: 'USER']
   created_at datetime [not null]
   updated_at datetime [not null]
