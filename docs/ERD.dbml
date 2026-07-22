@@ -1,6 +1,6 @@
 Project RoomPick {
   database_type: 'MySQL'
-  Note: 'RoomPick MVP 전체 ERD v0.1'
+  Note: 'RoomPick MVP 전체 ERD v0.2'
 }
 
 Enum member_role {
