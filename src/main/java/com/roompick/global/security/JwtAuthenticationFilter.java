@@ -1,12 +1,8 @@
 package com.roompick.global.security;
 
-import com.roompick.domain.member.entity.MemberRole;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -14,6 +10,13 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.roompick.domain.member.entity.MemberRole;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -27,9 +30,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain
+        HttpServletRequest request,
+        HttpServletResponse response,
+        FilterChain filterChain
     ) throws ServletException, IOException {
         String token = resolveToken(request);
 
@@ -46,8 +49,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         AuthMember authMember = new AuthMember(memberId, role);
 
         List<GrantedAuthority> authorities = role != null
-                ? List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
-                : List.of();
+            ? List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
+            : List.of();
 
         Authentication authentication = new UsernamePasswordAuthenticationToken(authMember, null, authorities);
         SecurityContextHolder.getContext().setAuthentication(authentication);

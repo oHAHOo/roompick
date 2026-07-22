@@ -1,8 +1,10 @@
 package com.roompick.domain.member.repository;
 
-import com.roompick.domain.member.entity.Member;
 import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.roompick.domain.member.entity.Member;
 
 public interface MemberRepository extends JpaRepository<Member, Long> {
 

@@ -3,9 +3,9 @@ package com.roompick.domain.member.dto;
 import com.roompick.domain.member.entity.Member;
 
 public record SignupResponseDto(
-        Long memberId,
-        String email,
-        String name
+    Long memberId,
+    String email,
+    String name
 ) {
 
     public static SignupResponseDto from(Member member) {

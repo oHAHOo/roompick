@@ -1,22 +1,21 @@
 package com.roompick.domain.member.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.BDDMockito.*;
+import static org.mockito.Mockito.*;
 
-import com.roompick.domain.member.entity.Member;
-import com.roompick.domain.member.repository.MemberRepository;
-import com.roompick.global.common.BusinessException;
-import com.roompick.global.common.ErrorCode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
+import com.roompick.domain.member.entity.Member;
+import com.roompick.domain.member.repository.MemberRepository;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 @ExtendWith(MockitoExtension.class)
 class MemberServiceTest {
@@ -50,9 +49,9 @@ class MemberServiceTest {
         given(memberRepository.existsByEmail("test@example.com")).willReturn(true);
 
         assertThatThrownBy(() -> memberService.signup("test@example.com", "Password123!", "길동"))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception -> ((BusinessException)exception).getErrorCode())
+            .isEqualTo(ErrorCode.DUPLICATED_EMAIL);
     }
 
     @Test
@@ -61,9 +60,9 @@ class MemberServiceTest {
         given(memberRepository.existsByName("길동")).willReturn(true);
 
         assertThatThrownBy(() -> memberService.signup("test@example.com", "Password123!", "길동"))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.DUPLICATED_NICKNAME);
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception -> ((BusinessException)exception).getErrorCode())
+            .isEqualTo(ErrorCode.DUPLICATED_NICKNAME);
     }
 
     @Test
@@ -84,9 +83,9 @@ class MemberServiceTest {
         given(passwordEncoder.matches(anyString(), anyString())).willReturn(false);
 
         assertThatThrownBy(() -> memberService.authenticate("test@example.com", "wrong-password"))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.INVALID_LOGIN);
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception -> ((BusinessException)exception).getErrorCode())
+            .isEqualTo(ErrorCode.INVALID_LOGIN);
     }
 
     @Test
@@ -94,8 +93,8 @@ class MemberServiceTest {
         given(memberRepository.findByEmail("unknown@example.com")).willReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> memberService.authenticate("unknown@example.com", "Password123!"))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.INVALID_LOGIN);
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception -> ((BusinessException)exception).getErrorCode())
+            .isEqualTo(ErrorCode.INVALID_LOGIN);
     }
 }

@@ -1,16 +1,20 @@
 package com.roompick.global.security;
 
-import com.roompick.domain.member.entity.MemberRole;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.JwtBuilder;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+
 import javax.crypto.SecretKey;
-import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Component;
+
+import com.roompick.domain.member.entity.MemberRole;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtBuilder;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
@@ -41,10 +45,10 @@ public class JwtTokenProvider {
         Date expiration = new Date(now.getTime() + validitySeconds * 1000);
 
         JwtBuilder builder = Jwts.builder()
-                .subject(String.valueOf(memberId))
-                .issuedAt(now)
-                .expiration(expiration)
-                .signWith(key);
+            .subject(String.valueOf(memberId))
+            .issuedAt(now)
+            .expiration(expiration)
+            .signWith(key);
 
         if (role != null) {
             builder.claim(CLAIM_ROLE, role.name());
@@ -74,9 +78,9 @@ public class JwtTokenProvider {
 
     private Claims parseClaims(String token) {
         return Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
     }
 }

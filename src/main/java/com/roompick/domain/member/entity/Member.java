@@ -1,6 +1,7 @@
 package com.roompick.domain.member.entity;
 
 import com.roompick.global.common.BaseTimeEntity;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
