@@ -11,6 +11,11 @@ spring:
   jackson:
     time-zone: Asia/Seoul
 
+jwt:
+  secret: ${JWT_SECRET:roompick-local-dev-only-jwt-secret-please-change-1234567890}
+  access-token-validity-seconds: 1800
+  refresh-token-validity-seconds: 1209600
+
 server:
   shutdown: graceful
 
