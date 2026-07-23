@@ -2,9 +2,9 @@ package com.roompick.domain.reservation.entity;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 
 import com.roompick.domain.member.entity.Member;
+import com.roompick.domain.reservation.vo.ReservationPrice;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.global.common.BaseTimeEntity;
 import com.roompick.global.common.BusinessException;
@@ -108,15 +108,16 @@ public class Reservation extends BaseTimeEntity {
     ) {
         validateMember(member);
         validateRoom(room);
-        validateStayPeriod(checkInDate, checkOutDate);
         validateGuestCount(room, guestCount);
         validateExpiresAt(expiresAt);
 
-        int nightCount = Math.toIntExact(
-            ChronoUnit.DAYS.between(checkInDate, checkOutDate)
-        );
-        long pricePerNight = room.getPricePerNight();
-        long totalAmount = Math.multiplyExact(pricePerNight, nightCount);
+        // 예약 생성과 예약 가능 여부 조회가 동일한 가격 계산 규칙을 사용합니다.
+        ReservationPrice reservationPrice =
+            ReservationPrice.calculate(
+                checkInDate,
+                checkOutDate,
+                room.getPricePerNight()
+            );
 
         return new Reservation(
             member,
@@ -124,9 +125,9 @@ public class Reservation extends BaseTimeEntity {
             checkInDate,
             checkOutDate,
             guestCount,
-            pricePerNight,
-            nightCount,
-            totalAmount,
+            reservationPrice.pricePerNight(),
+            reservationPrice.nightCount(),
+            reservationPrice.totalAmount(),
             ReservationStatus.PENDING_PAYMENT,
             expiresAt
         );
@@ -165,19 +166,6 @@ public class Reservation extends BaseTimeEntity {
     private static void validateRoom(Room room) {
         if (room == null) {
             throw new BusinessException(ErrorCode.ROOM_NOT_FOUND);
-        }
-    }
-
-    private static void validateStayPeriod(
-        LocalDate checkInDate,
-        LocalDate checkOutDate
-    ) {
-        if (
-            checkInDate == null
-                || checkOutDate == null
-                || !checkInDate.isBefore(checkOutDate)
-        ) {
-            throw new BusinessException(ErrorCode.INVALID_STAY_PERIOD);
         }
     }
 

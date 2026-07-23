@@ -111,6 +111,47 @@ class RoomControllerTest {
                 .value("객실을 찾을 수 없습니다."));
     }
 
+    @Test
+    void 날짜_형식이_올바르지_않으면_400을_반환한다()
+        throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(
+                createAccommodation()
+            );
+
+        Room room = roomRepository.save(
+            createRoom(accommodation)
+        );
+
+        LocalDate checkOutDate =
+            LocalDate.now(SERVICE_ZONE_ID).plusDays(2);
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/rooms/{roomId}/availability",
+                    room.getId()
+                )
+                    .queryParam(
+                        "checkInDate",
+                        "2026/08/10"
+                    )
+                    .queryParam(
+                        "checkOutDate",
+                        checkOutDate.toString()
+                    )
+                    .queryParam("guestCount", "2")
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.success")
+                .value(false))
+            .andExpect(jsonPath("$.code")
+                .value("COMMON_001"))
+            .andExpect(jsonPath("$.message")
+                .value("요청 값이 올바르지 않습니다."));
+    }
+
     private Accommodation createAccommodation() {
         return Accommodation.create(
             "룸픽 호텔",

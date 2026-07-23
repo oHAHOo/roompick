@@ -1,8 +1,8 @@
 package com.roompick.domain.room.dto;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
+import com.roompick.domain.reservation.vo.ReservationPrice;
 import com.roompick.domain.room.entity.Room;
 
 /**
@@ -32,17 +32,12 @@ public record RoomAvailabilityResponseDto(
         RoomAvailabilityRequestDto request,
         boolean available
     ) {
-        int nightCount = Math.toIntExact(
-            ChronoUnit.DAYS.between(
+        ReservationPrice reservationPrice =
+            ReservationPrice.calculate(
                 request.checkInDate(),
-                request.checkOutDate()
-            )
-        );
-
-        long totalAmount = Math.multiplyExact(
-            room.getPricePerNight(),
-            nightCount
-        );
+                request.checkOutDate(),
+                room.getPricePerNight()
+            );
 
         String unavailableReason = available
             ? null
@@ -53,9 +48,9 @@ public record RoomAvailabilityResponseDto(
             request.checkInDate(),
             request.checkOutDate(),
             request.guestCount(),
-            nightCount,
-            room.getPricePerNight(),
-            totalAmount,
+            reservationPrice.nightCount(),
+            reservationPrice.pricePerNight(),
+            reservationPrice.totalAmount(),
             available,
             unavailableReason
         );
