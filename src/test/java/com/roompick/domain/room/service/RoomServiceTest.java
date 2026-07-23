@@ -12,9 +12,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
@@ -59,6 +61,92 @@ class RoomServiceTest {
                 ((BusinessException) exception).getErrorCode()
             )
             .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    @Test
+    void 운영_중인_객실이고_인원이_적절하면_예약용_객실을_반환한다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom();
+
+        given(roomRepository.findById(roomId))
+            .willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.findReservableRoom(
+            roomId,
+            2
+        );
+
+        // then
+        assertThat(result).isSameAs(room);
+    }
+
+    @Test
+    void 예약_인원이_1명_미만이면_예외가_발생한다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom();
+
+        given(roomRepository.findById(roomId))
+            .willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.findReservableRoom(roomId, 0)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.INVALID_GUEST_COUNT);
+    }
+
+    @Test
+    void 객실_최대_인원을_초과하면_예외가_발생한다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom();
+
+        given(roomRepository.findById(roomId))
+            .willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.findReservableRoom(roomId, 3)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_CAPACITY_EXCEEDED);
+    }
+
+    @Test
+    void 운영_중지된_객실은_예약할_수_없다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom();
+
+        // public setter 없이 INACTIVE 상태의 테스트 객체를 만듭니다.
+        ReflectionTestUtils.setField(
+            room,
+            "status",
+            RoomStatus.INACTIVE
+        );
+
+        given(roomRepository.findById(roomId))
+            .willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.findReservableRoom(roomId, 2)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_INACTIVE);
     }
 
     private Room createRoom() {
