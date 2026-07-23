@@ -18,6 +18,10 @@ public record AccommodationCreateRequestDto(
     String name,
 
     @NotBlank(message = "숙소 주소는 필수입니다.")
+    @Size(
+        max = 255,
+        message = "숙소 주소는 255자 이하로 입력해야 합니다."
+    )
     String address,
 
     String description,

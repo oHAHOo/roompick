@@ -26,9 +26,9 @@ import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateR
 import com.roompick.domain.admin.accommodation.facade.AdminAccommodationFacade;
 import com.roompick.global.common.ErrorCode;
 
+@ActiveProfiles("test")
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("test")
 class AdminAccommodationControllerTest {
 
     @Autowired

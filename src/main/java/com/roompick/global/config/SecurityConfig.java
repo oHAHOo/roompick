@@ -1,95 +1,73 @@
 package com.roompick.global.config;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.roompick.global.common.ErrorCode;
-import com.roompick.global.common.ErrorResponseDto;
-
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import com.roompick.global.security.JwtAccessDeniedHandler;
+import com.roompick.global.security.JwtAuthenticationEntryPoint;
+import com.roompick.global.security.JwtAuthenticationFilter;
+import com.roompick.global.security.JwtProperties;
+import com.roompick.global.security.JwtTokenProvider;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor
+@EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
-    private final ObjectMapper objectMapper;
+    private static final String[] PERMIT_ALL_PATHS = {
+        "/api/v1/auth/signup",
+        "/api/v1/auth/login",
+        "/actuator/health",
+        "/actuator/info"
+    };
+
+    private static final String[] PUBLIC_GET_PATHS = {
+        "/api/v1/accommodations/**",
+        "/api/v1/rooms/**"
+    };
+
+    private static final String ADMIN_PATH_PATTERN = "/api/v1/admin/**";
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-        HttpSecurity http
+        HttpSecurity http,
+        JwtTokenProvider jwtTokenProvider,
+        JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
+        JwtAccessDeniedHandler jwtAccessDeniedHandler
     ) throws Exception {
-
         http
             .csrf(AbstractHttpConfigurer::disable)
             .formLogin(AbstractHttpConfigurer::disable)
             .httpBasic(AbstractHttpConfigurer::disable)
-
-            // 인증 및 권한 예외 응답 설정
-            .exceptionHandling(exception -> exception
-                .authenticationEntryPoint(
-                    (request, response, authenticationException) ->
-                        writeErrorResponse(
-                            response,
-                            ErrorCode.UNAUTHORIZED
-                        )
-                )
-                .accessDeniedHandler(
-                    (request, response, accessDeniedException) ->
-                        writeErrorResponse(
-                            response,
-                            ErrorCode.FORBIDDEN
-                        )
-                )
-            )
-
-            // URL별 접근 권한 설정
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/api/v1/admin/**")
-                .hasRole("ADMIN")
+                .requestMatchers(PERMIT_ALL_PATHS).permitAll()
+                .requestMatchers(HttpMethod.GET, PUBLIC_GET_PATHS).permitAll()
+                .requestMatchers(ADMIN_PATH_PATTERN).hasRole("ADMIN")
+                .anyRequest().authenticated())
+            .exceptionHandling(exception -> exception
+                .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                .accessDeniedHandler(jwtAccessDeniedHandler))
+            .addFilterBefore(
+                new JwtAuthenticationFilter(jwtTokenProvider),
+                UsernamePasswordAuthenticationFilter.class);
 
-                // 인증 기능이 완성되기 전까지
-                // 관리자 외 API는 임시 허용
-                .anyRequest()
-                .permitAll()
-            );
-
-        return http.build();
-    }
-
-    private void writeErrorResponse(
-        HttpServletResponse response,
-        ErrorCode errorCode
-    ) throws IOException {
-
-        response.setStatus(
-            errorCode.getHttpStatus().value()
-        );
-
-        response.setContentType(
-            MediaType.APPLICATION_JSON_VALUE
-        );
-
-        response.setCharacterEncoding(
-            StandardCharsets.UTF_8.name()
-        );
-
-        ErrorResponseDto errorResponse =
-            ErrorResponseDto.from(errorCode);
-
-        objectMapper.writeValue(
-            response.getWriter(),
-            errorResponse
-        );
+        SecurityFilterChain securityFilterChain = http.build();
+        return securityFilterChain;
     }
 }

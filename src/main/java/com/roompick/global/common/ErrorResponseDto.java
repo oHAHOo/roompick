@@ -3,10 +3,10 @@ package com.roompick.global.common;
 import java.util.List;
 
 public record ErrorResponseDto(
-        boolean success,
-        String code,
-        String message,
-        List<ValidationErrorDto> errors
+    boolean success,
+    String code,
+    String message,
+    List<ValidationErrorDto> errors
 ) {
 
     public static ErrorResponseDto from(ErrorCode errorCode) {
@@ -18,8 +18,8 @@ public record ErrorResponseDto(
     }
 
     public record ValidationErrorDto(
-            String field,
-            String message
+        String field,
+        String message
     ) {
     }
 }
