@@ -1,11 +1,10 @@
 package com.roompick.domain.admin.accommodation.dto.request;
 
 import java.time.LocalTime;
-
-import com.fasterxml.jackson.annotation.JsonFormat;
+import java.time.format.DateTimeFormatter;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record AccommodationCreateRequestDto(
@@ -26,13 +25,36 @@ public record AccommodationCreateRequestDto(
 
     String description,
 
-    @NotNull(message = "체크인 시간은 필수입니다.")
-    @JsonFormat(pattern = "HH:mm:ss")
-    LocalTime checkInTime,
+    @NotBlank(message = "체크인 시간은 필수입니다.")
+    @Pattern(
+        regexp = "^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+        message = "체크인 시간은 HH:mm:ss 형식이어야 합니다."
+    )
+    String checkInTime,
 
-    @NotNull(message = "체크아웃 시간은 필수입니다.")
-    @JsonFormat(pattern = "HH:mm:ss")
-    LocalTime checkOutTime
+    @NotBlank(message = "체크아웃 시간은 필수입니다.")
+    @Pattern(
+        regexp = "^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+        message = "체크아웃 시간은 HH:mm:ss 형식이어야 합니다."
+    )
+    String checkOutTime
 
 ) {
+
+    private static final DateTimeFormatter TIME_FORMATTER =
+        DateTimeFormatter.ofPattern("HH:mm:ss");
+
+    public LocalTime checkInTimeAsLocalTime() {
+        return LocalTime.parse(
+            checkInTime,
+            TIME_FORMATTER
+        );
+    }
+
+    public LocalTime checkOutTimeAsLocalTime() {
+        return LocalTime.parse(
+            checkOutTime,
+            TIME_FORMATTER
+        );
+    }
 }

@@ -23,8 +23,8 @@ public class AdminAccommodationFacade {
                 request.name(),
                 request.address(),
                 request.description(),
-                request.checkInTime(),
-                request.checkOutTime()
+                request.checkInTimeAsLocalTime(),
+                request.checkOutTimeAsLocalTime()
             );
 
         return AccommodationCreateResponseDto.from(
