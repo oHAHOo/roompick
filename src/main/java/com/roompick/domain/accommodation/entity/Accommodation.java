@@ -2,8 +2,6 @@ package com.roompick.domain.accommodation.entity;
 
 import java.time.LocalTime;
 
-import org.springframework.cglib.core.Local;
-
 import com.roompick.global.common.BaseTimeEntity;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
