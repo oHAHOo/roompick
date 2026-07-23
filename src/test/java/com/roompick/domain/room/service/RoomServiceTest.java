@@ -2,15 +2,22 @@ package com.roompick.domain.room.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.LocalTime;
 import java.util.Optional;
 
+import com.roompick.domain.accommodation.entity.AccommodationStatus;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import static org.mockito.Mockito.never;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -24,6 +31,9 @@ class RoomServiceTest {
 
     @Mock
     private RoomRepository roomRepository;
+
+    @Mock
+    private Accommodation accommodation;
 
     @InjectMocks
     private RoomService roomService;
@@ -79,5 +89,125 @@ class RoomServiceTest {
             2,
             2
         );
+    }
+
+    @Test
+    @DisplayName("객실 가격이 0원이어도 객실을 등록할 수 있다")
+    void 객실_가격이_0원이어도_객실을_등록할_수_있다() {
+        // given
+        given(accommodation.getId())
+            .willReturn(1L);
+        given(accommodation.getStatus())
+            .willReturn(AccommodationStatus.ACTIVE);
+
+        given(
+            roomRepository
+                .existsByAccommodationIdAndRoomNumber(
+                    1L,
+                    "101"
+                )
+        ).willReturn(false);
+
+        given(roomRepository.save(any(Room.class)))
+            .willAnswer(invocation ->
+                invocation.getArgument(0)
+            );
+
+        // when
+        Room room = roomService.createRoom(
+            accommodation,
+            "101",
+            "디럭스 더블룸",
+            "퀸사이즈 침대가 포함된 객실",
+            0L,
+            2,
+            4
+        );
+
+        // then
+        assertThat(room.getPricePerNight())
+            .isZero();
+        assertThat(room.getStatus())
+            .isEqualTo(
+                com.roompick.domain.room.entity.RoomStatus.ACTIVE
+            );
+
+        then(roomRepository)
+            .should()
+            .save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("같은 숙소에 동일한 객실 번호가 존재하면 등록에 실패한다")
+    void 동일한_객실_번호가_존재하면_등록에_실패한다() {
+        // given
+        given(accommodation.getId())
+            .willReturn(1L);
+        given(accommodation.getStatus())
+            .willReturn(AccommodationStatus.ACTIVE);
+
+        given(
+            roomRepository
+                .existsByAccommodationIdAndRoomNumber(
+                    1L,
+                    "101"
+                )
+        ).willReturn(true);
+
+        // when
+        BusinessException exception =
+            assertThrows(
+                BusinessException.class,
+                () -> roomService.createRoom(
+                    accommodation,
+                    "101",
+                    "디럭스 더블룸",
+                    "객실 설명",
+                    150000L,
+                    2,
+                    4
+                )
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.ROOM_NUMBER_DUPLICATED
+            );
+
+        then(roomRepository)
+            .should(never())
+            .save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("운영 중지된 숙소에는 객실을 등록할 수 없다")
+    void 운영_중지된_숙소에는_객실을_등록할_수_없다() {
+        // given
+        given(accommodation.getStatus())
+            .willReturn(AccommodationStatus.INACTIVE);
+
+        // when
+        BusinessException exception =
+            assertThrows(
+                BusinessException.class,
+                () -> roomService.createRoom(
+                    accommodation,
+                    "101",
+                    "디럭스 더블룸",
+                    "객실 설명",
+                    150000L,
+                    2,
+                    4
+                )
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.ACCOMMODATION_INACTIVE
+            );
+
+        verifyNoInteractions(roomRepository);
     }
 }

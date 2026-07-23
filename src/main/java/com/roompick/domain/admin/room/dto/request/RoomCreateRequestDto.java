@@ -2,6 +2,7 @@ package com.roompick.domain.admin.room.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 public record RoomCreateRequestDto(
@@ -22,7 +23,7 @@ public record RoomCreateRequestDto(
 
     String description,
 
-    @Positive(message = "1박 가격은 0보다 커야 합니다.")
+    @PositiveOrZero(message = "1박 가격은 0원 이상이어야 합니다.")
     long pricePerNight,
 
     @Positive(message = "기준 인원은 1명 이상이어야 합니다.")

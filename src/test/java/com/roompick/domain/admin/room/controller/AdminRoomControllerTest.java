@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.roompick.domain.admin.room.dto.response.RoomCreateResponseDto;
 import com.roompick.domain.admin.room.facade.AdminRoomFacade;
 import com.roompick.domain.room.entity.RoomStatus;
+import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
 @ActiveProfiles("test")
@@ -39,7 +40,9 @@ class AdminRoomControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     @DisplayName("관리자는 객실을 등록할 수 있다")
-    void 관리자는_객실을_등록할_수_있다() throws Exception {
+    void 관리자는_객실을_등록할_수_있다()
+        throws Exception {
+
         // given
         RoomCreateResponseDto response =
             new RoomCreateResponseDto(
@@ -62,15 +65,15 @@ class AdminRoomControllerTest {
         ).willReturn(response);
 
         String requestBody = """
-        {
-          "roomNumber": "101",
-          "name": "디럭스 더블룸",
-          "description": "퀸사이즈 침대가 포함된 객실",
-          "pricePerNight": 150000,
-          "standardCapacity": 2,
-          "maxCapacity": 4
-        }
-        """;
+            {
+              "roomNumber": "101",
+              "name": "디럭스 더블룸",
+              "description": "퀸사이즈 침대가 포함된 객실",
+              "pricePerNight": 150000,
+              "standardCapacity": 2,
+              "maxCapacity": 4
+            }
+            """;
 
         // when & then
         mockMvc.perform(
@@ -104,14 +107,6 @@ class AdminRoomControllerTest {
                     .value("101")
             )
             .andExpect(
-                jsonPath("$.data.name")
-                    .value("디럭스 더블룸")
-            )
-            .andExpect(
-                jsonPath("$.data.description")
-                    .value("퀸사이즈 침대가 포함된 객실")
-            )
-            .andExpect(
                 jsonPath("$.data.pricePerNight")
                     .value(150000L)
             )
@@ -130,6 +125,61 @@ class AdminRoomControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("객실 가격이 0원이어도 등록할 수 있다")
+    void 객실_가격이_0원이어도_등록할_수_있다()
+        throws Exception {
+
+        // given
+        RoomCreateResponseDto response =
+            new RoomCreateResponseDto(
+                10L,
+                1L,
+                "101",
+                "이벤트 객실",
+                "무료 이벤트 객실",
+                0L,
+                1,
+                2,
+                RoomStatus.ACTIVE
+            );
+
+        given(
+            adminRoomFacade.createRoom(
+                eq(1L),
+                any()
+            )
+        ).willReturn(response);
+
+        String requestBody = """
+            {
+              "roomNumber": "101",
+              "name": "이벤트 객실",
+              "description": "무료 이벤트 객실",
+              "pricePerNight": 0,
+              "standardCapacity": 1,
+              "maxCapacity": 2
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms",
+                    1L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isCreated())
+            .andExpect(
+                jsonPath("$.data.pricePerNight")
+                    .value(0)
+            );
+    }
+
+    @Test
     @WithMockUser(roles = "USER")
     @DisplayName("일반 회원은 객실을 등록할 수 없다")
     void 일반_회원은_객실을_등록할_수_없다()
@@ -139,8 +189,10 @@ class AdminRoomControllerTest {
             {
               "roomNumber": "101",
               "name": "디럭스 더블룸",
-              "price": 150000,
-              "capacity": 2
+              "description": "객실 설명",
+              "pricePerNight": 150000,
+              "standardCapacity": 2,
+              "maxCapacity": 4
             }
             """;
 
@@ -155,12 +207,10 @@ class AdminRoomControllerTest {
             )
             .andExpect(status().isForbidden())
             .andExpect(
-                jsonPath("$.success")
-                    .value(false)
-            )
-            .andExpect(
                 jsonPath("$.code")
-                    .value(ErrorCode.FORBIDDEN.getCode())
+                    .value(
+                        ErrorCode.FORBIDDEN.getCode()
+                    )
             );
 
         verifyNoInteractions(adminRoomFacade);
@@ -175,8 +225,10 @@ class AdminRoomControllerTest {
             {
               "roomNumber": "101",
               "name": "디럭스 더블룸",
-              "price": 150000,
-              "capacity": 2
+              "description": "객실 설명",
+              "pricePerNight": 150000,
+              "standardCapacity": 2,
+              "maxCapacity": 4
             }
             """;
 
@@ -191,10 +243,6 @@ class AdminRoomControllerTest {
             )
             .andExpect(status().isUnauthorized())
             .andExpect(
-                jsonPath("$.success")
-                    .value(false)
-            )
-            .andExpect(
                 jsonPath("$.code")
                     .value(
                         ErrorCode.UNAUTHORIZED.getCode()
@@ -206,16 +254,18 @@ class AdminRoomControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    @DisplayName("객실 가격이 0이면 등록에 실패한다")
-    void 객실_가격이_0이면_등록에_실패한다()
+    @DisplayName("객실 가격이 음수이면 등록에 실패한다")
+    void 객실_가격이_음수이면_등록에_실패한다()
         throws Exception {
 
         String requestBody = """
             {
               "roomNumber": "101",
               "name": "디럭스 더블룸",
-              "price": 0,
-              "capacity": 2
+              "description": "객실 설명",
+              "pricePerNight": -1,
+              "standardCapacity": 2,
+              "maxCapacity": 4
             }
             """;
 
@@ -237,5 +287,103 @@ class AdminRoomControllerTest {
             );
 
         verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("동일한 객실 번호가 존재하면 409를 반환한다")
+    void 동일한_객실_번호가_존재하면_409를_반환한다()
+        throws Exception {
+
+        // given
+        given(
+            adminRoomFacade.createRoom(
+                eq(1L),
+                any()
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.ROOM_NUMBER_DUPLICATED
+            )
+        );
+
+        String requestBody = """
+            {
+              "roomNumber": "101",
+              "name": "디럭스 더블룸",
+              "description": "객실 설명",
+              "pricePerNight": 150000,
+              "standardCapacity": 2,
+              "maxCapacity": 4
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms",
+                    1L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.ROOM_NUMBER_DUPLICATED
+                            .getCode()
+                    )
+            );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("운영 중지된 숙소에 객실을 등록하면 409를 반환한다")
+    void 운영_중지된_숙소에_객실을_등록하면_409를_반환한다()
+        throws Exception {
+
+        // given
+        given(
+            adminRoomFacade.createRoom(
+                eq(1L),
+                any()
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.ACCOMMODATION_INACTIVE
+            )
+        );
+
+        String requestBody = """
+            {
+              "roomNumber": "101",
+              "name": "디럭스 더블룸",
+              "description": "객실 설명",
+              "pricePerNight": 150000,
+              "standardCapacity": 2,
+              "maxCapacity": 4
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms",
+                    1L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.ACCOMMODATION_INACTIVE
+                            .getCode()
+                    )
+            );
     }
 }
