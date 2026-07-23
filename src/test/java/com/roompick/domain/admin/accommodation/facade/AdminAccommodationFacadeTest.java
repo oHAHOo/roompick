@@ -2,7 +2,7 @@ package com.roompick.domain.admin.accommodation.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
+import static org.mockito.BDDMockito.then;
 
 import java.time.LocalTime;
 
@@ -29,8 +29,8 @@ class AdminAccommodationFacadeTest {
     private AdminAccommodationFacade adminAccommodationFacade;
 
     @Test
-    @DisplayName("관리자 숙소 등록 유스케이스에 성공한다")
-    void 관리자_숙소_등록_유스케이스에_성공한다() {
+    @DisplayName("관리자 숙소 등록 요청을 처리한다")
+    void 관리자_숙소_등록_요청을_처리한다() {
         // given
         LocalTime checkInTime = LocalTime.of(15, 0, 0);
         LocalTime checkOutTime = LocalTime.of(11, 0, 0);
@@ -40,57 +40,60 @@ class AdminAccommodationFacadeTest {
                 "룸픽 호텔",
                 "서울특별시 중구",
                 "RoomPick MVP 예약 테스트를 위한 숙소",
+                "15:00:00",
+                "11:00:00"
+            );
+
+        Accommodation accommodation =
+            Accommodation.create(
+                request.name(),
+                request.address(),
+                request.description(),
                 checkInTime,
                 checkOutTime
             );
-
-        Accommodation accommodation = Accommodation.create(
-            request.name(),
-            request.address(),
-            request.description(),
-            request.checkInTime(),
-            request.checkOutTime()
-        );
 
         given(
             accommodationService.createAccommodation(
                 request.name(),
                 request.address(),
                 request.description(),
-                request.checkInTime(),
-                request.checkOutTime()
+                checkInTime,
+                checkOutTime
             )
         ).willReturn(accommodation);
 
         // when
-        AccommodationCreateResponseDto result =
+        AccommodationCreateResponseDto response =
             adminAccommodationFacade.createAccommodation(request);
 
         // then
-        assertThat(result.name())
-            .isEqualTo("룸픽 호텔");
+        assertThat(response.name())
+            .isEqualTo(request.name());
 
-        assertThat(result.address())
-            .isEqualTo("서울특별시 중구");
+        assertThat(response.address())
+            .isEqualTo(request.address());
 
-        assertThat(result.description())
-            .isEqualTo("RoomPick MVP 예약 테스트를 위한 숙소");
+        assertThat(response.description())
+            .isEqualTo(request.description());
 
-        assertThat(result.checkInTime())
+        assertThat(response.checkInTime())
             .isEqualTo(checkInTime);
 
-        assertThat(result.checkOutTime())
+        assertThat(response.checkOutTime())
             .isEqualTo(checkOutTime);
 
-        assertThat(result.status())
+        assertThat(response.status())
             .isEqualTo(AccommodationStatus.ACTIVE);
 
-        verify(accommodationService).createAccommodation(
-            request.name(),
-            request.address(),
-            request.description(),
-            request.checkInTime(),
-            request.checkOutTime()
-        );
+        then(accommodationService)
+            .should()
+            .createAccommodation(
+                request.name(),
+                request.address(),
+                request.description(),
+                checkInTime,
+                checkOutTime
+            );
     }
 }
