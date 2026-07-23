@@ -17,7 +17,6 @@ import com.roompick.global.security.AuthMember;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-
 /**
  * 예약 생성·조회·취소 요청을 처리하는 Controller입니다.
  *
