@@ -16,32 +16,31 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/v1/admin/accommodations")
 @RequiredArgsConstructor
+@RequestMapping("/api/v1/admin/accommodations")
 public class AdminAccommodationController {
 
     private final AdminAccommodationFacade adminAccommodationFacade;
 
     @PostMapping
-    public ResponseEntity<
-        ApiResponseDto<AccommodationCreateResponseDto>
-        > createAccommodation(
-        @Valid
-        @RequestBody
-        AccommodationCreateRequestDto request
+    public ResponseEntity<ApiResponseDto<AccommodationCreateResponseDto>>
+    createAccommodation(
+        @Valid @RequestBody AccommodationCreateRequestDto request
     ) {
-        AccommodationCreateResponseDto response =
-            adminAccommodationFacade.createAccommodation(
-                request
-            );
 
-        return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(
-                ApiResponseDto.success(
-                    "숙소가 등록되었습니다.",
-                    response
-                )
-            );
+        AccommodationCreateResponseDto response =
+            adminAccommodationFacade.createAccommodation(request);
+
+        ResponseEntity<ApiResponseDto<AccommodationCreateResponseDto>> result =
+            ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(
+                    ApiResponseDto.success(
+                        "숙소가 등록되었습니다.",
+                        response
+                    )
+                );
+
+        return result;
     }
 }
