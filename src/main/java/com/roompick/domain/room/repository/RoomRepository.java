@@ -37,4 +37,12 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
             ORDER BY room.id ASC
             """)
     List<Room> findAllByAccommodationId(@Param("accommodationId") Long accommodationId);
+
+    /**
+     * 객실 번호 중복을 조회합니다.
+     */
+    boolean existsByAccommodationIdAndRoomNumber(
+        Long accommodationId,
+        String roomNumber
+    );
 }

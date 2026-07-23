@@ -2,6 +2,8 @@ package com.roompick.domain.room.service;
 
 import java.util.List;
 
+import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,5 +41,65 @@ public class RoomService {
     @Transactional(readOnly = true)
     public List<Room> findAllByAccommodationId(Long accommodationId) {
         return roomRepository.findAllByAccommodationId(accommodationId);
+    }
+
+    @Transactional
+    public Room createRoom(
+        Accommodation accommodation,
+        String roomNumber,
+        String name,
+        String description,
+        long pricePerNight,
+        int standardCapacity,
+        int maxCapacity
+    ) {
+        validateAccommodationActive(accommodation);
+        validateRoomNumberNotDuplicated(
+            accommodation.getId(),
+            roomNumber
+        );
+
+        Room room = Room.create(
+            accommodation,
+            roomNumber,
+            name,
+            description,
+            pricePerNight,
+            standardCapacity,
+            maxCapacity
+        );
+
+        return roomRepository.save(room);
+    }
+
+    private void validateAccommodationActive(
+        Accommodation accommodation
+    ) {
+        if (
+            accommodation.getStatus()
+                == AccommodationStatus.INACTIVE
+        ) {
+            throw new BusinessException(
+                ErrorCode.ACCOMMODATION_INACTIVE
+            );
+        }
+    }
+
+    private void validateRoomNumberNotDuplicated(
+        Long accommodationId,
+        String roomNumber
+    ) {
+        boolean duplicated =
+            roomRepository
+                .existsByAccommodationIdAndRoomNumber(
+                    accommodationId,
+                    roomNumber
+                );
+
+        if (duplicated) {
+            throw new BusinessException(
+                ErrorCode.ROOM_NUMBER_DUPLICATED
+            );
+        }
     }
 }

@@ -26,6 +26,7 @@ public enum ErrorCode {
     ACCOMMODATION_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "ACCOMMODATION_ADDRESS_REQUIRED", "숙소 주소는 필수입니다."),
     ACCOMMODATION_TIME_REQUIRED(HttpStatus.BAD_REQUEST, "ACCOMMODATION_TIME_REQUIRED", "체크인 및 체크아웃 시간은 필수입니다."),
     ACCOMMODATION_NOT_FOUND(HttpStatus.NOT_FOUND, "ACCOMMODATION_NOT_FOUND", "숙소를 찾을 수 없습니다."),
+    ACCOMMODATION_INACTIVE(HttpStatus.CONFLICT, "ACCOMMODATION_INACTIVE", "운영 중지된 숙소에는 객실을 등록할 수 없습니다."),
 
     // 객실 오류
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "객실을 찾을 수 없습니다."),
@@ -37,6 +38,7 @@ public enum ErrorCode {
     ROOM_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "ROOM_NAME_REQUIRED", "객실 이름은 필수입니다."),
     INVALID_ROOM_PRICE(HttpStatus.BAD_REQUEST, "INVALID_ROOM_PRICE", "객실 가격은 0원 이상이어야 합니다."),
     INVALID_ROOM_CAPACITY(HttpStatus.BAD_REQUEST, "INVALID_ROOM_CAPACITY", "객실 인원 설정이 올바르지 않습니다."),
+    ROOM_NUMBER_DUPLICATED(HttpStatus.CONFLICT, "ROOM_NUMBER_DUPLICATED", "동일한 숙소에 같은 객실 번호가 이미 존재합니다."),
 
     // 예약 입력 및 상태 오류
     INVALID_STAY_PERIOD(HttpStatus.BAD_REQUEST, "INVALID_STAY_PERIOD", "숙박 기간이 올바르지 않습니다."),
