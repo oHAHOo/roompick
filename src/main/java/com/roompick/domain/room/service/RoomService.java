@@ -7,6 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
@@ -15,6 +17,18 @@ import lombok.RequiredArgsConstructor;
 public class RoomService {
 
     private final RoomRepository roomRepository;
+
+    /**
+     * 객실 ID로 객실과 소속 숙소를 함께 조회합니다.
+     *
+     * fetch join을 사용해 객실 상세 응답을 만들 때
+     * 숙소 조회 쿼리가 추가로 발생하지 않도록 합니다.
+     */
+    @Transactional(readOnly = true)
+    public Room findById(Long roomId) {
+        return roomRepository.findByIdWithAccommodation(roomId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.ROOM_NOT_FOUND));
+    }
 
     /**
      * 특정 숙소에 소속된 객실 목록을 조회합니다.
