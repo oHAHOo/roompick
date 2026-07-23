@@ -4,6 +4,7 @@ import com.roompick.global.common.ErrorResponseDto.ValidationErrorDto;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -39,6 +40,26 @@ public class GlobalExceptionHandler {
         ResponseEntity<ErrorResponseDto> response = ResponseEntity
                 .status(errorCode.getHttpStatus())
                 .body(body);
+        return response;
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponseDto> handleAccessDeniedException(
+        AccessDeniedException exception
+    ) {
+        ErrorCode errorCode = ErrorCode.ACCESS_DENIED;
+
+        log.warn(
+            "Access denied. message={}",
+            exception.getMessage()
+        );
+
+        ErrorResponseDto body = ErrorResponseDto.from(errorCode);
+
+        ResponseEntity<ErrorResponseDto> response =
+            ResponseEntity.status(errorCode.getHttpStatus())
+                .body(body);
+
         return response;
     }
 
