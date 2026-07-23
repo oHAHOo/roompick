@@ -2,6 +2,7 @@ package com.roompick.domain.room.service;
 
 import java.util.List;
 
+import com.roompick.domain.accommodation.entity.Accommodation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,5 +40,28 @@ public class RoomService {
     @Transactional(readOnly = true)
     public List<Room> findAllByAccommodationId(Long accommodationId) {
         return roomRepository.findAllByAccommodationId(accommodationId);
+    }
+
+    @Transactional
+    public Room createRoom(
+        Accommodation accommodation,
+        String roomNumber,
+        String name,
+        String description,
+        long pricePerNight,
+        int standardCapacity,
+        int maxCapacity
+    ) {
+        Room room = Room.create(
+            accommodation,
+            roomNumber,
+            name,
+            description,
+            pricePerNight,
+            standardCapacity,
+            maxCapacity
+        );
+
+        return roomRepository.save(room);
     }
 }
