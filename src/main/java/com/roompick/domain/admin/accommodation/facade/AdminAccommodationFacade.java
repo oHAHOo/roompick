@@ -1,11 +1,11 @@
-package com.roompick.domain.admin.facade;
+package com.roompick.domain.admin.accommodation.facade;
 
 import org.springframework.stereotype.Component;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.admin.dto.request.AccommodationCreateRequestDto;
-import com.roompick.domain.admin.dto.response.AccommodationCreateResponseDto;
+import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
+import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
 
 import lombok.RequiredArgsConstructor;
 

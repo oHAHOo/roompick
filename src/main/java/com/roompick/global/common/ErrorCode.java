@@ -14,7 +14,12 @@ public enum ErrorCode {
     // 공통 오류
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "COMMON_001", "요청 값이 올바르지 않습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_002", "서버 내부 오류가 발생했습니다."),
-    ACCESS_DENIED(HttpStatus.FORBIDDEN, "COMMON_003", "접근 권한이 없습니다."),
+    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "COMMON_003", "인증이 필요합니다."),
+    FORBIDDEN(HttpStatus.FORBIDDEN, "COMMON_004", "접근 권한이 없습니다."),
+
+    // 회원 오류
+    DUPLICATED_EMAIL(HttpStatus.BAD_REQUEST, "MEMBER_001", "이미 사용 중인 이메일입니다."),
+    INVALID_LOGIN(HttpStatus.UNAUTHORIZED, "MEMBER_003", "이메일 또는 비밀번호가 일치하지 않습니다."),
 
     // 숙소 오류
     ACCOMMODATION_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "ACCOMMODATION_NAME_REQUIRED", "숙소 이름은 필수입니다."),

@@ -1,4 +1,4 @@
-package com.roompick.domain.admin.facade;
+package com.roompick.domain.admin.accommodation.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
@@ -16,8 +16,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.admin.dto.request.AccommodationCreateRequestDto;
-import com.roompick.domain.admin.dto.response.AccommodationCreateResponseDto;
+import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
+import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
 
 @ExtendWith(MockitoExtension.class)
 class AdminAccommodationFacadeTest {
@@ -32,8 +32,8 @@ class AdminAccommodationFacadeTest {
     @DisplayName("관리자 숙소 등록 유스케이스에 성공한다")
     void 관리자_숙소_등록_유스케이스에_성공한다() {
         // given
-        LocalTime checkInTime = LocalTime.of(15, 0);
-        LocalTime checkOutTime = LocalTime.of(11, 0);
+        LocalTime checkInTime = LocalTime.of(15, 0, 0);
+        LocalTime checkOutTime = LocalTime.of(11, 0, 0);
 
         AccommodationCreateRequestDto request =
             new AccommodationCreateRequestDto(
@@ -67,11 +67,23 @@ class AdminAccommodationFacadeTest {
             adminAccommodationFacade.createAccommodation(request);
 
         // then
-        assertThat(result.name()).isEqualTo("룸픽 호텔");
-        assertThat(result.address()).isEqualTo("서울특별시 중구");
-        assertThat(result.checkInTime()).isEqualTo(checkInTime);
-        assertThat(result.checkOutTime()).isEqualTo(checkOutTime);
-        assertThat(result.status()).isEqualTo(AccommodationStatus.ACTIVE);
+        assertThat(result.name())
+            .isEqualTo("룸픽 호텔");
+
+        assertThat(result.address())
+            .isEqualTo("서울특별시 중구");
+
+        assertThat(result.description())
+            .isEqualTo("RoomPick MVP 예약 테스트를 위한 숙소");
+
+        assertThat(result.checkInTime())
+            .isEqualTo(checkInTime);
+
+        assertThat(result.checkOutTime())
+            .isEqualTo(checkOutTime);
+
+        assertThat(result.status())
+            .isEqualTo(AccommodationStatus.ACTIVE);
 
         verify(accommodationService).createAccommodation(
             request.name(),
