@@ -15,9 +15,6 @@ import com.roompick.global.common.ApiResponseDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-/**
- * 관리자 전용 숙소 등록 API를 제공합니다.
- */
 @RestController
 @RequestMapping("/api/v1/admin/accommodations")
 @RequiredArgsConstructor
@@ -26,21 +23,25 @@ public class AdminAccommodationController {
     private final AdminAccommodationFacade adminAccommodationFacade;
 
     @PostMapping
-    public ResponseEntity<ApiResponseDto<AccommodationCreateResponseDto>> createAccommodation(
-        @Valid @RequestBody AccommodationCreateRequestDto request
+    public ResponseEntity<
+        ApiResponseDto<AccommodationCreateResponseDto>
+        > createAccommodation(
+        @Valid
+        @RequestBody
+        AccommodationCreateRequestDto request
     ) {
-        AccommodationCreateResponseDto result =
-            adminAccommodationFacade.createAccommodation(request);
+        AccommodationCreateResponseDto response =
+            adminAccommodationFacade.createAccommodation(
+                request
+            );
 
-        ResponseEntity<ApiResponseDto<AccommodationCreateResponseDto>> response =
-            ResponseEntity.status(HttpStatus.CREATED)
-                .body(
-                    ApiResponseDto.success(
-                        "숙소가 등록되었습니다.",
-                        result
-                    )
-                );
-
-        return response;
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(
+                ApiResponseDto.success(
+                    "숙소가 등록되었습니다.",
+                    response
+                )
+            );
     }
 }

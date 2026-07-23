@@ -6,9 +6,6 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 
-/**
- * 관리자 숙소 등록 결과를 반환합니다.
- */
 public record AccommodationCreateResponseDto(
 
     Long accommodationId,

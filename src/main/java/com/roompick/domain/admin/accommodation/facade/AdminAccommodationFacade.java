@@ -9,9 +9,6 @@ import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateR
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * 관리자의 숙소 등록 유스케이스를 조율합니다.
- */
 @Component
 @RequiredArgsConstructor
 public class AdminAccommodationFacade {
@@ -30,6 +27,8 @@ public class AdminAccommodationFacade {
                 request.checkOutTime()
             );
 
-        return AccommodationCreateResponseDto.from(accommodation);
+        return AccommodationCreateResponseDto.from(
+            accommodation
+        );
     }
 }
