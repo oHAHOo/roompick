@@ -3,6 +3,7 @@ package com.roompick.domain.reservation.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Objects;
 
 import com.roompick.domain.reservation.entity.Reservation;
 import org.springframework.stereotype.Service;
@@ -115,6 +116,79 @@ public class ReservationService {
         );
 
         return reservationRepository.save(reservation);
+    }
+
+    /**
+     * 인증된 회원이 생성한 예약 목록을 페이지 단위로 조회합니다.
+     *
+     * 예약 생성일이 최신인 순서로 조회하고,
+     * 생성 시각이 같으면 예약 ID가 큰 순서로 정렬합니다.
+     */
+    @Transactional(readOnly = true)
+    public Page<Reservation> findMyReservations(
+        Long memberId,
+        int page,
+        int size
+    ) {
+        validateMemberId(memberId);
+        validatePageRequest(page, size);
+
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            page,
+            size,
+            sort
+        );
+
+        return reservationRepository
+            .findAllByMemberIdWithRoomAndAccommodation(
+                memberId,
+                pageable
+            );
+    }
+
+    /**
+     * 인증된 회원의 예약 상세 정보를 조회합니다.
+     *
+     * 예약이 존재하지 않으면 404를 반환하고,
+     * 다른 회원의 예약이면 403을 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public Reservation findMyReservation(
+        Long memberId,
+        Long reservationId
+    ) {
+        validateMemberId(memberId);
+        validateReservationId(reservationId);
+
+        Reservation reservation =
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+                .orElseThrow(() ->
+                    new BusinessException(
+                        ErrorCode.RESERVATION_NOT_FOUND
+                    )
+                );
+
+        validateReservationOwner(
+            reservation,
+            memberId
+        );
+
+        return reservation;
     }
 
     /**
