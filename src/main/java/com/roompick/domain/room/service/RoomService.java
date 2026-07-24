@@ -74,6 +74,30 @@ public class RoomService {
     }
 
     /**
+     * 예약 생성에 필요한 객실과 소속 숙소를 함께 조회하고
+     * 객실 상태와 요청 인원을 검증합니다.
+     *
+     * 예약 생성 응답에 숙소 정보가 포함되므로
+     * fetch join을 사용해 추가 조회가 발생하지 않도록 합니다.
+     */
+    @Transactional(readOnly = true)
+    public Room findReservableRoomWithAccommodation(
+        Long roomId,
+        int guestCount
+    ) {
+        Room room = roomRepository
+            .findByIdWithAccommodation(roomId)
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+            );
+
+        validateRoomStatus(room);
+        validateGuestCount(room, guestCount);
+
+        return room;
+    }
+
+    /**
      * 운영 중인 숙소에 새로운 객실을 등록합니다.
      */
     @Transactional

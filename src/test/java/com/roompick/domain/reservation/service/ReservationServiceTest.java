@@ -22,8 +22,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.repository.ReservationRepository;
+import com.roompick.domain.room.entity.Room;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+
+import jakarta.persistence.EntityManager;
 
 /**
  * 예약 날짜 검증, 활성 예약 중복 확인,
