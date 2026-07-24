@@ -2,9 +2,10 @@ package com.roompick.domain.reservation.repository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -50,22 +51,28 @@ public interface ReservationRepository
     );
 
     /**
-     * 회원의 예약 목록을 최신 생성순으로 조회합니다.
+     * 회원의 예약 목록을 페이지 단위로 조회합니다.
      *
-     * 응답 변환에 필요한 객실과 숙소를 fetch join하여
-     * 예약 건수만큼 추가 조회가 발생하는 N+1 문제를 방지합니다.
+     * 응답 변환에 필요한 객실과 숙소는 fetch join으로 함께 조회하고,
+     * 전체 예약 수를 구하는 count 쿼리에서는 불필요한 join을 제거합니다.
      */
-    @Query("""
-        SELECT reservation
-        FROM Reservation reservation
-        JOIN FETCH reservation.room room
-        JOIN FETCH room.accommodation accommodation
-        WHERE reservation.member.id = :memberId
-        ORDER BY reservation.createdAt DESC,
-                 reservation.id DESC
-        """)
-    List<Reservation> findAllByMemberIdWithRoomAndAccommodation(
-        @Param("memberId") Long memberId
+    @Query(
+        value = """
+            SELECT reservation
+            FROM Reservation reservation
+            JOIN FETCH reservation.room room
+            JOIN FETCH room.accommodation accommodation
+            WHERE reservation.member.id = :memberId
+            """,
+        countQuery = """
+            SELECT COUNT(reservation)
+            FROM Reservation reservation
+            WHERE reservation.member.id = :memberId
+            """
+    )
+    Page<Reservation> findAllByMemberIdWithRoomAndAccommodation(
+        @Param("memberId") Long memberId,
+        Pageable pageable
     );
 
     /**

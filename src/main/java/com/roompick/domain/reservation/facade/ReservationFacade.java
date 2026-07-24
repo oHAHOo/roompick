@@ -1,13 +1,12 @@
 package com.roompick.domain.reservation.facade;
 
-import java.util.List;
-
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
-import com.roompick.domain.reservation.dto.ReservationListResponseDto;
+import com.roompick.domain.reservation.dto.ReservationPageResponseDto;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
@@ -55,16 +54,23 @@ public class ReservationFacade {
     }
 
     /**
-     * 인증된 회원의 예약 목록을 최신순으로 조회합니다.
+     * 인증된 회원의 예약 목록을 페이지 단위로 조회합니다.
      */
-    public List<ReservationListResponseDto> getMyReservations(
-        Long memberId
+    public ReservationPageResponseDto getMyReservations(
+        Long memberId,
+        int page,
+        int size
     ) {
-        return reservationService
-            .findMyReservations(memberId)
-            .stream()
-            .map(ReservationListResponseDto::from)
-            .toList();
+        Page<Reservation> reservationPage =
+            reservationService.findMyReservations(
+                memberId,
+                page,
+                size
+            );
+
+        return ReservationPageResponseDto.from(
+            reservationPage
+        );
     }
 
     /**

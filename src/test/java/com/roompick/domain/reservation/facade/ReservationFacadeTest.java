@@ -15,6 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -23,6 +26,7 @@ import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
 import com.roompick.domain.reservation.dto.ReservationListResponseDto;
+import com.roompick.domain.reservation.dto.ReservationPageResponseDto;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.domain.reservation.service.ReservationService;
@@ -181,13 +185,16 @@ class ReservationFacadeTest {
     }
 
     @Test
-    @DisplayName("인증된 회원의 예약 목록을 응답 DTO로 변환한다")
+    @DisplayName("인증된 회원의 예약 목록을 페이지 응답 DTO로 변환한다")
     void 인증된_회원의_예약_목록을_조회한다() {
         // given
         Long memberId = 1L;
         Long accommodationId = 10L;
         Long roomId = 20L;
         Long reservationId = 30L;
+
+        int page = 0;
+        int size = 10;
 
         LocalDate checkInDate =
             LocalDate.of(2026, 8, 10);
@@ -197,6 +204,9 @@ class ReservationFacadeTest {
 
         LocalDateTime expiresAt =
             LocalDateTime.of(2026, 8, 1, 12, 10);
+
+        LocalDateTime createdAt =
+            LocalDateTime.of(2026, 8, 1, 12, 0);
 
         Accommodation accommodation =
             createAccommodation(accommodationId);
@@ -226,59 +236,59 @@ class ReservationFacadeTest {
             reservationId
         );
 
-        given(
-            reservationService.findMyReservations(
-                memberId
-            )
-        ).willReturn(
-            List.of(reservation)
+        ReflectionTestUtils.setField(
+            reservation,
+            "createdAt",
+            createdAt
         );
 
+        Page<Reservation> reservationPage =
+            new PageImpl<>(
+                List.of(reservation),
+                PageRequest.of(page, size),
+                1
+            );
+
+        given(
+            reservationService.findMyReservations(
+                memberId,
+                page,
+                size
+            )
+        ).willReturn(reservationPage);
+
         // when
-        List<ReservationListResponseDto> response =
+        ReservationPageResponseDto response =
             reservationFacade.getMyReservations(
-                memberId
+                memberId,
+                page,
+                size
             );
 
         // then
-        assertThat(response)
+        assertThat(response.content())
             .hasSize(1);
 
         ReservationListResponseDto reservationResponse =
-            response.get(0);
+            response.content().get(0);
 
         assertThat(reservationResponse.reservationId())
             .isEqualTo(reservationId);
 
-        assertThat(
-            reservationResponse
-                .accommodation()
-                .accommodationId()
-        ).isEqualTo(accommodationId);
+        assertThat(reservationResponse.accommodationName())
+            .isEqualTo("룸픽 호텔");
 
-        assertThat(
-            reservationResponse
-                .accommodation()
-                .name()
-        ).isEqualTo("룸픽 호텔");
-
-        assertThat(
-            reservationResponse
-                .room()
-                .roomId()
-        ).isEqualTo(roomId);
-
-        assertThat(
-            reservationResponse
-                .room()
-                .name()
-        ).isEqualTo("디럭스 더블룸");
+        assertThat(reservationResponse.roomName())
+            .isEqualTo("디럭스 더블룸");
 
         assertThat(reservationResponse.checkInDate())
             .isEqualTo(checkInDate);
 
         assertThat(reservationResponse.checkOutDate())
             .isEqualTo(checkOutDate);
+
+        assertThat(reservationResponse.guestCount())
+            .isEqualTo(2);
 
         assertThat(reservationResponse.totalAmount())
             .isEqualTo(200_000L);
@@ -288,9 +298,31 @@ class ReservationFacadeTest {
                 ReservationStatus.PENDING_PAYMENT
             );
 
+        assertThat(reservationResponse.createdAt())
+            .isEqualTo(createdAt);
+
+        assertThat(response.pageNumber())
+            .isZero();
+
+        assertThat(response.pageSize())
+            .isEqualTo(10);
+
+        assertThat(response.totalElements())
+            .isEqualTo(1);
+
+        assertThat(response.totalPages())
+            .isEqualTo(1);
+
+        assertThat(response.last())
+            .isTrue();
+
         then(reservationService)
             .should()
-            .findMyReservations(memberId);
+            .findMyReservations(
+                memberId,
+                page,
+                size
+            );
     }
 
     @Test

@@ -3,9 +3,12 @@ package com.roompick.domain.reservation.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.List;
 import java.util.Objects;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -119,17 +122,42 @@ public class ReservationService {
     }
 
     /**
-     * 인증된 회원이 생성한 예약 목록을 최신순으로 조회합니다.
+     * 인증된 회원이 생성한 예약 목록을 페이지 단위로 조회합니다.
+     *
+     * 예약 생성일이 최신인 순서로 조회하고,
+     * 생성 시각이 같으면 예약 ID가 큰 순서로 정렬합니다.
      */
     @Transactional(readOnly = true)
-    public List<Reservation> findMyReservations(
-        Long memberId
+    public Page<Reservation> findMyReservations(
+        Long memberId,
+        int page,
+        int size
     ) {
         validateMemberId(memberId);
+        validatePageRequest(page, size);
+
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            page,
+            size,
+            sort
+        );
 
         return reservationRepository
             .findAllByMemberIdWithRoomAndAccommodation(
-                memberId
+                memberId,
+                pageable
             );
     }
 
@@ -215,6 +243,24 @@ public class ReservationService {
         if (memberId == null) {
             throw new BusinessException(
                 ErrorCode.UNAUTHORIZED
+            );
+        }
+    }
+
+    /**
+     * 예약 목록의 페이지 번호와 크기가 허용 범위인지 확인합니다.
+     */
+    private void validatePageRequest(
+        int page,
+        int size
+    ) {
+        if (
+            page < 0
+                || size < 1
+                || size > 100
+        ) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
             );
         }
     }

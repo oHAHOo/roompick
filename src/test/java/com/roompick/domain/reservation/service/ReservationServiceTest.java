@@ -22,6 +22,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.reservation.entity.Reservation;
@@ -322,33 +327,75 @@ class ReservationServiceTest {
     }
 
     @Test
-    @DisplayName("인증된 회원의 예약 목록을 조회한다")
+    @DisplayName("인증된 회원의 예약 목록을 페이지 단위로 조회한다")
     void findMyReservations() {
         // given
         Long memberId = 1L;
 
+        int page = 0;
+        int size = 10;
+
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            page,
+            size,
+            sort
+        );
+
+        Page<Reservation> reservationPage =
+            new PageImpl<>(
+                List.of(existingReservation),
+                pageable,
+                1
+            );
+
         given(
             reservationRepository
                 .findAllByMemberIdWithRoomAndAccommodation(
-                    memberId
+                    memberId,
+                    pageable
                 )
-        ).willReturn(
-            List.of(existingReservation)
-        );
+        ).willReturn(reservationPage);
 
         // when
-        List<Reservation> reservations =
+        Page<Reservation> result =
             reservationService.findMyReservations(
-                memberId
+                memberId,
+                page,
+                size
             );
 
         // then
-        assertThat(reservations)
+        assertThat(result.getContent())
             .containsExactly(existingReservation);
+
+        assertThat(result.getNumber())
+            .isZero();
+
+        assertThat(result.getSize())
+            .isEqualTo(10);
+
+        assertThat(result.getTotalElements())
+            .isEqualTo(1);
+
+        assertThat(result.getSort())
+            .isEqualTo(sort);
 
         verify(reservationRepository)
             .findAllByMemberIdWithRoomAndAccommodation(
-                memberId
+                memberId,
+                pageable
             );
     }
 

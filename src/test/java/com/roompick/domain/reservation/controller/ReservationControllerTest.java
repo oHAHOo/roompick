@@ -31,8 +31,10 @@ import com.roompick.domain.reservation.dto.ReservationCreateResponseDto.Accommod
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto.RoomSummaryDto;
 import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
 import com.roompick.domain.reservation.dto.ReservationListResponseDto;
+import com.roompick.domain.reservation.dto.ReservationPageResponseDto;
 import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.domain.reservation.facade.ReservationFacade;
+import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.security.JwtTokenProvider;
 
@@ -193,12 +195,15 @@ class ReservationControllerTest {
     }
 
     @Test
-    @DisplayName("인증된 회원은 자신의 예약 목록을 조회할 수 있다")
+    @DisplayName("인증된 회원은 자신의 예약 목록을 페이지 단위로 조회할 수 있다")
     void 인증된_회원은_예약_목록을_조회할_수_있다()
         throws Exception {
 
         // given
         Long memberId = 1L;
+
+        int page = 0;
+        int size = 10;
 
         String accessToken =
             jwtTokenProvider.createAccessToken(
@@ -209,30 +214,13 @@ class ReservationControllerTest {
         ReservationListResponseDto reservationResponse =
             new ReservationListResponseDto(
                 30L,
-                new ReservationListResponseDto
-                    .AccommodationSummaryDto(
-                    10L,
-                    "룸픽 호텔"
-                ),
-                new ReservationListResponseDto
-                    .RoomSummaryDto(
-                    20L,
-                    "디럭스 더블룸",
-                    "101"
-                ),
+                "룸픽 호텔",
+                "디럭스 더블룸",
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 12),
                 2,
-                2,
                 200_000L,
                 ReservationStatus.PENDING_PAYMENT,
-                LocalDateTime.of(
-                    2026,
-                    8,
-                    1,
-                    12,
-                    10
-                ),
                 LocalDateTime.of(
                     2026,
                     8,
@@ -242,17 +230,29 @@ class ReservationControllerTest {
                 )
             );
 
+        ReservationPageResponseDto response =
+            new ReservationPageResponseDto(
+                List.of(reservationResponse),
+                page,
+                size,
+                1L,
+                1,
+                true
+            );
+
         given(
             reservationFacade.getMyReservations(
-                memberId
+                memberId,
+                page,
+                size
             )
-        ).willReturn(
-            List.of(reservationResponse)
-        );
+        ).willReturn(response);
 
         // when & then
         mockMvc.perform(
                 get("/api/v1/reservations")
+                    .param("page", String.valueOf(page))
+                    .param("size", String.valueOf(size))
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
@@ -270,50 +270,106 @@ class ReservationControllerTest {
                     )
             )
             .andExpect(
-                jsonPath("$.data.length()")
+                jsonPath("$.data.content.length()")
                     .value(1)
             )
             .andExpect(
-                jsonPath("$.data[0].reservationId")
-                    .value(30L)
+                jsonPath(
+                    "$.data.content[0].reservationId"
+                ).value(30L)
             )
             .andExpect(
                 jsonPath(
-                    "$.data[0].accommodation.accommodationId"
-                ).value(10L)
-            )
-            .andExpect(
-                jsonPath(
-                    "$.data[0].accommodation.name"
+                    "$.data.content[0].accommodationName"
                 ).value("룸픽 호텔")
             )
             .andExpect(
-                jsonPath("$.data[0].room.roomId")
-                    .value(20L)
+                jsonPath(
+                    "$.data.content[0].roomName"
+                ).value("디럭스 더블룸")
             )
             .andExpect(
-                jsonPath("$.data[0].room.name")
-                    .value("디럭스 더블룸")
+                jsonPath(
+                    "$.data.content[0].checkInDate"
+                ).value("2026-08-10")
             )
             .andExpect(
-                jsonPath("$.data[0].checkInDate")
-                    .value("2026-08-10")
+                jsonPath(
+                    "$.data.content[0].checkOutDate"
+                ).value("2026-08-12")
             )
             .andExpect(
-                jsonPath("$.data[0].checkOutDate")
-                    .value("2026-08-12")
+                jsonPath(
+                    "$.data.content[0].guestCount"
+                ).value(2)
             )
             .andExpect(
-                jsonPath("$.data[0].totalAmount")
-                    .value(200_000L)
+                jsonPath(
+                    "$.data.content[0].totalAmount"
+                ).value(200_000L)
             )
             .andExpect(
-                jsonPath("$.data[0].status")
-                    .value("PENDING_PAYMENT")
+                jsonPath(
+                    "$.data.content[0].status"
+                ).value("PENDING_PAYMENT")
+            )
+            .andExpect(
+                jsonPath("$.data.pageNumber")
+                    .value(0)
+            )
+            .andExpect(
+                jsonPath("$.data.pageSize")
+                    .value(10)
+            )
+            .andExpect(
+                jsonPath("$.data.totalElements")
+                    .value(1)
+            )
+            .andExpect(
+                jsonPath("$.data.totalPages")
+                    .value(1)
+            )
+            .andExpect(
+                jsonPath("$.data.last")
+                    .value(true)
             );
 
         verify(reservationFacade)
-            .getMyReservations(memberId);
+            .getMyReservations(
+                memberId,
+                page,
+                size
+            );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 예약 목록을 조회할 수 없다")
+    void 인증되지_않은_회원은_예약_목록을_조회할_수_없다()
+        throws Exception {
+
+        // when & then
+        mockMvc.perform(
+                get("/api/v1/reservations")
+                    .param("page", "0")
+                    .param("size", "10")
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.UNAUTHORIZED.getCode()
+                    )
+            );
+
+        /*
+         * 인증 필터에서 요청이 차단되므로
+         * 예약 조회 로직까지 실행되면 안 됩니다.
+         */
+        verifyNoInteractions(reservationFacade);
     }
 
     @Test
@@ -459,6 +515,154 @@ class ReservationControllerTest {
             .andExpect(
                 jsonPath("$.data.canceledAt")
                     .doesNotExist()
+            );
+
+        verify(reservationFacade)
+            .getMyReservation(
+                memberId,
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 예약 상세 정보를 조회할 수 없다")
+    void 인증되지_않은_회원은_예약_상세를_조회할_수_없다()
+        throws Exception {
+
+        // given
+        Long reservationId = 30L;
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/reservations/{reservationId}",
+                    reservationId
+                )
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.UNAUTHORIZED.getCode()
+                    )
+            );
+
+        /*
+         * 인증 필터에서 요청이 차단되므로
+         * 예약 상세 조회 로직까지 실행되면 안 됩니다.
+         */
+        verifyNoInteractions(reservationFacade);
+    }
+
+    @Test
+    @DisplayName("다른 회원의 예약 상세 정보는 조회할 수 없다")
+    void 다른_회원의_예약_상세는_조회할_수_없다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+        Long reservationId = 30L;
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.getMyReservation(
+                memberId,
+                reservationId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/reservations/{reservationId}",
+                    reservationId
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.RESERVATION_ACCESS_DENIED
+                            .getCode()
+                    )
+            );
+
+        verify(reservationFacade)
+            .getMyReservation(
+                memberId,
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 예약 상세 정보는 조회할 수 없다")
+    void 존재하지_않는_예약_상세는_조회할_수_없다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+        Long reservationId = 999L;
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.getMyReservation(
+                memberId,
+                reservationId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_NOT_FOUND
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/reservations/{reservationId}",
+                    reservationId
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.RESERVATION_NOT_FOUND
+                            .getCode()
+                    )
             );
 
         verify(reservationFacade)

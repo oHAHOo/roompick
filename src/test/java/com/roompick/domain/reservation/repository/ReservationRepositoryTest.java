@@ -5,13 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -128,7 +131,7 @@ class ReservationRepositoryTest {
     }
 
     @Test
-    @DisplayName("회원의 예약 목록을 객실과 숙소 정보까지 함께 조회한다")
+    @DisplayName("회원의 예약 목록을 페이지 단위로 객실과 숙소 정보까지 함께 조회한다")
     void findMemberReservationsWithRoomAndAccommodation() {
         // given
         LocalDateTime expiresAt =
@@ -149,21 +152,56 @@ class ReservationRepositoryTest {
         Long roomId =
             savedReservation.getRoom().getId();
 
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            0,
+            10,
+            sort
+        );
+
         flushAndClear();
 
         // when
-        List<Reservation> reservations =
+        Page<Reservation> reservationPage =
             reservationRepository
                 .findAllByMemberIdWithRoomAndAccommodation(
-                    memberId
+                    memberId,
+                    pageable
                 );
 
         // then
-        assertThat(reservations)
+        assertThat(reservationPage.getContent())
             .hasSize(1);
 
+        assertThat(reservationPage.getNumber())
+            .isZero();
+
+        assertThat(reservationPage.getSize())
+            .isEqualTo(10);
+
+        assertThat(reservationPage.getTotalElements())
+            .isEqualTo(1);
+
+        assertThat(reservationPage.getTotalPages())
+            .isEqualTo(1);
+
+        assertThat(reservationPage.isLast())
+            .isTrue();
+
         Reservation foundReservation =
-            reservations.get(0);
+            reservationPage.getContent()
+                .get(0);
 
         assertThat(foundReservation.getId())
             .isEqualTo(reservationId);
