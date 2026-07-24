@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.then;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,8 @@ import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
+import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
+import com.roompick.domain.reservation.dto.ReservationListResponseDto;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.domain.reservation.service.ReservationService;
@@ -174,6 +177,259 @@ class ReservationFacadeTest {
                 checkInDate,
                 checkOutDate,
                 2
+            );
+    }
+
+    @Test
+    @DisplayName("인증된 회원의 예약 목록을 응답 DTO로 변환한다")
+    void 인증된_회원의_예약_목록을_조회한다() {
+        // given
+        Long memberId = 1L;
+        Long accommodationId = 10L;
+        Long roomId = 20L;
+        Long reservationId = 30L;
+
+        LocalDate checkInDate =
+            LocalDate.of(2026, 8, 10);
+
+        LocalDate checkOutDate =
+            LocalDate.of(2026, 8, 12);
+
+        LocalDateTime expiresAt =
+            LocalDateTime.of(2026, 8, 1, 12, 10);
+
+        Accommodation accommodation =
+            createAccommodation(accommodationId);
+
+        Room room =
+            createRoom(
+                roomId,
+                accommodation
+            );
+
+        Member member =
+            createMember(memberId);
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                room,
+                checkInDate,
+                checkOutDate,
+                2,
+                expiresAt
+            );
+
+        ReflectionTestUtils.setField(
+            reservation,
+            "id",
+            reservationId
+        );
+
+        given(
+            reservationService.findMyReservations(
+                memberId
+            )
+        ).willReturn(
+            List.of(reservation)
+        );
+
+        // when
+        List<ReservationListResponseDto> response =
+            reservationFacade.getMyReservations(
+                memberId
+            );
+
+        // then
+        assertThat(response)
+            .hasSize(1);
+
+        ReservationListResponseDto reservationResponse =
+            response.get(0);
+
+        assertThat(reservationResponse.reservationId())
+            .isEqualTo(reservationId);
+
+        assertThat(
+            reservationResponse
+                .accommodation()
+                .accommodationId()
+        ).isEqualTo(accommodationId);
+
+        assertThat(
+            reservationResponse
+                .accommodation()
+                .name()
+        ).isEqualTo("룸픽 호텔");
+
+        assertThat(
+            reservationResponse
+                .room()
+                .roomId()
+        ).isEqualTo(roomId);
+
+        assertThat(
+            reservationResponse
+                .room()
+                .name()
+        ).isEqualTo("디럭스 더블룸");
+
+        assertThat(reservationResponse.checkInDate())
+            .isEqualTo(checkInDate);
+
+        assertThat(reservationResponse.checkOutDate())
+            .isEqualTo(checkOutDate);
+
+        assertThat(reservationResponse.totalAmount())
+            .isEqualTo(200_000L);
+
+        assertThat(reservationResponse.status())
+            .isEqualTo(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        then(reservationService)
+            .should()
+            .findMyReservations(memberId);
+    }
+
+    @Test
+    @DisplayName("본인의 예약 상세 정보를 응답 DTO로 변환한다")
+    void 본인의_예약_상세_정보를_조회한다() {
+        // given
+        Long memberId = 1L;
+        Long accommodationId = 10L;
+        Long roomId = 20L;
+        Long reservationId = 30L;
+
+        LocalDate checkInDate =
+            LocalDate.of(2026, 8, 10);
+
+        LocalDate checkOutDate =
+            LocalDate.of(2026, 8, 12);
+
+        LocalDateTime expiresAt =
+            LocalDateTime.of(2026, 8, 1, 12, 10);
+
+        LocalDateTime createdAt =
+            LocalDateTime.of(2026, 8, 1, 12, 0);
+
+        Accommodation accommodation =
+            createAccommodation(accommodationId);
+
+        Room room =
+            createRoom(
+                roomId,
+                accommodation
+            );
+
+        Member member =
+            createMember(memberId);
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                room,
+                checkInDate,
+                checkOutDate,
+                2,
+                expiresAt
+            );
+
+        ReflectionTestUtils.setField(
+            reservation,
+            "id",
+            reservationId
+        );
+
+        ReflectionTestUtils.setField(
+            reservation,
+            "createdAt",
+            createdAt
+        );
+
+        given(
+            reservationService.findMyReservation(
+                memberId,
+                reservationId
+            )
+        ).willReturn(reservation);
+
+        // when
+        ReservationDetailResponseDto response =
+            reservationFacade.getMyReservation(
+                memberId,
+                reservationId
+            );
+
+        // then
+        assertThat(response.reservationId())
+            .isEqualTo(reservationId);
+
+        assertThat(
+            response
+                .accommodation()
+                .accommodationId()
+        ).isEqualTo(accommodationId);
+
+        assertThat(
+            response
+                .accommodation()
+                .name()
+        ).isEqualTo("룸픽 호텔");
+
+        assertThat(
+            response
+                .accommodation()
+                .address()
+        ).isEqualTo("서울특별시 강남구");
+
+        assertThat(response.room().roomId())
+            .isEqualTo(roomId);
+
+        assertThat(response.room().name())
+            .isEqualTo("디럭스 더블룸");
+
+        assertThat(response.room().roomNumber())
+            .isEqualTo("101");
+
+        assertThat(response.checkInDate())
+            .isEqualTo(checkInDate);
+
+        assertThat(response.checkOutDate())
+            .isEqualTo(checkOutDate);
+
+        assertThat(response.guestCount())
+            .isEqualTo(2);
+
+        assertThat(response.nightCount())
+            .isEqualTo(2);
+
+        assertThat(response.pricePerNight())
+            .isEqualTo(100_000L);
+
+        assertThat(response.totalAmount())
+            .isEqualTo(200_000L);
+
+        assertThat(response.status())
+            .isEqualTo(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        assertThat(response.expiresAt())
+            .isEqualTo(expiresAt);
+
+        assertThat(response.canceledAt())
+            .isNull();
+
+        assertThat(response.createdAt())
+            .isEqualTo(createdAt);
+
+        then(reservationService)
+            .should()
+            .findMyReservation(
+                memberId,
+                reservationId
             );
     }
 

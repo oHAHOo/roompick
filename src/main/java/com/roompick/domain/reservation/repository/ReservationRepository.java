@@ -2,6 +2,8 @@ package com.roompick.domain.reservation.repository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -45,5 +47,41 @@ public interface ReservationRepository
         @Param("checkInDate") LocalDate checkInDate,
         @Param("checkOutDate") LocalDate checkOutDate,
         @Param("now") LocalDateTime now
+    );
+
+    /**
+     * 회원의 예약 목록을 최신 생성순으로 조회합니다.
+     *
+     * 응답 변환에 필요한 객실과 숙소를 fetch join하여
+     * 예약 건수만큼 추가 조회가 발생하는 N+1 문제를 방지합니다.
+     */
+    @Query("""
+        SELECT reservation
+        FROM Reservation reservation
+        JOIN FETCH reservation.room room
+        JOIN FETCH room.accommodation accommodation
+        WHERE reservation.member.id = :memberId
+        ORDER BY reservation.createdAt DESC,
+                 reservation.id DESC
+        """)
+    List<Reservation> findAllByMemberIdWithRoomAndAccommodation(
+        @Param("memberId") Long memberId
+    );
+
+    /**
+     * 예약 ID로 예약과 객실·숙소 정보를 함께 조회합니다.
+     *
+     * 회원 ID 조건은 조회 쿼리에 넣지 않고 Service에서 소유자를 검증하여
+     * 예약 없음과 다른 회원의 예약 접근을 구분합니다.
+     */
+    @Query("""
+        SELECT reservation
+        FROM Reservation reservation
+        JOIN FETCH reservation.room room
+        JOIN FETCH room.accommodation accommodation
+        WHERE reservation.id = :reservationId
+        """)
+    Optional<Reservation> findByIdWithRoomAndAccommodation(
+        @Param("reservationId") Long reservationId
     );
 }

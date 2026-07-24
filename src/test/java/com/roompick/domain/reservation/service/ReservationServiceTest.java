@@ -13,6 +13,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,9 @@ class ReservationServiceTest {
 
     @Mock
     private Member member;
+
+    @Mock
+    private Reservation existingReservation;
 
     @InjectMocks
     private ReservationService reservationService;
@@ -314,5 +319,144 @@ class ReservationServiceTest {
 
         verify(reservationRepository, never())
             .save(any(Reservation.class));
+    }
+
+    @Test
+    @DisplayName("인증된 회원의 예약 목록을 조회한다")
+    void findMyReservations() {
+        // given
+        Long memberId = 1L;
+
+        given(
+            reservationRepository
+                .findAllByMemberIdWithRoomAndAccommodation(
+                    memberId
+                )
+        ).willReturn(
+            List.of(existingReservation)
+        );
+
+        // when
+        List<Reservation> reservations =
+            reservationService.findMyReservations(
+                memberId
+            );
+
+        // then
+        assertThat(reservations)
+            .containsExactly(existingReservation);
+
+        verify(reservationRepository)
+            .findAllByMemberIdWithRoomAndAccommodation(
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("본인의 예약 상세 정보를 조회한다")
+    void findMyReservation() {
+        // given
+        Long memberId = 1L;
+        Long reservationId = 10L;
+
+        given(
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+        ).willReturn(
+            Optional.of(existingReservation)
+        );
+
+        given(existingReservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(memberId);
+
+        // when
+        Reservation reservation =
+            reservationService.findMyReservation(
+                memberId,
+                reservationId
+            );
+
+        // then
+        assertThat(reservation)
+            .isSameAs(existingReservation);
+
+        verify(reservationRepository)
+            .findByIdWithRoomAndAccommodation(
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 예약은 상세 조회할 수 없다")
+    void rejectMissingReservationDetail() {
+        // given
+        Long memberId = 1L;
+        Long reservationId = 999L;
+
+        given(
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+        ).willReturn(Optional.empty());
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.findMyReservation(
+                    memberId,
+                    reservationId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("다른 회원의 예약은 상세 조회할 수 없다")
+    void rejectOtherMemberReservationDetail() {
+        // given
+        Long loginMemberId = 1L;
+        Long reservationOwnerId = 2L;
+        Long reservationId = 10L;
+
+        given(
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+        ).willReturn(
+            Optional.of(existingReservation)
+        );
+
+        given(existingReservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(reservationOwnerId);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.findMyReservation(
+                    loginMemberId,
+                    reservationId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
     }
 }
