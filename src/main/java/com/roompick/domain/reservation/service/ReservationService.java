@@ -6,6 +6,10 @@ import java.time.ZoneId;
 import java.util.Objects;
 
 import com.roompick.domain.reservation.entity.Reservation;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -286,6 +290,58 @@ public class ReservationService {
         );
 
         return reservation;
+    }
+
+
+    /**
+     * 예약 목록의 페이지 번호와 크기가 허용 범위인지 확인합니다.
+     */
+    private void validatePageRequest(
+        int page,
+        int size
+    ) {
+        if (
+            page < 0
+                || size < 1
+                || size > 100
+        ) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
+    /**
+     * 예약 ID가 정상적으로 전달되었는지 확인합니다.
+     */
+    private void validateReservationId(
+        Long reservationId
+    ) {
+        if (reservationId == null) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
+    /**
+     * 조회한 예약이 인증된 회원의 예약인지 확인합니다.
+     */
+    private void validateReservationOwner(
+        Reservation reservation,
+        Long memberId
+    ) {
+        Long reservationMemberId =
+            reservation.getMember().getId();
+
+        if (!Objects.equals(
+            reservationMemberId,
+            memberId
+        )) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+        }
     }
 
     /**
