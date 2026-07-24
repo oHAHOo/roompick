@@ -5,10 +5,11 @@
 ## 작업 전 필수 확인
 
 1. `docs/MVP_CONTEXT.md`
-2. `docs/CODE_CONVENTION.md`
-3. `docs/ERD.md`
-4. 임선구 담당 API는 `docs/API_SPEC_OWNER.md`
-5. 관리자 담당 API는 `docs/API_SPEC_ADMIN.md`
+2. 기능별 비즈니스 규칙과 역할 기반 접근 권한은 `docs/policy/`
+3. `docs/CODE_CONVENTION.md`
+4. `docs/ERD.md`
+5. 임선구 담당 API는 `docs/API_SPEC_OWNER.md`
+6. 관리자 담당 API는 `docs/API_SPEC_ADMIN.md`
 
 ## 고정된 MVP 범위
 
