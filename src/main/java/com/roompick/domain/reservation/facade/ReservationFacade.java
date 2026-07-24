@@ -1,9 +1,12 @@
 package com.roompick.domain.reservation.facade;
 
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
+import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
+import com.roompick.domain.reservation.dto.ReservationPageResponseDto;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
@@ -48,5 +51,45 @@ public class ReservationFacade {
             );
 
         return ReservationCreateResponseDto.from(reservation);
+    }
+
+    /**
+     * 인증된 회원의 예약 목록을 페이지 단위로 조회합니다.
+     */
+    public ReservationPageResponseDto getMyReservations(
+        Long memberId,
+        int page,
+        int size
+    ) {
+        Page<Reservation> reservationPage =
+            reservationService.findMyReservations(
+                memberId,
+                page,
+                size
+            );
+
+        return ReservationPageResponseDto.from(
+            reservationPage
+        );
+    }
+
+    /**
+     * 인증된 회원의 예약 상세 정보를 조회합니다.
+     *
+     * 예약 존재 여부와 소유권 검증은 ReservationService에서 처리합니다.
+     */
+    public ReservationDetailResponseDto getMyReservation(
+        Long memberId,
+        Long reservationId
+    ) {
+        Reservation reservation =
+            reservationService.findMyReservation(
+                memberId,
+                reservationId
+            );
+
+        return ReservationDetailResponseDto.from(
+            reservation
+        );
     }
 }

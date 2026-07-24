@@ -11,6 +11,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -23,6 +27,7 @@ import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.config.JpaConfig;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceUnitUtil;
 
 /**
  * ReservationRepository의 활성 예약 날짜 겹침 쿼리를 검증합니다.
@@ -123,6 +128,192 @@ class ReservationRepositoryTest {
 
         // then
         assertThat(exists).isFalse();
+    }
+
+    @Test
+    @DisplayName("회원의 예약 목록을 페이지 단위로 객실과 숙소 정보까지 함께 조회한다")
+    void findMemberReservationsWithRoomAndAccommodation() {
+        // given
+        LocalDateTime expiresAt =
+            LocalDateTime.of(2026, 8, 1, 14, 10);
+
+        savePendingReservation(expiresAt);
+
+        Reservation savedReservation =
+            reservationRepository.findAll()
+                .get(0);
+
+        Long memberId =
+            savedReservation.getMember().getId();
+
+        Long reservationId =
+            savedReservation.getId();
+
+        Long roomId =
+            savedReservation.getRoom().getId();
+
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            0,
+            10,
+            sort
+        );
+
+        flushAndClear();
+
+        // when
+        Page<Reservation> reservationPage =
+            reservationRepository
+                .findAllByMemberIdWithRoomAndAccommodation(
+                    memberId,
+                    pageable
+                );
+
+        // then
+        assertThat(reservationPage.getContent())
+            .hasSize(1);
+
+        assertThat(reservationPage.getNumber())
+            .isZero();
+
+        assertThat(reservationPage.getSize())
+            .isEqualTo(10);
+
+        assertThat(reservationPage.getTotalElements())
+            .isEqualTo(1);
+
+        assertThat(reservationPage.getTotalPages())
+            .isEqualTo(1);
+
+        assertThat(reservationPage.isLast())
+            .isTrue();
+
+        Reservation foundReservation =
+            reservationPage.getContent()
+                .get(0);
+
+        assertThat(foundReservation.getId())
+            .isEqualTo(reservationId);
+
+        assertThat(foundReservation.getMember().getId())
+            .isEqualTo(memberId);
+
+        assertThat(foundReservation.getRoom().getId())
+            .isEqualTo(roomId);
+
+        assertThat(
+            foundReservation
+                .getRoom()
+                .getAccommodation()
+                .getName()
+        ).isEqualTo("룸픽 호텔");
+
+        /*
+         * fetch join 쿼리이므로 영속성 컨텍스트를 비운 뒤 조회해도
+         * 객실과 숙소가 이미 초기화된 상태여야 합니다.
+         */
+        PersistenceUnitUtil persistenceUnitUtil =
+            entityManager
+                .getEntityManagerFactory()
+                .getPersistenceUnitUtil();
+
+        assertThat(
+            persistenceUnitUtil.isLoaded(
+                foundReservation,
+                "room"
+            )
+        ).isTrue();
+
+        assertThat(
+            persistenceUnitUtil.isLoaded(
+                foundReservation.getRoom(),
+                "accommodation"
+            )
+        ).isTrue();
+    }
+
+    @Test
+    @DisplayName("예약 상세를 객실과 숙소 정보까지 함께 조회한다")
+    void findReservationDetailWithRoomAndAccommodation() {
+        // given
+        LocalDateTime expiresAt =
+            LocalDateTime.of(2026, 8, 1, 14, 10);
+
+        savePendingReservation(expiresAt);
+
+        Reservation savedReservation =
+            reservationRepository.findAll()
+                .get(0);
+
+        Long reservationId =
+            savedReservation.getId();
+
+        Long memberId =
+            savedReservation.getMember().getId();
+
+        Long roomId =
+            savedReservation.getRoom().getId();
+
+        flushAndClear();
+
+        // when
+        Reservation foundReservation =
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+                .orElseThrow();
+
+        // then
+        assertThat(foundReservation.getId())
+            .isEqualTo(reservationId);
+
+        assertThat(foundReservation.getMember().getId())
+            .isEqualTo(memberId);
+
+        assertThat(foundReservation.getRoom().getId())
+            .isEqualTo(roomId);
+
+        assertThat(
+            foundReservation
+                .getRoom()
+                .getAccommodation()
+                .getName()
+        ).isEqualTo("룸픽 호텔");
+
+        /*
+         * 상세 조회 쿼리에서 객실과 숙소를 fetch join하므로
+         * 영속성 컨텍스트를 비운 뒤에도 두 연관관계가 초기화되어 있어야 합니다.
+         */
+        PersistenceUnitUtil persistenceUnitUtil =
+            entityManager
+                .getEntityManagerFactory()
+                .getPersistenceUnitUtil();
+
+        assertThat(
+            persistenceUnitUtil.isLoaded(
+                foundReservation,
+                "room"
+            )
+        ).isTrue();
+
+        assertThat(
+            persistenceUnitUtil.isLoaded(
+                foundReservation.getRoom(),
+                "accommodation"
+            )
+        ).isTrue();
     }
 
     /**

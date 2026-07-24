@@ -13,6 +13,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.reservation.entity.Reservation;
@@ -51,6 +58,9 @@ class ReservationServiceTest {
 
     @Mock
     private Member member;
+
+    @Mock
+    private Reservation existingReservation;
 
     @InjectMocks
     private ReservationService reservationService;
@@ -314,5 +324,186 @@ class ReservationServiceTest {
 
         verify(reservationRepository, never())
             .save(any(Reservation.class));
+    }
+
+    @Test
+    @DisplayName("인증된 회원의 예약 목록을 페이지 단위로 조회한다")
+    void findMyReservations() {
+        // given
+        Long memberId = 1L;
+
+        int page = 0;
+        int size = 10;
+
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            page,
+            size,
+            sort
+        );
+
+        Page<Reservation> reservationPage =
+            new PageImpl<>(
+                List.of(existingReservation),
+                pageable,
+                1
+            );
+
+        given(
+            reservationRepository
+                .findAllByMemberIdWithRoomAndAccommodation(
+                    memberId,
+                    pageable
+                )
+        ).willReturn(reservationPage);
+
+        // when
+        Page<Reservation> result =
+            reservationService.findMyReservations(
+                memberId,
+                page,
+                size
+            );
+
+        // then
+        assertThat(result.getContent())
+            .containsExactly(existingReservation);
+
+        assertThat(result.getNumber())
+            .isZero();
+
+        assertThat(result.getSize())
+            .isEqualTo(10);
+
+        assertThat(result.getTotalElements())
+            .isEqualTo(1);
+
+        assertThat(result.getSort())
+            .isEqualTo(sort);
+
+        verify(reservationRepository)
+            .findAllByMemberIdWithRoomAndAccommodation(
+                memberId,
+                pageable
+            );
+    }
+
+    @Test
+    @DisplayName("본인의 예약 상세 정보를 조회한다")
+    void findMyReservation() {
+        // given
+        Long memberId = 1L;
+        Long reservationId = 10L;
+
+        given(
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+        ).willReturn(
+            Optional.of(existingReservation)
+        );
+
+        given(existingReservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(memberId);
+
+        // when
+        Reservation reservation =
+            reservationService.findMyReservation(
+                memberId,
+                reservationId
+            );
+
+        // then
+        assertThat(reservation)
+            .isSameAs(existingReservation);
+
+        verify(reservationRepository)
+            .findByIdWithRoomAndAccommodation(
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 예약은 상세 조회할 수 없다")
+    void rejectMissingReservationDetail() {
+        // given
+        Long memberId = 1L;
+        Long reservationId = 999L;
+
+        given(
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+        ).willReturn(Optional.empty());
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.findMyReservation(
+                    memberId,
+                    reservationId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("다른 회원의 예약은 상세 조회할 수 없다")
+    void rejectOtherMemberReservationDetail() {
+        // given
+        Long loginMemberId = 1L;
+        Long reservationOwnerId = 2L;
+        Long reservationId = 10L;
+
+        given(
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+        ).willReturn(
+            Optional.of(existingReservation)
+        );
+
+        given(existingReservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(reservationOwnerId);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.findMyReservation(
+                    loginMemberId,
+                    reservationId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
     }
 }

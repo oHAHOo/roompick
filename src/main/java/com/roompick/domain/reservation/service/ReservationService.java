@@ -3,7 +3,12 @@ package com.roompick.domain.reservation.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Objects;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -117,6 +122,79 @@ public class ReservationService {
     }
 
     /**
+     * 인증된 회원이 생성한 예약 목록을 페이지 단위로 조회합니다.
+     *
+     * 예약 생성일이 최신인 순서로 조회하고,
+     * 생성 시각이 같으면 예약 ID가 큰 순서로 정렬합니다.
+     */
+    @Transactional(readOnly = true)
+    public Page<Reservation> findMyReservations(
+        Long memberId,
+        int page,
+        int size
+    ) {
+        validateMemberId(memberId);
+        validatePageRequest(page, size);
+
+        Sort sort = Sort
+            .by(
+                Sort.Direction.DESC,
+                "createdAt"
+            )
+            .and(
+                Sort.by(
+                    Sort.Direction.DESC,
+                    "id"
+                )
+            );
+
+        Pageable pageable = PageRequest.of(
+            page,
+            size,
+            sort
+        );
+
+        return reservationRepository
+            .findAllByMemberIdWithRoomAndAccommodation(
+                memberId,
+                pageable
+            );
+    }
+
+    /**
+     * 인증된 회원의 예약 상세 정보를 조회합니다.
+     *
+     * 예약이 존재하지 않으면 404를 반환하고,
+     * 다른 회원의 예약이면 403을 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public Reservation findMyReservation(
+        Long memberId,
+        Long reservationId
+    ) {
+        validateMemberId(memberId);
+        validateReservationId(reservationId);
+
+        Reservation reservation =
+            reservationRepository
+                .findByIdWithRoomAndAccommodation(
+                    reservationId
+                )
+                .orElseThrow(() ->
+                    new BusinessException(
+                        ErrorCode.RESERVATION_NOT_FOUND
+                    )
+                );
+
+        validateReservationOwner(
+            reservation,
+            memberId
+        );
+
+        return reservation;
+    }
+
+    /**
      * 같은 객실에 활성 상태로 겹치는 예약이 있는지 확인합니다.
      */
     private boolean existsActiveOverlappingReservation(
@@ -165,6 +243,57 @@ public class ReservationService {
         if (memberId == null) {
             throw new BusinessException(
                 ErrorCode.UNAUTHORIZED
+            );
+        }
+    }
+
+    /**
+     * 예약 목록의 페이지 번호와 크기가 허용 범위인지 확인합니다.
+     */
+    private void validatePageRequest(
+        int page,
+        int size
+    ) {
+        if (
+            page < 0
+                || size < 1
+                || size > 100
+        ) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
+    /**
+     * 예약 ID가 정상적으로 전달되었는지 확인합니다.
+     */
+    private void validateReservationId(
+        Long reservationId
+    ) {
+        if (reservationId == null) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
+    /**
+     * 조회한 예약이 인증된 회원의 예약인지 확인합니다.
+     */
+    private void validateReservationOwner(
+        Reservation reservation,
+        Long memberId
+    ) {
+        Long reservationMemberId =
+            reservation.getMember().getId();
+
+        if (!Objects.equals(
+            reservationMemberId,
+            memberId
+        )) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
             );
         }
     }
