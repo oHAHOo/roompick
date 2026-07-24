@@ -355,5 +355,5 @@ Access Token 인증 확인 (JwtAuthenticationFilter)
 - [x] 회원 인증 방식을 JWT로 확정할지 → JWT로 확정
 - [x] Refresh Token으로 Access Token을 재발급하는 API를 MVP에 포함할지 → 포함, 1회용 회전 방식
 - [x] 로그아웃(JWT + Redis 블랙리스트)을 어느 시점에 구현할지 → 이번 버전(`v0.2`)에서 구현
-- [ ] 최초 관리자 계정을 준비하는 방식을 무엇으로 할지
+- [x] 최초 관리자 계정을 준비하는 방식을 무엇으로 할지 → 별도 관리자 가입 API 없이 더미데이터로 준비하고, 필요 시 DB에서 직접 `role`을 수정한다
 - [ ] 블랙리스트 Redis 인스턴스의 로컬·운영 배포 방식 (docker compose 서비스 추가 등)
