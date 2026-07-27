@@ -25,6 +25,7 @@ services:
     image: redis:7
     container_name: roompick-redis
     restart: unless-stopped
+    command: redis-server --appendonly yes
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -32,6 +33,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    volumes:
+      - roompick-redis-data:/data
 
 volumes:
   roompick-mysql-data:

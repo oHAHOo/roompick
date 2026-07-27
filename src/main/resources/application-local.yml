@@ -11,7 +11,9 @@ spring:
       hibernate:
         format_sql: true
     show-sql: false
-  date:
+  data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev-migration
