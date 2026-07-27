@@ -1,8 +1,8 @@
 # RoomPick API 명세서 — 임선구 담당
 
-- 문서 버전: `v0.2`
+- 문서 버전: `v0.3`
 - 작성일: 2026-07-21
-- 최종 수정일: 2026-07-22
+- 최종 수정일: 2026-07-27
 - 담당자: 임선구
 - 담당 도메인: 숙소, 객실, 예약
 - MVP 기준: 관리자가 등록한 숙소·객실 사용, 검색 기능 없음
@@ -16,7 +16,7 @@
 1. API 기본 경로는 코드 컨벤션 초안에 따라 `/api/v1`을 사용한다.
 2. 관리자 숙소·객실 등록 API는 minjae123123 담당의 `docs/API_SPEC_ADMIN.md`에서 정의한다.
 3. 이 문서는 관리자가 등록한 숙소와 실제 객실을 조회·예약하는 API를 정의한다.
-4. 숙소 목록, 객실 목록 검색, 필터, 정렬 API는 MVP에서 제외한다.
+4. 기본 숙소 목록과 숙소별 객실 목록 조회는 MVP에 포함하며, 검색·필터·사용자 지정 정렬 기능은 W3 확장 범위로 제외한다.
 5. `ROOM` 한 행은 실제로 예약되는 물리적 객실 한 개를 의미한다.
 6. 예약 생성 시 상태는 `PENDING_PAYMENT`가 된다.
 7. 결제 성공·실패 API는 minjae123123 담당의 결제 API 명세에서 정의한다.
@@ -113,13 +113,15 @@ HH:mm:ss
 
 | 번호 | Method | URL | 기능 | 인증 |
 | --- | --- | --- | --- | --- |
-| 1 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
-| 2 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
-| 3 | `GET` | `/api/v1/rooms/{roomId}/availability` | 객실 예약 가능 여부 확인 | 불필요 |
-| 4 | `POST` | `/api/v1/reservations` | 예약 생성 | 필요 |
-| 5 | `GET` | `/api/v1/reservations` | 내 예약 목록 조회 | 필요 |
-| 6 | `GET` | `/api/v1/reservations/{reservationId}` | 내 예약 상세 조회 | 필요 |
-| 7 | `PATCH` | `/api/v1/reservations/{reservationId}/cancel` | 예약 취소 | 필요 |
+| 1 | `GET` | `/api/v1/accommodations` | 전체 숙소 목록 조회 | 불필요 |
+| 2 | `GET` | `/api/v1/accommodations/{accommodationId}/rooms` | 숙소별 객실 목록 조회 | 불필요 |
+| 3 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
+| 4 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
+| 5 | `GET` | `/api/v1/rooms/{roomId}/availability` | 객실 예약 가능 여부 확인 | 불필요 |
+| 6 | `POST` | `/api/v1/reservations` | 예약 생성 | 필요 |
+| 7 | `GET` | `/api/v1/reservations` | 내 예약 목록 조회 | 필요 |
+| 8 | `GET` | `/api/v1/reservations/{reservationId}` | 내 예약 상세 조회 | 필요 |
+| 9 | `PATCH` | `/api/v1/reservations/{reservationId}/cancel` | 예약 취소 | 필요 |
 
 관리자 등록 API는 `docs/API_SPEC_ADMIN.md`에서 관리한다. 검색과 관리자용 숙소·객실 수정·삭제·관리 목록 API는 MVP에 포함하지 않는다.
 
@@ -127,7 +129,116 @@ HH:mm:ss
 
 # 숙소 API
 
-## 5. 숙소 상세 조회
+## 5. 전체 숙소 목록 조회
+
+운영 중인 숙소 목록을 페이지 단위로 조회한다.
+
+검색·필터·사용자 지정 정렬은 적용하지 않으며, 숙소 ID 오름차순으로 반환한다.
+
+### Request
+
+```http
+GET /api/v1/accommodations?page=0&size=20
+```
+
+### Query Parameter
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+| --- | --- | --- | --- | --- |
+| `page` | `int` | X | `0` | 조회할 페이지 번호, 0부터 시작 |
+| `size` | `int` | X | `20` | 페이지당 숙소 수, 1 이상 100 이하 |
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "숙소 목록 조회에 성공했습니다.",
+  "data": {
+    "content": [
+      {
+        "accommodationId": 1,
+        "name": "룸픽 호텔",
+        "address": "서울특별시 강남구 테헤란로 123"
+      }
+    ],
+    "pageNumber": 0,
+    "pageSize": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "last": true
+  }
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT_VALUE` | `page`가 음수이거나 `size`가 1 미만 또는 100 초과인 경우 |
+
+### 구현 메모
+
+- `ACTIVE` 상태의 숙소만 공개 목록에 포함한다.
+- 숙소가 없으면 오류가 아닌 빈 `content`를 반환한다.
+- 숙소 ID 오름차순으로 고정 정렬한다.
+- 목록 화면에 필요한 `accommodationId`, `name`, `address`만 DTO로 직접 조회한다.
+- 검색·필터·사용자 지정 정렬은 W3 확장 범위에서 구현한다.
+
+---
+
+## 6. 숙소별 객실 목록 조회
+
+특정 숙소에 소속된 운영 중인 객실 목록을 조회한다.
+
+### Request
+
+```http
+GET /api/v1/accommodations/1/rooms
+```
+
+### Path Variable
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `accommodationId` | `Long` | O | 객실 목록을 조회할 숙소 ID |
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "객실 목록 조회에 성공했습니다.",
+  "data": [
+    {
+      "roomId": 1,
+      "name": "디럭스 더블룸",
+      "pricePerNight": 100000,
+      "standardCapacity": 2,
+      "maxCapacity": 2
+    }
+  ]
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `404` | `ACCOMMODATION_NOT_FOUND` | 존재하지 않는 숙소 ID |
+| `409` | `ACCOMMODATION_INACTIVE` | 운영이 중단된 숙소 |
+
+### 구현 메모
+
+- 숙소의 존재 여부와 운영 상태를 먼저 확인한다.
+- `ACTIVE` 상태의 객실만 공개 목록에 포함한다.
+- 객실이 없으면 오류가 아닌 빈 배열을 반환한다.
+- 객실 번호 오름차순, 동일한 객실 번호에서는 객실 ID 오름차순으로 정렬한다.
+- 목록 화면에 필요한 `roomId`, `name`, `pricePerNight`, `standardCapacity`, `maxCapacity`만 DTO로 직접 조회한다.
+
+---
+
+## 7. 숙소 상세 조회
 
 등록된 숙소의 기본 정보와 소속 객실 요약을 조회한다.
 
@@ -188,7 +299,7 @@ GET /api/v1/accommodations/1
 
 # 객실 API
 
-## 6. 객실 상세 조회
+## 8. 객실 상세 조회
 
 객실과 소속 숙소의 기본 정보를 조회한다.
 
@@ -242,7 +353,7 @@ GET /api/v1/rooms/1
 
 ---
 
-## 7. 객실 예약 가능 여부 확인
+## 9. 객실 예약 가능 여부 확인
 
 객실, 숙박 기간, 인원 조건을 기준으로 예약 가능 여부와 예상 금액을 확인한다.
 
@@ -341,7 +452,7 @@ CONFIRMED
 
 # 예약 API
 
-## 8. 예약 생성
+## 10. 예약 생성
 
 인증된 회원이 객실을 결제 대기 상태로 예약한다.
 
@@ -443,7 +554,7 @@ Content-Type: application/json
 
 ---
 
-## 9. 내 예약 목록 조회
+## 11. 내 예약 목록 조회
 
 인증된 회원이 자신이 생성한 예약 목록을 최신순으로 조회한다.
 
@@ -506,7 +617,7 @@ MVP에서는 상태 검색과 사용자 지정 정렬을 제공하지 않는다.
 
 ---
 
-## 10. 내 예약 상세 조회
+## 12. 내 예약 상세 조회
 
 인증된 회원이 자신의 예약 상세 정보를 조회한다.
 
@@ -570,7 +681,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-## 11. 예약 취소
+## 13. 예약 취소
 
 인증된 회원이 자신의 결제 대기 또는 확정 예약을 취소한다.
 
@@ -639,7 +750,7 @@ Request Body는 사용하지 않는다.
 
 ---
 
-## 12. 예약 상태 전이
+## 14. 예약 상태 전이
 
 ```text
 PENDING_PAYMENT
@@ -657,11 +768,13 @@ CONFIRMED
 
 ---
 
-## 13. 에러 코드 목록
+## 15. 에러 코드 목록
 
-| Error Code | HTTP | 메시지 초안 |
+| Error Code | HTTP | 메시지 |
 | --- | --- | --- |
+| `INVALID_INPUT_VALUE` | `400` | 요청 값이 올바르지 않습니다. |
 | `ACCOMMODATION_NOT_FOUND` | `404` | 숙소를 찾을 수 없습니다. |
+| `ACCOMMODATION_INACTIVE` | `409` | 운영 중지된 숙소에는 객실을 등록할 수 없습니다. |
 | `ROOM_NOT_FOUND` | `404` | 객실을 찾을 수 없습니다. |
 | `ROOM_INACTIVE` | `409` | 현재 이용할 수 없는 객실입니다. |
 | `INVALID_STAY_PERIOD` | `400` | 숙박 기간이 올바르지 않습니다. |
@@ -676,7 +789,7 @@ CONFIRMED
 
 ---
 
-## 14. 담당 도메인 연결 계약
+## 16. 담당 도메인 연결 계약
 
 ### 회원·인증 도메인에서 필요한 값
 
@@ -708,7 +821,7 @@ failureReason
 
 ---
 
-## 15. 팀 회의에서 최종 확정할 항목
+## 17. 팀 회의에서 최종 확정할 항목
 
 - [ ] API 기본 경로를 `/api/v1`로 사용할지
 - [ ] 결제 대기 시간을 10분으로 할지
@@ -719,4 +832,4 @@ failureReason
 - [x] 예약 목록에 페이지네이션을 MVP부터 적용할지
 - [ ] 실제 인증 객체 이름을 `AuthMember`로 사용할지
 
-팀 결정이 끝나면 이 문서를 `v0.2`로 갱신하고 ERD와 코드 컨벤션에도 동일하게 반영한다.
+팀 결정이 끝나면 이 문서를 다음 버전으로 갱신하고 ERD와 코드 컨벤션에도 동일하게 반영한다.
