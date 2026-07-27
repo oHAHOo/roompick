@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -39,7 +38,8 @@ import com.roompick.global.common.ErrorCode;
 import jakarta.persistence.EntityManager;
 
 /**
- * 예약 날짜 검증과 활성 예약 중복 확인 로직을 검증합니다.
+ * 예약 날짜 검증, 활성 예약 중복 확인,
+ * 예약 생성 및 결제 준비용 예약 조회 로직을 검증합니다.
  */
 @ExtendWith(MockitoExtension.class)
 class ReservationServiceTest {
@@ -60,7 +60,7 @@ class ReservationServiceTest {
     private Member member;
 
     @Mock
-    private Reservation existingReservation;
+    private Reservation reservation;
 
     @InjectMocks
     private ReservationService reservationService;
@@ -71,6 +71,7 @@ class ReservationServiceTest {
         // given
         LocalDate checkInDate =
             LocalDate.now(SERVICE_ZONE_ID).plusDays(1);
+
         LocalDate checkOutDate =
             checkInDate.plusDays(2);
 
@@ -84,11 +85,12 @@ class ReservationServiceTest {
         ).willReturn(false);
 
         // when
-        boolean available = reservationService.isRoomAvailable(
-            1L,
-            checkInDate,
-            checkOutDate
-        );
+        boolean available =
+            reservationService.isRoomAvailable(
+                1L,
+                checkInDate,
+                checkOutDate
+            );
 
         // then
         assertThat(available).isTrue();
@@ -100,6 +102,7 @@ class ReservationServiceTest {
         // given
         LocalDate checkInDate =
             LocalDate.now(SERVICE_ZONE_ID).plusDays(1);
+
         LocalDate checkOutDate =
             checkInDate.plusDays(2);
 
@@ -113,11 +116,12 @@ class ReservationServiceTest {
         ).willReturn(true);
 
         // when
-        boolean available = reservationService.isRoomAvailable(
-            1L,
-            checkInDate,
-            checkOutDate
-        );
+        boolean available =
+            reservationService.isRoomAvailable(
+                1L,
+                checkInDate,
+                checkOutDate
+            );
 
         // then
         assertThat(available).isFalse();
@@ -129,24 +133,26 @@ class ReservationServiceTest {
         // given
         LocalDate checkInDate =
             LocalDate.now(SERVICE_ZONE_ID).minusDays(1);
+
         LocalDate checkOutDate =
             checkInDate.plusDays(2);
 
         // when
-        BusinessException exception = catchThrowableOfType(
-            () -> reservationService.isRoomAvailable(
-                1L,
-                checkInDate,
-                checkOutDate
-            ),
-            BusinessException.class
-        );
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.isRoomAvailable(
+                    1L,
+                    checkInDate,
+                    checkOutDate
+                ),
+                BusinessException.class
+            );
 
         // then
         assertThat(exception.getErrorCode())
             .isEqualTo(ErrorCode.INVALID_STAY_PERIOD);
 
-        // 잘못된 날짜는 DB까지 조회하지 않습니다.
+        // 잘못된 날짜이면 Repository를 조회하지 않습니다.
         verifyNoInteractions(reservationRepository);
     }
 
@@ -158,14 +164,15 @@ class ReservationServiceTest {
             LocalDate.now(SERVICE_ZONE_ID).plusDays(1);
 
         // when
-        BusinessException exception = catchThrowableOfType(
-            () -> reservationService.isRoomAvailable(
-                1L,
-                sameDate,
-                sameDate
-            ),
-            BusinessException.class
-        );
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.isRoomAvailable(
+                    1L,
+                    sameDate,
+                    sameDate
+                ),
+                BusinessException.class
+            );
 
         // then
         assertThat(exception.getErrorCode())
@@ -207,8 +214,8 @@ class ReservationServiceTest {
         ).willReturn(false);
 
         /*
-         * 회원 담당 Repository를 직접 조회하지 않고,
-         * 인증된 회원 ID의 JPA 참조를 반환하도록 설정합니다.
+         * MemberRepository를 다시 조회하지 않고,
+         * 인증된 회원 ID로 JPA 참조 객체를 가져오도록 설정합니다.
          */
         given(
             entityManager.getReference(
@@ -218,8 +225,8 @@ class ReservationServiceTest {
         ).willReturn(member);
 
         /*
-         * 테스트에서는 DB 저장 대신 전달된 예약 객체를
-         * 그대로 반환하도록 설정합니다.
+         * 테스트에서는 실제 DB 저장이 없으므로
+         * save()로 전달된 Reservation 객체를 그대로 반환합니다.
          */
         willAnswer(invocation ->
             invocation.getArgument(0)
@@ -227,7 +234,7 @@ class ReservationServiceTest {
             .save(any(Reservation.class));
 
         // when
-        Reservation reservation =
+        Reservation result =
             reservationService.createReservation(
                 memberId,
                 room,
@@ -237,40 +244,40 @@ class ReservationServiceTest {
             );
 
         // then
-        assertThat(reservation.getMember())
+        assertThat(result.getMember())
             .isEqualTo(member);
 
-        assertThat(reservation.getRoom())
+        assertThat(result.getRoom())
             .isEqualTo(room);
 
-        assertThat(reservation.getCheckInDate())
+        assertThat(result.getCheckInDate())
             .isEqualTo(checkInDate);
 
-        assertThat(reservation.getCheckOutDate())
+        assertThat(result.getCheckOutDate())
             .isEqualTo(checkOutDate);
 
-        assertThat(reservation.getGuestCount())
+        assertThat(result.getGuestCount())
             .isEqualTo(2);
 
-        assertThat(reservation.getNightCount())
+        assertThat(result.getNightCount())
             .isEqualTo(2);
 
-        assertThat(reservation.getPricePerNight())
+        assertThat(result.getPricePerNight())
             .isEqualTo(100_000L);
 
-        assertThat(reservation.getTotalAmount())
+        assertThat(result.getTotalAmount())
             .isEqualTo(200_000L);
 
-        assertThat(reservation.getStatus())
+        assertThat(result.getStatus())
             .isEqualTo(
                 ReservationStatus.PENDING_PAYMENT
             );
 
-        assertThat(reservation.getExpiresAt())
+        assertThat(result.getExpiresAt())
             .isNotNull();
 
         verify(reservationRepository)
-            .save(reservation);
+            .save(result);
     }
 
     @Test
@@ -317,8 +324,8 @@ class ReservationServiceTest {
             .isEqualTo(ErrorCode.ROOM_NOT_AVAILABLE);
 
         /*
-         * 중복 예약이 확인되면 회원 참조 생성과
-         * 예약 저장까지 진행하지 않습니다.
+         * 중복 예약이 확인되면 회원 참조를 가져오거나
+         * 새로운 예약을 저장하지 않습니다.
          */
         verifyNoInteractions(entityManager);
 
@@ -327,138 +334,34 @@ class ReservationServiceTest {
     }
 
     @Test
-    @DisplayName("인증된 회원의 예약 목록을 페이지 단위로 조회한다")
-    void findMyReservations() {
+    @DisplayName("예약 ID로 예약을 조회한다")
+    void findReservationById() {
         // given
-        Long memberId = 1L;
-
-        int page = 0;
-        int size = 10;
-
-        Sort sort = Sort
-            .by(
-                Sort.Direction.DESC,
-                "createdAt"
-            )
-            .and(
-                Sort.by(
-                    Sort.Direction.DESC,
-                    "id"
-                )
-            );
-
-        Pageable pageable = PageRequest.of(
-            page,
-            size,
-            sort
-        );
-
-        Page<Reservation> reservationPage =
-            new PageImpl<>(
-                List.of(existingReservation),
-                pageable,
-                1
-            );
-
         given(
-            reservationRepository
-                .findAllByMemberIdWithRoomAndAccommodation(
-                    memberId,
-                    pageable
-                )
-        ).willReturn(reservationPage);
+            reservationRepository.findById(1L)
+        ).willReturn(Optional.of(reservation));
 
         // when
-        Page<Reservation> result =
-            reservationService.findMyReservations(
-                memberId,
-                page,
-                size
-            );
+        Reservation result =
+            reservationService.findById(1L);
 
         // then
-        assertThat(result.getContent())
-            .containsExactly(existingReservation);
-
-        assertThat(result.getNumber())
-            .isZero();
-
-        assertThat(result.getSize())
-            .isEqualTo(10);
-
-        assertThat(result.getTotalElements())
-            .isEqualTo(1);
-
-        assertThat(result.getSort())
-            .isEqualTo(sort);
-
-        verify(reservationRepository)
-            .findAllByMemberIdWithRoomAndAccommodation(
-                memberId,
-                pageable
-            );
+        assertThat(result)
+            .isSameAs(reservation);
     }
 
     @Test
-    @DisplayName("본인의 예약 상세 정보를 조회한다")
-    void findMyReservation() {
+    @DisplayName("예약 ID에 해당하는 예약이 없으면 조회에 실패한다")
+    void rejectMissingReservation() {
         // given
-        Long memberId = 1L;
-        Long reservationId = 10L;
-
         given(
-            reservationRepository
-                .findByIdWithRoomAndAccommodation(
-                    reservationId
-                )
-        ).willReturn(
-            Optional.of(existingReservation)
-        );
-
-        given(existingReservation.getMember())
-            .willReturn(member);
-
-        given(member.getId())
-            .willReturn(memberId);
-
-        // when
-        Reservation reservation =
-            reservationService.findMyReservation(
-                memberId,
-                reservationId
-            );
-
-        // then
-        assertThat(reservation)
-            .isSameAs(existingReservation);
-
-        verify(reservationRepository)
-            .findByIdWithRoomAndAccommodation(
-                reservationId
-            );
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 예약은 상세 조회할 수 없다")
-    void rejectMissingReservationDetail() {
-        // given
-        Long memberId = 1L;
-        Long reservationId = 999L;
-
-        given(
-            reservationRepository
-                .findByIdWithRoomAndAccommodation(
-                    reservationId
-                )
+            reservationRepository.findById(1L)
         ).willReturn(Optional.empty());
 
         // when
         BusinessException exception =
             catchThrowableOfType(
-                () -> reservationService.findMyReservation(
-                    memberId,
-                    reservationId
-                ),
+                () -> reservationService.findById(1L),
                 BusinessException.class
             );
 
@@ -468,42 +371,61 @@ class ReservationServiceTest {
     }
 
     @Test
-    @DisplayName("다른 회원의 예약은 상세 조회할 수 없다")
-    void rejectOtherMemberReservationDetail() {
+    @DisplayName("예약을 조회하고 결제 준비 가능 여부를 검증한다")
+    void findReservationForPaymentPreparation() {
         // given
-        Long loginMemberId = 1L;
-        Long reservationOwnerId = 2L;
-        Long reservationId = 10L;
+        Long reservationId = 1L;
+        Long memberId = 10L;
 
         given(
-            reservationRepository
-                .findByIdWithRoomAndAccommodation(
-                    reservationId
-                )
-        ).willReturn(
-            Optional.of(existingReservation)
-        );
+            reservationRepository.findById(reservationId)
+        ).willReturn(Optional.of(reservation));
 
-        given(existingReservation.getMember())
-            .willReturn(member);
+        // when
+        Reservation result =
+            reservationService.findForPaymentPreparation(
+                reservationId,
+                memberId
+            );
 
-        given(member.getId())
-            .willReturn(reservationOwnerId);
+        // then
+        assertThat(result)
+            .isSameAs(reservation);
+
+        verify(reservation)
+            .validatePaymentPreparation(
+                eq(memberId),
+                any(LocalDateTime.class)
+            );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 예약은 결제 준비용으로 조회할 수 없다")
+    void rejectMissingReservationForPaymentPreparation() {
+        // given
+        Long reservationId = 1L;
+        Long memberId = 10L;
+
+        given(
+            reservationRepository.findById(reservationId)
+        ).willReturn(Optional.empty());
 
         // when
         BusinessException exception =
             catchThrowableOfType(
-                () -> reservationService.findMyReservation(
-                    loginMemberId,
-                    reservationId
-                ),
+                () ->
+                    reservationService
+                        .findForPaymentPreparation(
+                            reservationId,
+                            memberId
+                        ),
                 BusinessException.class
             );
 
         // then
         assertThat(exception.getErrorCode())
-            .isEqualTo(
-                ErrorCode.RESERVATION_ACCESS_DENIED
-            );
+            .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+
+        verifyNoInteractions(reservation);
     }
 }
