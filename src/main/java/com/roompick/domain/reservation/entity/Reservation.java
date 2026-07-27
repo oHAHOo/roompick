@@ -167,6 +167,20 @@ public class Reservation extends BaseTimeEntity {
         validatePaymentNotExpired(now);
     }
 
+    /**
+     * 결제 성공 후 예약을 확정 상태로 변경합니다.
+     */
+    public void confirmPayment(
+        Long memberId,
+        LocalDateTime now
+    ) {
+        validateOwner(memberId);
+        validatePendingPaymentStatus();
+        validatePaymentNotExpired(now);
+
+        this.status = ReservationStatus.CONFIRMED;
+    }
+
     private void validateOwner(Long memberId) {
         if (
             memberId == null

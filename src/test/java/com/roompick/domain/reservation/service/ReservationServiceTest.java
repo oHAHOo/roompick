@@ -428,4 +428,57 @@ class ReservationServiceTest {
 
         verifyNoInteractions(reservation);
     }
+
+    @Test
+    @DisplayName("결제 성공 후 예약 확정 처리를 Entity에 위임한다")
+    void confirmReservationAfterPaymentSuccess() {
+        // given
+        Long memberId = 10L;
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                24,
+                20,
+                0
+            );
+
+        // when
+        Reservation result =
+            reservationService.confirmPayment(
+                reservation,
+                memberId,
+                approvedAt
+            );
+
+        // then
+        assertThat(result)
+            .isSameAs(reservation);
+
+        verify(reservation)
+            .confirmPayment(
+                memberId,
+                approvedAt
+            );
+    }
+
+    @Test
+    @DisplayName("예약 정보가 없으면 결제 성공 처리를 할 수 없다")
+    void rejectConfirmationWithoutReservation() {
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.confirmPayment(
+                    null,
+                    10L,
+                    LocalDateTime.now()
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+    }
 }
