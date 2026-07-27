@@ -294,12 +294,12 @@ Reservation: PENDING_PAYMENT → CONFIRMED
 ```text
 인증 회원 확인
 → 결제 조회
-→ 결제와 연결된 예약 조회
-→ 예약 소유자 확인
-→ 예약 상태 및 만료 여부 확인
+→ 결제 상태 확인
 → 요청 금액과 저장된 결제 금액 비교
 → Payment 상태를 PAID로 변경
 → approvedAt 기록
+→ 예약 소유자 확인
+→ 예약 상태 및 만료 여부 확인
 → Reservation 상태를 CONFIRMED로 변경
 → 결과 반환
 ```

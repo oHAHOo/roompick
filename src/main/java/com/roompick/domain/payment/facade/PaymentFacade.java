@@ -2,6 +2,7 @@ package com.roompick.domain.payment.facade;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +56,15 @@ public class PaymentFacade {
 
     /**
      * Mock 결제를 승인하고 예약을 확정합니다.
+     *
+     * 결제 상태와 금액을 먼저 검증하여
+     * 이미 처리된 결제에는 INVALID_PAYMENT_STATUS를 반환합니다.
+     *
+     * 이후 예약 소유자, 예약 상태, 결제 만료 여부를 검증하고
+     * 예약을 확정합니다.
+     *
+     * 두 상태 변경은 같은 트랜잭션에서 처리되므로
+     * 예약 검증에 실패하면 먼저 변경된 결제 상태도 롤백됩니다.
      */
     @Transactional
     public PaymentApproveResponseDto approvePayment(
@@ -69,20 +79,31 @@ public class PaymentFacade {
             payment.getReservation();
 
         LocalDateTime approvedAt =
-            LocalDateTime.now(SERVICE_ZONE_ID);
+            LocalDateTime.now(SERVICE_ZONE_ID)
+                .truncatedTo(ChronoUnit.MICROS);
 
-        reservationService.confirmPayment(
-            reservation,
-            memberId,
-            approvedAt
-        );
-
+        /*
+         * 결제 상태와 요청 금액을 먼저 검증합니다.
+         *
+         * 이미 PAID 상태인 결제라면 예약 상태 검증보다 먼저
+         * INVALID_PAYMENT_STATUS가 발생합니다.
+         */
         Payment approvedPayment =
             paymentService.approvePayment(
                 payment,
                 requestedAmount,
                 approvedAt
             );
+
+        /*
+         * 결제와 연결된 예약의 소유자, 상태, 만료 여부를
+         * 검증한 뒤 예약을 확정합니다.
+         */
+        reservationService.confirmPayment(
+            reservation,
+            memberId,
+            approvedAt
+        );
 
         return PaymentApproveResponseDto.from(
             approvedPayment
