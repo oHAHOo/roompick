@@ -3,6 +3,7 @@ package com.roompick.domain.member.controller;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -17,6 +18,7 @@ import com.roompick.domain.member.dto.SignupRequestDto;
 import com.roompick.domain.member.dto.SignupResponseDto;
 import com.roompick.domain.member.facade.AuthFacade;
 import com.roompick.global.common.ApiResponseDto;
+import com.roompick.global.security.AuthMember;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -73,15 +75,16 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<ApiResponseDto<Void>> logout(
+        @AuthenticationPrincipal AuthMember authMember,
         @RequestHeader(HttpHeaders.AUTHORIZATION) String authorizationHeader,
         @Valid @RequestBody LogoutRequestDto request
     ) {
         String accessToken = authorizationHeader.substring(TOKEN_PREFIX.length());
-        authFacade.logout(accessToken, request.refreshToken());
+        authFacade.logout(authMember.memberId(), accessToken, request.refreshToken());
 
         ResponseEntity<ApiResponseDto<Void>> response = ResponseEntity
             .status(HttpStatus.OK)
-            .body(ApiResponseDto.success("로그아웃되없습니다."));
+            .body(ApiResponseDto.success("로그아웃되었습니다."));
 
         return response;
     }

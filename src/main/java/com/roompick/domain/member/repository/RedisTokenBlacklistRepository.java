@@ -11,18 +11,22 @@ import lombok.RequiredArgsConstructor;
 @Repository
 @Profile("!test")
 @RequiredArgsConstructor
-public class RedisTokenBlacklistRepository implements TokenBlacklistRepository{
+public class RedisTokenBlacklistRepository implements TokenBlacklistRepository {
 
     private static final String KEY_PREFIX = "blacklist:";
 
     private final StringRedisTemplate redisTemplate;
 
     @Override
-    public void blacklist(String jti, long ttlSeconds) {
+    public boolean consume(String jti, long ttlSeconds) {
         if (ttlSeconds <= 0) {
-            return;
+            return false;
         }
-        redisTemplate.opsForValue().set(key(jti), "1", Duration.ofSeconds(ttlSeconds));
+
+        Boolean result = redisTemplate.opsForValue()
+                .setIfAbsent(key(jti), "1", Duration.ofSeconds(ttlSeconds));
+
+        return Boolean.TRUE.equals(result);
     }
 
     @Override

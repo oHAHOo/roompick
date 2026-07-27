@@ -30,28 +30,46 @@ public class TokenService {
 
     @Transactional(readOnly = true)
     public LoginResponseDto reissue(String refreshToken) {
-        validateRefreshToken(refreshToken);
+        validateRefreshTokenType(refreshToken);
+        consumeOrReject(refreshToken);
 
         Long memberId = jwtTokenProvider.getMemberId(refreshToken);
-        Member member = memberRepository.findById(memberId).orElseThrow(() -> new BusinessException(
-            ErrorCode.INVALID_REFRESH_TOKEN));
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
-        blacklist(refreshToken);
-
-        return issue(memberId, member.getRole());
+        return issue(member.getId(), member.getRole());
     }
 
-    public void logout(String accessToken, String refreshToken) {
+    public void logout(Long memberId, String accessToken, String refreshToken) {
+        validateOwnedRefreshToken(memberId, refreshToken);
+
         blacklist(accessToken);
         blacklist(refreshToken);
     }
 
-
-    private void validateRefreshToken(String refreshToken) {
+    private void validateRefreshTokenType(String refreshToken) {
         if (!jwtTokenProvider.validateToken(refreshToken) || !jwtTokenProvider.isRefreshToken(refreshToken)) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
-        if (tokenBlacklistRepository.isBlacklisted(jwtTokenProvider.getJti(refreshToken))){
+    }
+
+    private void validateOwnedRefreshToken(Long memberId, String refreshToken) {
+        validateRefreshTokenType(refreshToken);
+
+        if (!memberId.equals(jwtTokenProvider.getMemberId(refreshToken))) {
+            throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
+        }
+    }
+
+    /**
+     * Refresh Token을 원자적으로 소모합니다. 이미 사용된(또는 로그아웃된) 토큰이면 거절합니다.
+     * check-then-act이 아닌 단일 원자 연산으로 처리해 동시 요청에서도 하나만 성공하도록 보장합니다.
+     */
+    private void consumeOrReject(String refreshToken) {
+        String jti = jwtTokenProvider.getJti(refreshToken);
+        long remainingSeconds = jwtTokenProvider.getRemainingSeconds(refreshToken);
+
+        if (!tokenBlacklistRepository.consume(jti, remainingSeconds)) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
     }
@@ -59,6 +77,6 @@ public class TokenService {
     private void blacklist(String token) {
         String jti = jwtTokenProvider.getJti(token);
         long remainingSeconds = jwtTokenProvider.getRemainingSeconds(token);
-        tokenBlacklistRepository.blacklist(jti, remainingSeconds);
+        tokenBlacklistRepository.consume(jti, remainingSeconds);
     }
 }

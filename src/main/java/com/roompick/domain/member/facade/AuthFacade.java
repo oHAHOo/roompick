@@ -10,7 +10,6 @@ import com.roompick.domain.member.dto.SignupResponseDto;
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.member.service.MemberService;
 import com.roompick.domain.member.service.TokenService;
-import com.roompick.global.security.JwtTokenProvider;
 
 import lombok.RequiredArgsConstructor;
 
@@ -35,7 +34,7 @@ public class AuthFacade {
         return tokenService.reissue(request.refreshToken());
     }
 
-    public void logout(String accessToken, String refreshToken) {
-        tokenService.logout(accessToken, refreshToken);
+    public void logout(Long memberId, String accessToken, String refreshToken) {
+        tokenService.logout(memberId, accessToken, refreshToken);
     }
 }
