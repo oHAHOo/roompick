@@ -2,6 +2,7 @@ package com.roompick.domain.payment.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.BDDMockito.given;
 
 import org.junit.jupiter.api.DisplayName;
@@ -13,6 +14,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+
+import java.time.LocalDateTime;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentTest {
@@ -103,5 +106,139 @@ class PaymentTest {
             .isEqualTo(
                 ErrorCode.INVALID_PAYMENT_AMOUNT
             );
+    }
+
+    @Test
+    @DisplayName("READY 상태의 결제를 승인하면 PAID 상태가 된다")
+    void readyPaymentCanBeApproved() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                24,
+                20,
+                0
+            );
+
+        // when
+        payment.approve(
+            200_000L,
+            approvedAt
+        );
+
+        // then
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.PAID);
+
+        assertThat(payment.getApprovedAt())
+            .isEqualTo(approvedAt);
+
+        assertThat(payment.getFailedAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("요청 금액이 저장된 결제 금액과 다르면 승인할 수 없다")
+    void rejectApprovalWhenAmountDoesNotMatch() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> payment.approve(
+                    190_000L,
+                    LocalDateTime.now()
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.PAYMENT_AMOUNT_MISMATCH
+            );
+
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.READY);
+
+        assertThat(payment.getApprovedAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("이미 승인된 결제는 다시 승인할 수 없다")
+    void rejectDuplicatedApproval() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        payment.approve(
+            200_000L,
+            LocalDateTime.now()
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> payment.approve(
+                    200_000L,
+                    LocalDateTime.now()
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.PAID);
+    }
+
+    @Test
+    @DisplayName("결제 승인 시각이 없으면 승인할 수 없다")
+    void rejectApprovalWithoutApprovedAt() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> payment.approve(
+                    200_000L,
+                    null
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.READY);
     }
 }

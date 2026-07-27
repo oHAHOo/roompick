@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.member.entity.Member;
-import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.repository.ReservationRepository;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.global.common.BusinessException;
@@ -391,5 +390,28 @@ public class ReservationService {
                 ErrorCode.INVALID_STAY_PERIOD
             );
         }
+    }
+
+    /**
+     * 결제 성공 후 예약을 확정 상태로 변경합니다.
+     */
+    @Transactional
+    public Reservation confirmPayment(
+        Reservation reservation,
+        Long memberId,
+        LocalDateTime now
+    ) {
+        if (reservation == null) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_NOT_FOUND
+            );
+        }
+
+        reservation.confirmPayment(
+            memberId,
+            now
+        );
+
+        return reservation;
     }
 }

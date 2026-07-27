@@ -104,6 +104,49 @@ public class Payment extends BaseTimeEntity {
         this.status = status;
     }
 
+    /**
+     * READY 상태의 결제를 승인 완료 상태로 변경합니다.
+     */
+    public void approve(
+        long requestedAmount,
+        LocalDateTime approvedAt
+    ) {
+        validateReadyStatus();
+        validateRequestedAmount(requestedAmount);
+        validateApprovedAt(approvedAt);
+
+        this.status = PaymentStatus.PAID;
+        this.approvedAt = approvedAt;
+    }
+
+    private void validateReadyStatus() {
+        if (status != PaymentStatus.READY) {
+            throw new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+        }
+    }
+
+    private void validateRequestedAmount(
+        long requestedAmount
+    ) {
+        if (amount != requestedAmount) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_AMOUNT_MISMATCH
+            );
+        }
+    }
+
+    private static void validateApprovedAt(
+        LocalDateTime approvedAt
+    ) {
+        if (approvedAt == null) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
     private static void validateReservation(
         Reservation reservation
     ) {
