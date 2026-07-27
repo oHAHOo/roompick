@@ -10,6 +10,8 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -124,6 +126,28 @@ class AccommodationServiceTest {
         // given: 페이지 번호가 허용 범위보다 작습니다.
         int page = -1;
         int size = 20;
+
+        // when & then: 잘못된 요청값 공통 예외가 발생합니다.
+        assertThatThrownBy(
+            () -> accommodationService.findAllActive(
+                page,
+                size
+            )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 101})
+    void 숙소_목록의_페이지_크기가_허용_범위를_벗어나면_예외가_발생한다(
+        int size
+    ) {
+        // given: 페이지 크기가 1 미만이거나 100을 초과합니다.
+        int page = 0;
 
         // when & then: 잘못된 요청값 공통 예외가 발생합니다.
         assertThatThrownBy(

@@ -15,9 +15,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 @ActiveProfiles("test")
 @SpringBootTest
@@ -33,6 +38,9 @@ class AccommodationControllerTest {
 
     @Autowired
     private RoomRepository roomRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Test
     void 전체_숙소_목록_조회에_성공한다() throws Exception {
@@ -258,6 +266,152 @@ class AccommodationControllerTest {
                 .value("객실 목록 조회에 성공했습니다."))
             .andExpect(jsonPath("$.data.length()")
                 .value(0));
+    }
+
+    @Test
+    void 비활성_숙소는_전체_숙소_목록에서_제외된다()
+        throws Exception {
+        // given: 운영 중인 숙소와 운영이 중단된 숙소가 저장되어 있습니다.
+        Accommodation activeAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "운영 중인 숙소",
+                    "서울특별시 강남구",
+                    "운영 중인 테스트 숙소",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        Accommodation inactiveAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "운영 중단 숙소",
+                    "서울특별시 종로구",
+                    "운영 중단 테스트 숙소",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        // 저장된 변경 내용을 DB에 반영한 뒤
+        // 테스트 목적으로 한 숙소의 상태를 INACTIVE로 변경합니다.
+        entityManager.flush();
+
+        entityManager.createQuery(
+                """
+                UPDATE Accommodation accommodation
+                SET accommodation.status = :status
+                WHERE accommodation.id = :accommodationId
+                """
+            )
+            .setParameter(
+                "status",
+                AccommodationStatus.INACTIVE
+            )
+            .setParameter(
+                "accommodationId",
+                inactiveAccommodation.getId()
+            )
+            .executeUpdate();
+
+        // 벌크 쿼리는 영속성 컨텍스트를 거치지 않으므로
+        // 기존 Entity 상태가 남지 않도록 초기화합니다.
+        entityManager.clear();
+
+        // when & then:
+        // 전체 숙소 목록에는 ACTIVE 숙소만 포함됩니다.
+        mockMvc.perform(
+                get("/api/v1/accommodations")
+                    .param("page", "0")
+                    .param("size", "20")
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content.length()")
+                .value(1))
+            .andExpect(jsonPath("$.data.content[0].accommodationId")
+                .value(activeAccommodation.getId()))
+            .andExpect(jsonPath("$.data.content[0].name")
+                .value("운영 중인 숙소"))
+            .andExpect(jsonPath("$.data.totalElements")
+                .value(1));
+    }
+
+    @Test
+    void 비활성_객실은_숙소별_객실_목록에서_제외된다()
+        throws Exception {
+        // given: 운영 중인 숙소에 ACTIVE 객실과
+        // 운영이 중단된 객실이 각각 저장되어 있습니다.
+        Accommodation accommodation =
+            accommodationRepository.save(
+                createAccommodation()
+            );
+
+        Room activeRoom = roomRepository.save(
+            Room.create(
+                accommodation,
+                "101",
+                "운영 중인 객실",
+                "운영 중인 테스트 객실",
+                100000L,
+                2,
+                2
+            )
+        );
+
+        Room inactiveRoom = roomRepository.save(
+            Room.create(
+                accommodation,
+                "202",
+                "운영 중단 객실",
+                "운영 중단 테스트 객실",
+                200000L,
+                2,
+                4
+            )
+        );
+
+        // 저장 내용을 DB에 반영한 뒤
+        // 테스트 목적으로 한 객실의 상태를 INACTIVE로 변경합니다.
+        entityManager.flush();
+
+        entityManager.createQuery(
+                """
+                UPDATE Room room
+                SET room.status = :status
+                WHERE room.id = :roomId
+                """
+            )
+            .setParameter(
+                "status",
+                RoomStatus.INACTIVE
+            )
+            .setParameter(
+                "roomId",
+                inactiveRoom.getId()
+            )
+            .executeUpdate();
+
+        // 벌크 쿼리 이후 영속성 컨텍스트의 오래된 상태를 제거합니다.
+        entityManager.clear();
+
+        // when & then:
+        // 숙소별 객실 목록에는 ACTIVE 객실만 포함됩니다.
+        mockMvc.perform(
+                get(
+                    "/api/v1/accommodations/{accommodationId}/rooms",
+                    accommodation.getId()
+                )
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success")
+                .value(true))
+            .andExpect(jsonPath("$.data.length()")
+                .value(1))
+            .andExpect(jsonPath("$.data[0].roomId")
+                .value(activeRoom.getId()))
+            .andExpect(jsonPath("$.data[0].name")
+                .value("운영 중인 객실"));
     }
 
     private Accommodation createAccommodation() {
