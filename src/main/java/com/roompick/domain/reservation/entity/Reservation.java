@@ -167,6 +167,66 @@ public class Reservation extends BaseTimeEntity {
         validatePaymentNotExpired(now);
     }
 
+    /**
+     * 인증된 회원이 결제 대기 상태의 예약을 취소합니다.
+     *
+     * 다른 회원의 예약이거나 현재 취소할 수 없는 상태이면
+     * 예약 상태를 변경하지 않고 예외를 발생시킵니다.
+     */
+    public void cancelByMember(
+        Long memberId,
+        LocalDateTime canceledAt
+    ) {
+        validateOwner(memberId);
+        validateCancelableStatus();
+        validateCanceledAt(canceledAt);
+
+        this.status = ReservationStatus.CANCELED;
+        this.canceledAt = canceledAt;
+    }
+
+    /**
+     * 결제 성공 후 예약을 확정 상태로 변경합니다.
+     */
+    public void confirmPayment(
+        Long memberId,
+        LocalDateTime now
+    ) {
+        validateOwner(memberId);
+        validatePendingPaymentStatus();
+        validatePaymentNotExpired(now);
+
+        this.status = ReservationStatus.CONFIRMED;
+    }
+
+    /**
+     * 현재 MVP에서는 결제 대기 상태의 예약만
+     * 결제 환불 없이 바로 취소할 수 있습니다.
+     *
+     * CONFIRMED 예약은 결제 환불 기능과 연결한 뒤
+     * 별도의 흐름으로 취소해야 합니다.
+     */
+    private void validateCancelableStatus() {
+        if (status != ReservationStatus.PENDING_PAYMENT) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_NOT_CANCELABLE
+            );
+        }
+    }
+
+    /**
+     * 예약 취소 시각이 정상적으로 전달됐는지 확인합니다.
+     */
+    private void validateCanceledAt(
+        LocalDateTime canceledAt
+    ) {
+        if (canceledAt == null) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
     private void validateOwner(Long memberId) {
         if (
             memberId == null

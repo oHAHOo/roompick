@@ -2,11 +2,13 @@ package com.roompick.domain.payment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +33,9 @@ class PaymentServiceTest {
 
     @Mock
     private Reservation reservation;
+
+    @Mock
+    private Payment payment;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -189,5 +194,61 @@ class PaymentServiceTest {
             .isEqualTo(
                 ErrorCode.PAYMENT_NOT_FOUND
             );
+    }
+
+    @Test
+    @DisplayName("결제 승인 처리를 Payment Entity에 위임한다")
+    void approvePayment() {
+        // given
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                24,
+                20,
+                0
+            );
+
+        // when
+        Payment result =
+            paymentService.approvePayment(
+                payment,
+                200_000L,
+                approvedAt
+            );
+
+        // then
+        assertThat(result)
+            .isSameAs(payment);
+
+        then(payment)
+            .should()
+            .approve(
+                200_000L,
+                approvedAt
+            );
+    }
+
+    @Test
+    @DisplayName("결제 정보가 없으면 승인할 수 없다")
+    void rejectApprovalWithoutPayment() {
+        // given
+        LocalDateTime approvedAt =
+            LocalDateTime.now();
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentService.approvePayment(
+                    null,
+                    200_000L,
+                    approvedAt
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
     }
 }

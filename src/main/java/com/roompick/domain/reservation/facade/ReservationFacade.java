@@ -3,6 +3,7 @@ package com.roompick.domain.reservation.facade;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
+import com.roompick.domain.reservation.dto.ReservationCancelResponseDto;
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
@@ -91,5 +92,17 @@ public class ReservationFacade {
         return ReservationDetailResponseDto.from(
             reservation
         );
+    }
+
+    /**
+     * 인증된 회원의 결제 대기 예약을 취소합니다.
+     *
+     * 예약 조회, 소유권 확인, 취소 가능 상태 검증은
+     * ReservationService와 Reservation Entity에서 처리합니다.
+     */
+    public ReservationCancelResponseDto cancelReservation(Long memberId, Long reservationId) {
+        Reservation reservation = reservationService.cancelReservation(memberId, reservationId);
+
+        return ReservationCancelResponseDto.from(reservation);
     }
 }

@@ -8,13 +8,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
+import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
+import com.roompick.domain.reservation.entity.ReservationStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -343,5 +347,314 @@ class PaymentControllerTest {
                 )
             )
         );
+    }
+
+    @Test
+    @DisplayName("인증된 회원은 READY 상태의 결제를 승인할 수 있다")
+    void authenticatedMemberCanApprovePayment()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long reservationId = 1L;
+        Long memberId = 10L;
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                24,
+                20,
+                0
+            );
+
+        PaymentApproveResponseDto result =
+            new PaymentApproveResponseDto(
+                paymentId,
+                reservationId,
+                200_000L,
+                PaymentStatus.PAID,
+                ReservationStatus.CONFIRMED,
+                approvedAt
+            );
+
+        given(
+            paymentFacade.approvePayment(
+                paymentId,
+                memberId,
+                200_000L
+            )
+        ).willReturn(result);
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/approve",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+                    .contentType(
+                        MediaType.APPLICATION_JSON
+                    )
+                    .content(
+                        """
+                        {
+                          "amount": 200000
+                        }
+                        """
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(true)
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value("결제가 완료되었습니다.")
+            )
+            .andExpect(
+                jsonPath("$.data.paymentId")
+                    .value(paymentId)
+            )
+            .andExpect(
+                jsonPath("$.data.reservationId")
+                    .value(reservationId)
+            )
+            .andExpect(
+                jsonPath("$.data.amount")
+                    .value(200_000L)
+            )
+            .andExpect(
+                jsonPath("$.data.paymentStatus")
+                    .value("PAID")
+            )
+            .andExpect(
+                jsonPath("$.data.reservationStatus")
+                    .value("CONFIRMED")
+            )
+            .andExpect(
+                jsonPath("$.data.approvedAt")
+                    .exists()
+            );
+
+        then(paymentFacade)
+            .should()
+            .approvePayment(
+                paymentId,
+                memberId,
+                200_000L
+            );
+    }
+
+    @Test
+    @DisplayName("요청 금액이 결제 금액과 다르면 결제 승인이 거절된다")
+    void rejectApprovalWhenAmountDoesNotMatch()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.approvePayment(
+                paymentId,
+                memberId,
+                190_000L
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.PAYMENT_AMOUNT_MISMATCH
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/approve",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+                    .contentType(
+                        MediaType.APPLICATION_JSON
+                    )
+                    .content(
+                        """
+                        {
+                          "amount": 190000
+                        }
+                        """
+                    )
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.PAYMENT_AMOUNT_MISMATCH
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.PAYMENT_AMOUNT_MISMATCH
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .approvePayment(
+                paymentId,
+                memberId,
+                190_000L
+            );
+    }
+
+    @Test
+    @DisplayName("이미 승인된 결제는 다시 승인할 수 없다")
+    void rejectDuplicatedPaymentApproval()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.approvePayment(
+                paymentId,
+                memberId,
+                200_000L
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/approve",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+                    .contentType(
+                        MediaType.APPLICATION_JSON
+                    )
+                    .content(
+                        """
+                        {
+                          "amount": 200000
+                        }
+                        """
+                    )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.INVALID_PAYMENT_STATUS
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.INVALID_PAYMENT_STATUS
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .approvePayment(
+                paymentId,
+                memberId,
+                200_000L
+            );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 결제를 승인할 수 없다")
+    void unauthenticatedMemberCannotApprovePayment()
+        throws Exception {
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/approve",
+                    100L
+                )
+                    .contentType(
+                        MediaType.APPLICATION_JSON
+                    )
+                    .content(
+                        """
+                        {
+                          "amount": 200000
+                        }
+                        """
+                    )
+            )
+            .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(paymentFacade);
+    }
+
+    @Test
+    @DisplayName("결제 금액이 음수이면 결제를 승인할 수 없다")
+    void rejectApprovalWithNegativeAmount()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/approve",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+                    .contentType(
+                        MediaType.APPLICATION_JSON
+                    )
+                    .content(
+                        """
+                        {
+                          "amount": -1
+                        }
+                        """
+                    )
+            )
+            .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(paymentFacade);
     }
 }

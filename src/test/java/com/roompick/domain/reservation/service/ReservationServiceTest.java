@@ -428,4 +428,122 @@ class ReservationServiceTest {
 
         verifyNoInteractions(reservation);
     }
+
+    @Test
+    @DisplayName("본인의 결제 대기 예약을 취소한다")
+    void cancelPendingPaymentReservation() {
+        // given: 취소할 예약이 존재합니다.
+        Long memberId = 1L;
+        Long reservationId = 10L;
+
+        given(
+            reservationRepository.findById(reservationId)
+        ).willReturn(Optional.of(reservation));
+
+        // when: 인증된 회원이 예약 취소를 요청합니다.
+        Reservation result =
+            reservationService.cancelReservation(
+                memberId,
+                reservationId
+            );
+
+        // then: 조회된 예약에 회원 ID와 취소 시각을 전달합니다.
+        assertThat(result)
+            .isSameAs(reservation);
+
+        verify(reservation)
+            .cancelByMember(
+                eq(memberId),
+                any(LocalDateTime.class)
+            );
+
+        /*
+         * 조회한 Reservation은 영속 상태에서 변경 감지되므로
+         * Service가 save()를 다시 호출하지 않습니다.
+         */
+        verify(reservationRepository, never())
+            .save(any(Reservation.class));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 예약은 취소할 수 없다")
+    void rejectMissingReservationCancellation() {
+        // given: 요청한 예약 ID에 해당하는 예약이 없습니다.
+        Long memberId = 1L;
+        Long reservationId = 999L;
+
+        given(
+            reservationRepository.findById(reservationId)
+        ).willReturn(Optional.empty());
+
+        // when: 존재하지 않는 예약의 취소를 요청합니다.
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.cancelReservation(
+                    memberId,
+                    reservationId
+                ),
+                BusinessException.class
+            );
+
+        // then: 예약을 찾을 수 없다는 예외가 발생합니다.
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+
+        // 예약 Entity를 조회하지 못했으므로 상태 변경도 수행하지 않습니다.
+        verifyNoInteractions(reservation);
+    }
+
+    @Test
+    @DisplayName("결제 성공 후 예약 확정 처리를 Entity에 위임한다")
+    void confirmReservationAfterPaymentSuccess() {
+        // given
+        Long memberId = 10L;
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                24,
+                20,
+                0
+            );
+
+        // when
+        Reservation result =
+            reservationService.confirmPayment(
+                reservation,
+                memberId,
+                approvedAt
+            );
+
+        // then
+        assertThat(result)
+            .isSameAs(reservation);
+
+        verify(reservation)
+            .confirmPayment(
+                memberId,
+                approvedAt
+            );
+    }
+
+    @Test
+    @DisplayName("예약 정보가 없으면 결제 성공 처리를 할 수 없다")
+    void rejectConfirmationWithoutReservation() {
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> reservationService.confirmPayment(
+                    null,
+                    10L,
+                    LocalDateTime.now()
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+    }
 }
