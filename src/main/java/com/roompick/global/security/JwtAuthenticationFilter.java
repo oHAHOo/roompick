@@ -12,6 +12,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.roompick.domain.member.entity.MemberRole;
+import com.roompick.domain.member.repository.TokenBlacklistRepository;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -23,9 +24,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String TOKEN_PREFIX = "Bearer ";
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final TokenBlacklistRepository tokenBlacklistRepository;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
+    public JwtAuthenticationFilter(
+        JwtTokenProvider jwtTokenProvider,
+        TokenBlacklistRepository tokenBlacklistRepository
+    ) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.tokenBlacklistRepository = tokenBlacklistRepository;
     }
 
     @Override
@@ -36,7 +42,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         String token = resolveToken(request);
 
-        if (token != null && jwtTokenProvider.validateToken(token) && jwtTokenProvider.isAccessToken(token)) {
+        if (token != null
+            && jwtTokenProvider.validateToken(token)
+            && jwtTokenProvider.isAccessToken(token)
+            && !tokenBlacklistRepository.isBlacklisted(jwtTokenProvider.getJti(token))) {
             authenticate(token);
         }
 

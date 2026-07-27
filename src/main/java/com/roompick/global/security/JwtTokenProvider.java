@@ -2,6 +2,7 @@ package com.roompick.global.security;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
@@ -46,11 +47,12 @@ public class JwtTokenProvider {
         Date expiration = new Date(now.getTime() + validitySeconds * 1000);
 
         JwtBuilder builder = Jwts.builder()
-                .subject(String.valueOf(memberId))
-                .issuedAt(now)
-                .expiration(expiration)
-                .claim(CLAIM_TOKEN_TYPE, tokenType.name())
-                .signWith(key);
+            .id(UUID.randomUUID().toString())
+            .subject(String.valueOf(memberId))
+            .issuedAt(now)
+            .expiration(expiration)
+            .claim(CLAIM_TOKEN_TYPE, tokenType.name())
+            .signWith(key);
 
         if (role != null) {
             builder.claim(CLAIM_ROLE, role.name());
@@ -73,6 +75,10 @@ public class JwtTokenProvider {
         return getTokenType(token) == TokenType.ACCESS;
     }
 
+    public boolean isRefreshToken(String token) {
+        return getTokenType(token) == TokenType.REFRESH;
+    }
+
     public TokenType getTokenType(String token) {
         String tokenType = parseClaims(token).get(CLAIM_TOKEN_TYPE, String.class);
         return tokenType != null ? TokenType.valueOf(tokenType) : null;
@@ -87,11 +93,20 @@ public class JwtTokenProvider {
         return role != null ? MemberRole.valueOf(role) : null;
     }
 
+    public String getJti(String token) {
+        return parseClaims(token).getId();
+    }
+
+    public long getRemainingSeconds(String token) {
+        long remainingMillis = parseClaims(token).getExpiration().getTime() - System.currentTimeMillis();
+        return Math.max(remainingMillis / 1000, 0);
+    }
+
     private Claims parseClaims(String token) {
         return Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+            .verifyWith(key)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
     }
 }
