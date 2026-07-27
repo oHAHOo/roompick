@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
+import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
@@ -48,6 +49,22 @@ public class RoomService {
         return roomRepository.findAllByAccommodationId(
             accommodationId
         );
+    }
+
+    /**
+     * 특정 숙소에 소속된 운영 중인 객실 목록을 조회합니다.
+     *
+     * 객실 목록 화면에 필요한 필드만
+     * Repository에서 DTO로 직접 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<RoomListResponseDto> findAllActiveSummaryByAccommodationId(
+        Long accommodationId
+    ) {
+        return roomRepository
+            .findAllActiveSummaryByAccommodationId(
+                accommodationId
+            );
     }
 
     /**
