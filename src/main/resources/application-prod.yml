@@ -11,3 +11,7 @@ spring:
       hibernate:
         format_sql: false
     show-sql: false
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
