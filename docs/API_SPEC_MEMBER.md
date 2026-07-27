@@ -302,15 +302,6 @@ Access Token 인증 확인 (JwtAuthenticationFilter)
 → 로그아웃 완료 응답
 ```
 
-### 처리 순서
-
-```text
-Access Token 인증 확인 (JwtAuthenticationFilter)
-→ Access Token을 블랙리스트에 등록 (남은 만료 시간만큼 TTL 설정)
-→ 전달받은 Refresh Token을 블랙리스트에 등록 (남은 만료 시간만큼 TTL 설정)
-→ 로그아웃 완료 응답
-```
-
 ---
 
 ## 8. 블랙리스트 구조 (Redis)
