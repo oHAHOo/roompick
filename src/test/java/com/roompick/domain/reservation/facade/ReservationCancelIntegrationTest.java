@@ -1,11 +1,13 @@
 package com.roompick.domain.reservation.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -182,9 +184,14 @@ class ReservationCancelIntegrationTest {
         assertThat(response.status())
             .isEqualTo(ReservationStatus.CANCELED);
 
+        /*
+         * DB 저장 과정에서 시간의 소수점 이하 정밀도가 달라질 수 있으므로
+         * 동일한 취소 시각인지 1밀리초 범위 안에서 비교합니다.
+         */
         assertThat(response.canceledAt())
-            .isEqualTo(
-                canceledReservation.getCanceledAt()
+            .isCloseTo(
+                canceledReservation.getCanceledAt(),
+                within(1, ChronoUnit.MILLIS)
             );
 
         /*
