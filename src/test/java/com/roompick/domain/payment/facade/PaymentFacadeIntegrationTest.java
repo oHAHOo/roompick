@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,8 @@ import com.roompick.global.common.ErrorCode;
 
 /**
  * 실제 Spring Context와 H2 DB를 사용하여
- * 결제 승인 트랜잭션의 커밋과 롤백을 검증합니다.
+ * 결제 승인 및 실패 처리 트랜잭션의
+ * 커밋과 롤백을 검증합니다.
  *
  * 이 테스트 클래스에는 @Transactional을 붙이지 않습니다.
  * PaymentFacade의 트랜잭션이 실제로 종료된 다음
@@ -330,6 +332,293 @@ class PaymentFacadeIntegrationTest {
         assertThat(savedReservation.getStatus())
             .isEqualTo(
                 ReservationStatus.PENDING_PAYMENT
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "결제 실패 처리 성공 시 Payment와 Reservation 상태가 함께 커밋된다"
+    )
+    void failPaymentCommitsPaymentAndReservationTogether() {
+        // given
+        LocalDateTime now =
+            LocalDateTime.now(TEST_ZONE_ID);
+
+        TestData testData =
+            createTestData(
+                now.plusMinutes(10)
+            );
+
+        // when
+        PaymentFailResponseDto response =
+            paymentFacade.failPayment(
+                testData.paymentId(),
+                testData.memberId()
+            );
+
+        // then
+        Payment savedPayment =
+            paymentRepository
+                .findById(testData.paymentId())
+                .orElseThrow();
+
+        Reservation savedReservation =
+            reservationRepository
+                .findById(testData.reservationId())
+                .orElseThrow();
+
+        assertThat(savedPayment.getStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(savedPayment.getFailedAt())
+            .isNotNull();
+
+        assertThat(savedPayment.getApprovedAt())
+            .isNull();
+
+        assertThat(savedReservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(savedReservation.getCanceledAt())
+            .isNotNull();
+
+        /*
+         * 결제 실패와 예약 취소에는
+         * Facade에서 생성한 동일한 시각이 사용됩니다.
+         */
+        assertThat(savedPayment.getFailedAt())
+            .isEqualTo(
+                savedReservation.getCanceledAt()
+            );
+
+        assertThat(response.paymentId())
+            .isEqualTo(testData.paymentId());
+
+        assertThat(response.reservationId())
+            .isEqualTo(testData.reservationId());
+
+        assertThat(response.amount())
+            .isEqualTo(testData.amount());
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(response.failedAt())
+            .isEqualTo(
+                savedPayment.getFailedAt()
+            );
+
+        assertThat(response.canceledAt())
+            .isEqualTo(
+                savedReservation.getCanceledAt()
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "다른 회원의 결제 실패 처리 요청 시 Payment 변경도 롤백된다"
+    )
+    void unauthorizedFailureRollsBackPaymentAndReservation() {
+        // given
+        LocalDateTime now =
+            LocalDateTime.now(TEST_ZONE_ID);
+
+        TestData testData =
+            createTestData(
+                now.plusMinutes(10)
+            );
+
+        Long otherMemberId =
+            testData.memberId() + 1L;
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.failPayment(
+                    testData.paymentId(),
+                    otherMemberId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+
+        Payment savedPayment =
+            paymentRepository
+                .findById(testData.paymentId())
+                .orElseThrow();
+
+        Reservation savedReservation =
+            reservationRepository
+                .findById(testData.reservationId())
+                .orElseThrow();
+
+        /*
+         * Payment가 먼저 FAILED로 변경되지만
+         * 예약 소유자 검증에서 예외가 발생하므로
+         * 전체 트랜잭션이 롤백됩니다.
+         */
+        assertThat(savedPayment.getStatus())
+            .isEqualTo(PaymentStatus.READY);
+
+        assertThat(savedPayment.getFailedAt())
+            .isNull();
+
+        assertThat(savedPayment.getApprovedAt())
+            .isNull();
+
+        assertThat(savedReservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        assertThat(savedReservation.getCanceledAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName(
+        "이미 실패 처리된 결제를 다시 처리하면 INVALID_PAYMENT_STATUS를 반환한다"
+    )
+    void duplicatedFailureReturnsInvalidPaymentStatus() {
+        // given
+        LocalDateTime now =
+            LocalDateTime.now(TEST_ZONE_ID);
+
+        TestData testData =
+            createTestData(
+                now.plusMinutes(10)
+            );
+
+        paymentFacade.failPayment(
+            testData.paymentId(),
+            testData.memberId()
+        );
+
+        Payment firstFailedPayment =
+            paymentRepository
+                .findById(testData.paymentId())
+                .orElseThrow();
+
+        Reservation firstCanceledReservation =
+            reservationRepository
+                .findById(testData.reservationId())
+                .orElseThrow();
+
+        LocalDateTime firstFailedAt =
+            firstFailedPayment.getFailedAt();
+
+        LocalDateTime firstCanceledAt =
+            firstCanceledReservation.getCanceledAt();
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.failPayment(
+                    testData.paymentId(),
+                    testData.memberId()
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        Payment savedPayment =
+            paymentRepository
+                .findById(testData.paymentId())
+                .orElseThrow();
+
+        Reservation savedReservation =
+            reservationRepository
+                .findById(testData.reservationId())
+                .orElseThrow();
+
+        assertThat(savedPayment.getStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(savedPayment.getFailedAt())
+            .isEqualTo(firstFailedAt);
+
+        assertThat(savedReservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(savedReservation.getCanceledAt())
+            .isEqualTo(firstCanceledAt);
+    }
+
+    @Test
+    @DisplayName(
+        "결제 대기 시간이 만료된 예약도 결제 실패 처리할 수 있다"
+    )
+    void expiredReservationCanBeFailedAndCanceled() {
+        // given
+        LocalDateTime now =
+            LocalDateTime.now(TEST_ZONE_ID);
+
+        TestData testData =
+            createTestData(
+                now.minusMinutes(1)
+            );
+
+        // when
+        PaymentFailResponseDto response =
+            paymentFacade.failPayment(
+                testData.paymentId(),
+                testData.memberId()
+            );
+
+        // then
+        Payment savedPayment =
+            paymentRepository
+                .findById(testData.paymentId())
+                .orElseThrow();
+
+        Reservation savedReservation =
+            reservationRepository
+                .findById(testData.reservationId())
+                .orElseThrow();
+
+        /*
+         * 이미 결제 대기 시간이 만료되었더라도
+         * 객실 점유를 해제하기 위해 실패 처리를 허용합니다.
+         */
+        assertThat(savedPayment.getStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(savedPayment.getFailedAt())
+            .isNotNull();
+
+        assertThat(savedReservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(savedReservation.getCanceledAt())
+            .isNotNull();
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
             );
     }
 

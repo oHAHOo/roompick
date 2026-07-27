@@ -169,9 +169,6 @@ public class Reservation extends BaseTimeEntity {
 
     /**
      * 인증된 회원이 결제 대기 상태의 예약을 취소합니다.
-     *
-     * 다른 회원의 예약이거나 현재 취소할 수 없는 상태이면
-     * 예약 상태를 변경하지 않고 예외를 발생시킵니다.
      */
     public void cancelByMember(
         Long memberId,
@@ -179,6 +176,27 @@ public class Reservation extends BaseTimeEntity {
     ) {
         validateOwner(memberId);
         validateCancelableStatus();
+
+        cancel(canceledAt);
+    }
+
+    /**
+     * 결제 실패로 인해 결제 대기 상태의 예약을 취소합니다.
+     */
+    public void cancelByPaymentFailure(
+        Long memberId,
+        LocalDateTime canceledAt
+    ) {
+        validateOwner(memberId);
+        validatePendingPaymentStatus();
+
+        cancel(canceledAt);
+    }
+
+    /**
+     * 예약을 취소 상태로 변경하고 취소 시각을 기록합니다.
+     */
+    private void cancel(LocalDateTime canceledAt) {
         validateCanceledAt(canceledAt);
 
         this.status = ReservationStatus.CANCELED;

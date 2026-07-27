@@ -129,4 +129,17 @@ public class PaymentService {
             );
         }
     }
+
+    /**
+     * READY 상태의 결제를 실패 처리합니다.
+     */
+    @Transactional
+    public Payment failPayment(
+        Payment payment,
+        LocalDateTime failedAt
+    ) {
+        payment.fail(failedAt);
+
+        return payment;
+    }
 }

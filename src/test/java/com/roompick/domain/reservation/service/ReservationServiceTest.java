@@ -21,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import static org.mockito.BDDMockito.then;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -545,5 +546,41 @@ class ReservationServiceTest {
         // then
         assertThat(exception.getErrorCode())
             .isEqualTo(ErrorCode.RESERVATION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("결제 실패로 예약을 취소한다")
+    void cancelByPaymentFailure() {
+        // given
+        Long memberId = 1L;
+
+        LocalDateTime canceledAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                27,
+                15,
+                0
+            );
+
+        // when
+        Reservation result =
+            reservationService
+                .cancelByPaymentFailure(
+                    reservation,
+                    memberId,
+                    canceledAt
+                );
+
+        // then
+        then(reservation)
+            .should()
+            .cancelByPaymentFailure(
+                memberId,
+                canceledAt
+            );
+
+        assertThat(result)
+            .isSameAs(reservation);
     }
 }

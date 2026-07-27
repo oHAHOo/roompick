@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.LocalDateTime;
 
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -357,5 +358,167 @@ class PaymentFacadeTest {
         verifyNoInteractions(
             reservationService
         );
+    }
+
+    @Test
+    @DisplayName("결제 실패 시 Payment 실패 처리 후 Reservation을 취소한다")
+    void failPayment() {
+        // given
+        Long paymentId = 1L;
+        Long memberId = 10L;
+
+        given(paymentService.findById(paymentId))
+            .willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(
+            paymentService.failPayment(
+                eq(payment),
+                any(LocalDateTime.class)
+            )
+        ).willReturn(payment);
+
+        given(payment.getId())
+            .willReturn(paymentId);
+
+        given(payment.getAmount())
+            .willReturn(200_000L);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.FAILED);
+
+        given(payment.getFailedAt())
+            .willReturn(
+                LocalDateTime.of(
+                    2026,
+                    7,
+                    27,
+                    16,
+                    0
+                )
+            );
+
+        given(reservation.getId())
+            .willReturn(100L);
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.CANCELED
+            );
+
+        given(reservation.getCanceledAt())
+            .willReturn(
+                LocalDateTime.of(
+                    2026,
+                    7,
+                    27,
+                    16,
+                    0
+                )
+            );
+
+        // when
+        PaymentFailResponseDto result =
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            );
+
+        // then
+        ArgumentCaptor<LocalDateTime>
+            paymentTimeCaptor =
+            ArgumentCaptor.forClass(
+                LocalDateTime.class
+            );
+
+        ArgumentCaptor<LocalDateTime>
+            reservationTimeCaptor =
+            ArgumentCaptor.forClass(
+                LocalDateTime.class
+            );
+
+        InOrder inOrder =
+            inOrder(
+                paymentService,
+                reservationService
+            );
+
+        inOrder.verify(paymentService)
+            .failPayment(
+                eq(payment),
+                paymentTimeCaptor.capture()
+            );
+
+        inOrder.verify(reservationService)
+            .cancelByPaymentFailure(
+                eq(reservation),
+                eq(memberId),
+                reservationTimeCaptor.capture()
+            );
+
+        assertThat(paymentTimeCaptor.getValue())
+            .isEqualTo(
+                reservationTimeCaptor.getValue()
+            );
+
+        assertThat(result.paymentId())
+            .isEqualTo(paymentId);
+
+        assertThat(result.reservationId())
+            .isEqualTo(100L);
+
+        assertThat(result.paymentStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(result.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+    }
+
+    @Test
+    @DisplayName("결제 상태 검증에 실패하면 예약 취소를 호출하지 않는다")
+    void paymentFailureValidationStopsBeforeReservationCancellation() {
+        // given
+        Long paymentId = 1L;
+        Long memberId = 10L;
+
+        given(paymentService.findById(paymentId))
+            .willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(
+            paymentService.failPayment(
+                eq(payment),
+                any(LocalDateTime.class)
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            )
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.failPayment(
+                    paymentId,
+                    memberId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
     }
 }

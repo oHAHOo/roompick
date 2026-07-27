@@ -1,5 +1,6 @@
 package com.roompick.domain.payment.controller;
 
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -81,6 +82,33 @@ public class PaymentController {
             .body(
                 ApiResponseDto.success(
                     "결제가 완료되었습니다.",
+                    result
+                )
+            );
+    }
+
+    /**
+     * READY 상태의 Mock 결제를 실패 처리하고
+     * 연결된 예약을 취소합니다.
+     */
+    @PostMapping("/payments/{paymentId}/fail")
+    public ResponseEntity<
+        ApiResponseDto<PaymentFailResponseDto>
+        > failPayment(
+        @PathVariable Long paymentId,
+        @AuthenticationPrincipal AuthMember authMember
+    ) {
+        PaymentFailResponseDto result =
+            paymentFacade.failPayment(
+                paymentId,
+                authMember.memberId()
+            );
+
+        return ResponseEntity
+            .status(HttpStatus.OK)
+            .body(
+                ApiResponseDto.success(
+                    "결제 실패 처리가 완료되었습니다.",
                     result
                 )
             );

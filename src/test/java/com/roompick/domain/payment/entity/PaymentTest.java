@@ -241,4 +241,171 @@ class PaymentTest {
         assertThat(payment.getStatus())
             .isEqualTo(PaymentStatus.READY);
     }
+
+    @Test
+    @DisplayName("READY 상태의 결제를 실패 처리하면 FAILED 상태가 된다")
+    void readyPaymentCanBeFailed() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        LocalDateTime failedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                27,
+                14,
+                0
+            );
+
+        // when
+        payment.fail(failedAt);
+
+        // then
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(payment.getFailedAt())
+            .isEqualTo(failedAt);
+
+        assertThat(payment.getApprovedAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("이미 승인된 결제는 실패 처리할 수 없다")
+    void paidPaymentCannotBeFailed() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                27,
+                14,
+                0
+            );
+
+        payment.approve(
+            200_000L,
+            approvedAt
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> payment.fail(
+                    LocalDateTime.of(
+                        2026,
+                        7,
+                        27,
+                        14,
+                        1
+                    )
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.PAID);
+
+        assertThat(payment.getApprovedAt())
+            .isEqualTo(approvedAt);
+
+        assertThat(payment.getFailedAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("이미 실패한 결제는 다시 실패 처리할 수 없다")
+    void failedPaymentCannotBeFailedAgain() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        LocalDateTime firstFailedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                27,
+                14,
+                0
+            );
+
+        payment.fail(firstFailedAt);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> payment.fail(
+                    LocalDateTime.of(
+                        2026,
+                        7,
+                        27,
+                        14,
+                        1
+                    )
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(payment.getFailedAt())
+            .isEqualTo(firstFailedAt);
+    }
+
+    @Test
+    @DisplayName("결제 실패 시각이 없으면 실패 처리할 수 없다")
+    void paymentCannotBeFailedWithoutFailedAt() {
+        // given
+        given(reservation.getTotalAmount())
+            .willReturn(200_000L);
+
+        Payment payment =
+            Payment.create(reservation);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> payment.fail(null),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+
+        assertThat(payment.getStatus())
+            .isEqualTo(PaymentStatus.READY);
+
+        assertThat(payment.getFailedAt())
+            .isNull();
+    }
 }

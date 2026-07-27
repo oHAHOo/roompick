@@ -230,4 +230,293 @@ class ReservationTest {
             2
         );
     }
+
+    @Test
+    @DisplayName("결제 실패 시 결제 대기 예약을 취소한다")
+    void cancelReservationByPaymentFailure() {
+        // given
+        Member member = createMember();
+        ReflectionTestUtils.setField(
+            member,
+            "id",
+            1L
+        );
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                createRoom(),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2,
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    14,
+                    10
+                )
+            );
+
+        LocalDateTime canceledAt =
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                14,
+                0
+            );
+
+        // when
+        reservation.cancelByPaymentFailure(
+            1L,
+            canceledAt
+        );
+
+        // then
+        assertThat(reservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(reservation.getCanceledAt())
+            .isEqualTo(canceledAt);
+    }
+
+    @Test
+    @DisplayName("다른 회원은 결제 실패로 예약을 취소할 수 없다")
+    void otherMemberCannotCancelByPaymentFailure() {
+        // given
+        Member member = createMember();
+        ReflectionTestUtils.setField(
+            member,
+            "id",
+            1L
+        );
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                createRoom(),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2,
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    14,
+                    10
+                )
+            );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    reservation
+                        .cancelByPaymentFailure(
+                            2L,
+                            LocalDateTime.of(
+                                2026,
+                                8,
+                                1,
+                                14,
+                                0
+                            )
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+
+        assertThat(reservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        assertThat(reservation.getCanceledAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("결제 대기 상태가 아닌 예약은 결제 실패로 취소할 수 없다")
+    void nonPendingReservationCannotBeCanceledByPaymentFailure() {
+        // given
+        Member member = createMember();
+        ReflectionTestUtils.setField(
+            member,
+            "id",
+            1L
+        );
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                createRoom(),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2,
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    14,
+                    10
+                )
+            );
+
+        reservation.confirmPayment(
+            1L,
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                14,
+                0
+            )
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    reservation
+                        .cancelByPaymentFailure(
+                            1L,
+                            LocalDateTime.of(
+                                2026,
+                                8,
+                                1,
+                                14,
+                                1
+                            )
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_NOT_PAYABLE
+            );
+
+        assertThat(reservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.CONFIRMED
+            );
+
+        assertThat(reservation.getCanceledAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("결제 실패 취소 시각이 없으면 예약을 취소할 수 없다")
+    void reservationCannotBeCanceledWithoutFailedAt() {
+        // given
+        Member member = createMember();
+        ReflectionTestUtils.setField(
+            member,
+            "id",
+            1L
+        );
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                createRoom(),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2,
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    14,
+                    10
+                )
+            );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    reservation
+                        .cancelByPaymentFailure(
+                            1L,
+                            null
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+
+        assertThat(reservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        assertThat(reservation.getCanceledAt())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName("결제 대기 시간이 만료된 예약도 결제 실패로 취소할 수 있다")
+    void expiredReservationCanBeCanceledByPaymentFailure() {
+        // given
+        Member member = createMember();
+        ReflectionTestUtils.setField(
+            member,
+            "id",
+            1L
+        );
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                createRoom(),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2,
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    14,
+                    0
+                )
+            );
+
+        LocalDateTime canceledAt =
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                15,
+                0
+            );
+
+        // when
+        reservation.cancelByPaymentFailure(
+            1L,
+            canceledAt
+        );
+
+        // then
+        assertThat(reservation.getStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(reservation.getCanceledAt())
+            .isEqualTo(canceledAt);
+    }
 }

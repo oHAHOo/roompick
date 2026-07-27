@@ -251,4 +251,33 @@ class PaymentServiceTest {
         assertThat(exception.getErrorCode())
             .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
     }
+
+    @Test
+    @DisplayName("결제를 실패 처리한다")
+    void failPayment() {
+        // given
+        LocalDateTime failedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                27,
+                15,
+                0
+            );
+
+        // when
+        Payment result =
+            paymentService.failPayment(
+                payment,
+                failedAt
+            );
+
+        // then
+        then(payment)
+            .should()
+            .fail(failedAt);
+
+        assertThat(result)
+            .isSameAs(payment);
+    }
 }

@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import com.roompick.domain.reservation.entity.ReservationStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -654,6 +655,360 @@ class PaymentControllerTest {
                     )
             )
             .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(paymentFacade);
+    }
+
+    @Test
+    @DisplayName("인증된 회원은 READY 상태의 결제를 실패 처리할 수 있다")
+    void authenticatedMemberCanFailPayment()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long reservationId = 1L;
+        Long memberId = 10L;
+
+        LocalDateTime failedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                27,
+                16,
+                0
+            );
+
+        PaymentFailResponseDto result =
+            new PaymentFailResponseDto(
+                paymentId,
+                reservationId,
+                200_000L,
+                PaymentStatus.FAILED,
+                ReservationStatus.CANCELED,
+                failedAt,
+                failedAt
+            );
+
+        given(
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            )
+        ).willReturn(result);
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/fail",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(true)
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        "결제 실패 처리가 완료되었습니다."
+                    )
+            )
+            .andExpect(
+                jsonPath("$.data.paymentId")
+                    .value(paymentId)
+            )
+            .andExpect(
+                jsonPath("$.data.reservationId")
+                    .value(reservationId)
+            )
+            .andExpect(
+                jsonPath("$.data.amount")
+                    .value(200_000L)
+            )
+            .andExpect(
+                jsonPath("$.data.paymentStatus")
+                    .value("FAILED")
+            )
+            .andExpect(
+                jsonPath("$.data.reservationStatus")
+                    .value("CANCELED")
+            )
+            .andExpect(
+                jsonPath("$.data.failedAt")
+                    .exists()
+            )
+            .andExpect(
+                jsonPath("$.data.canceledAt")
+                    .exists()
+            );
+
+        then(paymentFacade)
+            .should()
+            .failPayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("이미 처리된 결제는 실패 처리할 수 없다")
+    void rejectFailureWhenPaymentStatusIsInvalid()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/fail",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.INVALID_PAYMENT_STATUS
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.INVALID_PAYMENT_STATUS
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .failPayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("다른 회원의 결제 실패 처리 요청은 거절된다")
+    void rejectFailureForOtherMembersReservation()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/fail",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.RESERVATION_ACCESS_DENIED
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.RESERVATION_ACCESS_DENIED
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .failPayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 결제는 실패 처리할 수 없다")
+    void rejectFailureForMissingPayment()
+        throws Exception {
+
+        // given
+        Long paymentId = 999L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.PAYMENT_NOT_FOUND
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/fail",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.PAYMENT_NOT_FOUND
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.PAYMENT_NOT_FOUND
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .failPayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("결제 대기 상태가 아닌 예약은 결제 실패로 취소할 수 없다")
+    void rejectFailureForNonPayableReservation()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_NOT_PAYABLE
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/fail",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.RESERVATION_NOT_PAYABLE
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.RESERVATION_NOT_PAYABLE
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .failPayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 결제를 실패 처리할 수 없다")
+    void unauthenticatedMemberCannotFailPayment()
+        throws Exception {
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/fail",
+                    100L
+                )
+            )
+            .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(paymentFacade);
     }
