@@ -9,6 +9,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +25,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.roompick.domain.member.dto.LoginResponseDto;
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.member.entity.MemberRole;
+import com.roompick.domain.member.repository.FakeTokenBlacklistRepository;
 import com.roompick.domain.member.repository.MemberRepository;
 import com.roompick.domain.member.repository.TokenBlacklistRepository;
 import com.roompick.global.common.BusinessException;
@@ -57,27 +63,26 @@ class TokenServiceTest {
 
     @Test
     void 리프레시_토큰으로_재발급에_성공한다() {
-        // given: 유효하고 블랙리스트에 없는 리프레시 토큰과 존재하는 회원이 있습니다.
+        // given: 유효하고 아직 소모되지 않은 리프레시 토큰과 존재하는 회원이 있습니다.
         Member member = Member.create("test@example.com", "encoded-password", "길동");
         ReflectionTestUtils.setField(member, "id", 1L);
 
         given(jwtTokenProvider.validateToken("refresh-token")).willReturn(true);
         given(jwtTokenProvider.isRefreshToken("refresh-token")).willReturn(true);
         given(jwtTokenProvider.getJti("refresh-token")).willReturn("refresh-jti");
-        given(tokenBlacklistRepository.isBlacklisted("refresh-jti")).willReturn(false);
+        given(jwtTokenProvider.getRemainingSeconds("refresh-token")).willReturn(1209600L);
+        given(tokenBlacklistRepository.consume("refresh-jti", 1209600L)).willReturn(true);
         given(jwtTokenProvider.getMemberId("refresh-token")).willReturn(1L);
         given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-        given(jwtTokenProvider.getRemainingSeconds("refresh-token")).willReturn(1209600L);
         given(jwtTokenProvider.createAccessToken(1L, MemberRole.USER)).willReturn("new-access-token");
         given(jwtTokenProvider.createRefreshToken(1L)).willReturn("new-refresh-token");
 
         // when: 리프레시 토큰으로 재발급을 요청합니다.
         LoginResponseDto result = tokenService.reissue("refresh-token");
 
-        // then: 새 토큰 쌍이 발급되고, 사용한 리프레시 토큰은 블랙리스트에 등록됩니다.
+        // then: 새 토큰 쌍이 발급됩니다.
         assertThat(result.accessToken()).isEqualTo("new-access-token");
         assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
-        verify(tokenBlacklistRepository).blacklist("refresh-jti", 1209600L);
     }
 
     @Test
@@ -85,13 +90,13 @@ class TokenServiceTest {
         // given: 서명·만료 검증에 실패하는 토큰입니다.
         given(jwtTokenProvider.validateToken("invalid-token")).willReturn(false);
 
-        // when & then: INVALID_REFRESH_TOKEN 예외가 발생하고 블랙리스트에는 등록하지 않습니다.
+        // when & then: INVALID_REFRESH_TOKEN 예외가 발생하고 소모(블랙리스트 등록)도 시도하지 않습니다.
         assertThatThrownBy(() -> tokenService.reissue("invalid-token"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
 
-        verify(tokenBlacklistRepository, never()).blacklist(anyString(), anyLong());
+        verify(tokenBlacklistRepository, never()).consume(anyString(), anyLong());
     }
 
     @Test
@@ -108,12 +113,13 @@ class TokenServiceTest {
     }
 
     @Test
-    void 블랙리스트에_등록된_토큰이면_재발급에_실패한다() {
-        // given: 서명·타입은 유효하지만 이미 사용되어 블랙리스트에 등록된 토큰입니다.
+    void 이미_사용된_토큰이면_재발급에_실패한다() {
+        // given: 서명·타입은 유효하지만 이미 소모(재사용)되어 원자적 등록에 실패하는 토큰입니다.
         given(jwtTokenProvider.validateToken("used-refresh-token")).willReturn(true);
         given(jwtTokenProvider.isRefreshToken("used-refresh-token")).willReturn(true);
         given(jwtTokenProvider.getJti("used-refresh-token")).willReturn("used-jti");
-        given(tokenBlacklistRepository.isBlacklisted("used-jti")).willReturn(true);
+        given(jwtTokenProvider.getRemainingSeconds("used-refresh-token")).willReturn(1209600L);
+        given(tokenBlacklistRepository.consume("used-jti", 1209600L)).willReturn(false);
 
         // when & then: INVALID_REFRESH_TOKEN 예외가 발생합니다.
         assertThatThrownBy(() -> tokenService.reissue("used-refresh-token"))
@@ -124,11 +130,12 @@ class TokenServiceTest {
 
     @Test
     void 존재하지_않는_회원이면_재발급에_실패한다() {
-        // given: 토큰은 유효하지만 토큰에 담긴 회원 ID가 더 이상 존재하지 않습니다.
+        // given: 토큰은 유효하고 소모에도 성공했지만 담긴 회원 ID가 더 이상 존재하지 않습니다.
         given(jwtTokenProvider.validateToken("refresh-token")).willReturn(true);
         given(jwtTokenProvider.isRefreshToken("refresh-token")).willReturn(true);
         given(jwtTokenProvider.getJti("refresh-token")).willReturn("refresh-jti");
-        given(tokenBlacklistRepository.isBlacklisted("refresh-jti")).willReturn(false);
+        given(jwtTokenProvider.getRemainingSeconds("refresh-token")).willReturn(1209600L);
+        given(tokenBlacklistRepository.consume("refresh-jti", 1209600L)).willReturn(true);
         given(jwtTokenProvider.getMemberId("refresh-token")).willReturn(1L);
         given(memberRepository.findById(1L)).willReturn(Optional.empty());
 
@@ -140,18 +147,104 @@ class TokenServiceTest {
     }
 
     @Test
+    void 동시에_같은_리프레시_토큰으로_재발급하면_하나만_성공한다() throws InterruptedException {
+        // given: 실제 원자적 저장소(Fake)를 사용하는 TokenService와 여러 스레드가 동시에 쓸 동일한 리프레시 토큰이 있습니다.
+        Member member = Member.create("test@example.com", "encoded-password", "길동");
+        ReflectionTestUtils.setField(member, "id", 1L);
+
+        TokenService concurrentTokenService = new TokenService(
+                jwtTokenProvider,
+                new FakeTokenBlacklistRepository(),
+                memberRepository
+        );
+
+        given(jwtTokenProvider.validateToken("refresh-token")).willReturn(true);
+        given(jwtTokenProvider.isRefreshToken("refresh-token")).willReturn(true);
+        given(jwtTokenProvider.getJti("refresh-token")).willReturn("refresh-jti");
+        given(jwtTokenProvider.getRemainingSeconds("refresh-token")).willReturn(1209600L);
+        given(jwtTokenProvider.getMemberId("refresh-token")).willReturn(1L);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+        given(jwtTokenProvider.createAccessToken(1L, MemberRole.USER)).willReturn("new-access-token");
+        given(jwtTokenProvider.createRefreshToken(1L)).willReturn("new-refresh-token");
+
+        int threadCount = 10;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch ready = new CountDownLatch(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger successCount = new AtomicInteger();
+        AtomicInteger failureCount = new AtomicInteger();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    concurrentTokenService.reissue("refresh-token");
+                    successCount.incrementAndGet();
+                } catch (BusinessException exception) {
+                    failureCount.incrementAndGet();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+        }
+
+        ready.await();
+        start.countDown();
+        executor.shutdown();
+        executor.awaitTermination(5, TimeUnit.SECONDS);
+
+        // then: 단 하나의 요청만 성공하고 나머지는 모두 INVALID_REFRESH_TOKEN으로 거절됩니다.
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(failureCount.get()).isEqualTo(threadCount - 1);
+    }
+
+    @Test
     void 로그아웃하면_액세스_토큰과_리프레시_토큰을_모두_블랙리스트에_등록한다() {
-        // given: 로그아웃할 access 토큰과 refresh 토큰이 있습니다.
+        // given: 인증된 회원 본인 소유의 access 토큰과 refresh 토큰이 있습니다.
+        given(jwtTokenProvider.validateToken("refresh-token")).willReturn(true);
+        given(jwtTokenProvider.isRefreshToken("refresh-token")).willReturn(true);
+        given(jwtTokenProvider.getMemberId("refresh-token")).willReturn(1L);
         given(jwtTokenProvider.getJti("access-token")).willReturn("access-jti");
         given(jwtTokenProvider.getRemainingSeconds("access-token")).willReturn(1800L);
         given(jwtTokenProvider.getJti("refresh-token")).willReturn("refresh-jti");
         given(jwtTokenProvider.getRemainingSeconds("refresh-token")).willReturn(1209600L);
 
         // when: 로그아웃을 수행합니다.
-        tokenService.logout("access-token", "refresh-token");
+        tokenService.logout(1L, "access-token", "refresh-token");
 
         // then: 두 토큰 모두 각자의 남은 만료 시간만큼 블랙리스트에 등록됩니다.
-        verify(tokenBlacklistRepository).blacklist("access-jti", 1800L);
-        verify(tokenBlacklistRepository).blacklist("refresh-jti", 1209600L);
+        verify(tokenBlacklistRepository).consume("access-jti", 1800L);
+        verify(tokenBlacklistRepository).consume("refresh-jti", 1209600L);
+    }
+
+    @Test
+    void 로그아웃_시_위조된_리프레시_토큰이면_실패한다() {
+        // given: 서명 검증에 실패하는 리프레시 토큰입니다.
+        given(jwtTokenProvider.validateToken("invalid-refresh-token")).willReturn(false);
+
+        // when & then: INVALID_REFRESH_TOKEN 예외가 발생하고 어떤 토큰도 블랙리스트에 등록되지 않습니다.
+        assertThatThrownBy(() -> tokenService.logout(1L, "access-token", "invalid-refresh-token"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+
+        verify(tokenBlacklistRepository, never()).consume(anyString(), anyLong());
+    }
+
+    @Test
+    void 로그아웃_시_다른_회원의_리프레시_토큰이면_실패한다() {
+        // given: 인증된 회원(1L)과 리프레시 토큰의 소유자(2L)가 다릅니다.
+        given(jwtTokenProvider.validateToken("other-member-refresh-token")).willReturn(true);
+        given(jwtTokenProvider.isRefreshToken("other-member-refresh-token")).willReturn(true);
+        given(jwtTokenProvider.getMemberId("other-member-refresh-token")).willReturn(2L);
+
+        // when & then: INVALID_REFRESH_TOKEN 예외가 발생하고 어떤 토큰도 블랙리스트에 등록되지 않습니다.
+        assertThatThrownBy(() -> tokenService.logout(1L, "access-token", "other-member-refresh-token"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+
+        verify(tokenBlacklistRepository, never()).consume(anyString(), anyLong());
     }
 }

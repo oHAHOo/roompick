@@ -13,10 +13,11 @@ public class FakeTokenBlacklistRepository implements TokenBlacklistRepository {
     private final Set<String> blacklisted = ConcurrentHashMap.newKeySet();
 
     @Override
-    public void blacklist(String jti, long ttlSeconds) {
-        if (ttlSeconds > 0) {
-            blacklisted.add(jti);
+    public boolean consume(String jti, long ttlSeconds) {
+        if (ttlSeconds <= 0) {
+            return false;
         }
+        return blacklisted.add(jti);
     }
 
     @Override

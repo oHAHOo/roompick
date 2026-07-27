@@ -269,6 +269,69 @@ class AuthControllerTest {
             .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void 위조된_리프레시_토큰으로_로그아웃하면_500이_아닌_401로_실패한다() throws Exception {
+        // given: 유효한 access token은 있지만 body의 refresh token은 위조되었습니다.
+        signup("logoutinvalid@example.com", "Password123!", "로그아웃위조테스트");
+        String accessToken = login("logoutinvalid@example.com", "Password123!").get("accessToken").asText();
+
+        LogoutRequestDto request = new LogoutRequestDto("invalid.refresh.token");
+
+        // when & then: 예외가 GlobalExceptionHandler의 500으로 새지 않고 401로 처리됩니다.
+        mockMvc.perform(post("/api/v1/auth/logout")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("MEMBER_004"));
+    }
+
+    @Test
+    void Access_Token을_리프레시_토큰_자리에_넣고_로그아웃하면_실패한다() throws Exception {
+        // given: body에 refresh token 대신 access token을 담아 로그아웃을 요청합니다.
+        signup("logoutaccessasrefresh@example.com", "Password123!", "로그아웃타입테스트");
+        String accessToken = login("logoutaccessasrefresh@example.com", "Password123!").get("accessToken").asText();
+
+        LogoutRequestDto request = new LogoutRequestDto(accessToken);
+
+        // when & then: 타입 불일치로 401 실패합니다.
+        mockMvc.perform(post("/api/v1/auth/logout")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("MEMBER_004"));
+    }
+
+    @Test
+    void 다른_회원의_리프레시_토큰으로_로그아웃하면_실패하고_그_토큰은_무효화되지_않는다() throws Exception {
+        // given: 서로 다른 두 회원이 각각 로그인해서 토큰을 가지고 있습니다.
+        signup("victim@example.com", "Password123!", "피해자테스트");
+        JsonNode victimTokens = login("victim@example.com", "Password123!");
+        String victimRefreshToken = victimTokens.get("refreshToken").asText();
+
+        signup("attacker@example.com", "Password123!", "공격자테스트");
+        String attackerAccessToken = login("attacker@example.com", "Password123!").get("accessToken").asText();
+
+        LogoutRequestDto request = new LogoutRequestDto(victimRefreshToken);
+
+        // when: 공격자가 자신의 access token과 피해자의 refresh token으로 로그아웃을 시도하면
+        mockMvc.perform(post("/api/v1/auth/logout")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + attackerAccessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("MEMBER_004"));
+
+        // then: 소유자가 다르므로 거절되고, 피해자의 refresh token은 여전히 재발급에 사용할 수 있다.
+        RefreshRequestDto refreshRequest = new RefreshRequestDto(victimRefreshToken);
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(refreshRequest)))
+            .andExpect(status().isOk());
+    }
+
     private void signup(String email, String password, String name) throws Exception {
         SignupRequestDto request = new SignupRequestDto(email, password, name);
 
