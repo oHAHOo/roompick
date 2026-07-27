@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import com.roompick.domain.member.repository.TokenBlacklistRepository;
 import com.roompick.global.security.JwtAccessDeniedHandler;
 import com.roompick.global.security.JwtAuthenticationEntryPoint;
 import com.roompick.global.security.JwtAuthenticationFilter;
@@ -27,6 +28,7 @@ public class SecurityConfig {
     private static final String[] PERMIT_ALL_PATHS = {
         "/api/v1/auth/signup",
         "/api/v1/auth/login",
+        "/api/v1/auth/refresh",
         "/actuator/health",
         "/actuator/info"
     };
@@ -47,6 +49,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
         HttpSecurity http,
         JwtTokenProvider jwtTokenProvider,
+        TokenBlacklistRepository tokenBlacklistRepository,
         JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
         JwtAccessDeniedHandler jwtAccessDeniedHandler
     ) throws Exception {
@@ -64,7 +67,7 @@ public class SecurityConfig {
                 .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                 .accessDeniedHandler(jwtAccessDeniedHandler))
             .addFilterBefore(
-                new JwtAuthenticationFilter(jwtTokenProvider),
+                new JwtAuthenticationFilter(jwtTokenProvider, tokenBlacklistRepository),
                 UsernamePasswordAuthenticationFilter.class);
 
         SecurityFilterChain securityFilterChain = http.build();
