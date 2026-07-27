@@ -9,6 +9,7 @@ import java.time.LocalTime;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.member.entity.Member;
@@ -100,6 +101,106 @@ class ReservationTest {
         // then
         assertThat(exception.getErrorCode())
             .isEqualTo(ErrorCode.ROOM_CAPACITY_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("본인의 결제 대기 예약을 취소하면 상태와 취소 시각이 변경된다")
+    void cancelPendingPaymentReservation() {
+        // given: ID가 1인 회원의 결제 대기 예약이 있습니다.
+        Member member = createMember();
+        ReflectionTestUtils.setField(member, "id", 1L);
+
+        Reservation reservation = Reservation.create(
+            member,
+            createRoom(),
+            LocalDate.of(2026, 8, 10),
+            LocalDate.of(2026, 8, 12),
+            2,
+            LocalDateTime.of(2026, 8, 1, 14, 10)
+        );
+
+        LocalDateTime canceledAt =
+            LocalDateTime.of(2026, 8, 2, 10, 0);
+
+        // when: 예약 소유자가 예약을 취소합니다.
+        reservation.cancelByMember(
+            1L,
+            canceledAt
+        );
+
+        // then: 예약 상태와 취소 시각이 변경됩니다.
+        assertThat(reservation.getStatus())
+            .isEqualTo(ReservationStatus.CANCELED);
+        assertThat(reservation.getCanceledAt())
+            .isEqualTo(canceledAt);
+    }
+
+    @Test
+    @DisplayName("다른 회원의 예약은 취소할 수 없다")
+    void cancelOtherMembersReservation() {
+        // given: ID가 1인 회원의 예약이 있습니다.
+        Member member = createMember();
+        ReflectionTestUtils.setField(member, "id", 1L);
+
+        Reservation reservation = Reservation.create(
+            member,
+            createRoom(),
+            LocalDate.of(2026, 8, 10),
+            LocalDate.of(2026, 8, 12),
+            2,
+            LocalDateTime.of(2026, 8, 1, 14, 10)
+        );
+
+        // when: 다른 회원인 ID 2로 취소를 요청합니다.
+        BusinessException exception = catchThrowableOfType(
+            () -> reservation.cancelByMember(
+                2L,
+                LocalDateTime.of(2026, 8, 2, 10, 0)
+            ),
+            BusinessException.class
+        );
+
+        // then: 접근 거부 예외가 발생하고 예약 상태는 유지됩니다.
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_ACCESS_DENIED);
+        assertThat(reservation.getStatus())
+            .isEqualTo(ReservationStatus.PENDING_PAYMENT);
+        assertThat(reservation.getCanceledAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("이미 취소된 예약은 다시 취소할 수 없다")
+    void cancelAlreadyCanceledReservation() {
+        // given: 이미 한 번 취소된 예약이 있습니다.
+        Member member = createMember();
+        ReflectionTestUtils.setField(member, "id", 1L);
+
+        Reservation reservation = Reservation.create(
+            member,
+            createRoom(),
+            LocalDate.of(2026, 8, 10),
+            LocalDate.of(2026, 8, 12),
+            2,
+            LocalDateTime.of(2026, 8, 1, 14, 10)
+        );
+
+        reservation.cancelByMember(
+            1L,
+            LocalDateTime.of(2026, 8, 2, 10, 0)
+        );
+
+        // when: 같은 예약을 다시 취소합니다.
+        BusinessException exception = catchThrowableOfType(
+            () -> reservation.cancelByMember(
+                1L,
+                LocalDateTime.of(2026, 8, 2, 10, 1)
+            ),
+            BusinessException.class
+        );
+
+        // then: 취소 불가 예외가 발생합니다.
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.RESERVATION_NOT_CANCELABLE);
     }
 
     private Member createMember() {

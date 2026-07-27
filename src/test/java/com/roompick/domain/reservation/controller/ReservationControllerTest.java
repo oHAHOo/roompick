@@ -4,8 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,6 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.roompick.domain.member.entity.MemberRole;
+import com.roompick.domain.reservation.dto.ReservationCancelResponseDto;
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto.AccommodationSummaryDto;
@@ -754,5 +754,225 @@ class ReservationControllerTest {
 
         // 요청 검증 단계에서 차단되므로 Facade는 호출되지 않습니다.
         verifyNoInteractions(reservationFacade);
+    }
+
+    @Test
+    @DisplayName("인증된 회원은 자신의 결제 대기 예약을 취소할 수 있다")
+    void 인증된_회원은_예약을_취소할_수_있다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+        Long reservationId = 30L;
+
+        LocalDateTime canceledAt =
+            LocalDateTime.of(
+                2026,
+                8,
+                2,
+                10,
+                0
+            );
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        ReservationCancelResponseDto response =
+            new ReservationCancelResponseDto(
+                reservationId,
+                ReservationStatus.CANCELED,
+                canceledAt
+            );
+
+        given(
+            reservationFacade.cancelReservation(
+                memberId,
+                reservationId
+            )
+        ).willReturn(response);
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/reservations/{reservationId}/cancel",
+                    reservationId
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(true)
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value("예약이 취소되었습니다.")
+            )
+            .andExpect(
+                jsonPath("$.data.reservationId")
+                    .value(reservationId)
+            )
+            .andExpect(
+                jsonPath("$.data.status")
+                    .value("CANCELED")
+            )
+            .andExpect(
+                jsonPath("$.data.canceledAt")
+                    .value("2026-08-02T10:00:00")
+            );
+
+        verify(reservationFacade)
+            .cancelReservation(
+                memberId,
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 예약을 취소할 수 없다")
+    void 인증되지_않은_회원은_예약을_취소할_수_없다()
+        throws Exception {
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/reservations/{reservationId}/cancel",
+                    30L
+                )
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.UNAUTHORIZED.getCode()
+                    )
+            );
+
+        // 인증 단계에서 차단되므로 Facade는 호출되지 않습니다.
+        verifyNoInteractions(reservationFacade);
+    }
+
+    @Test
+    @DisplayName("다른 회원의 예약은 취소할 수 없다")
+    void 다른_회원의_예약은_취소할_수_없다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+        Long reservationId = 30L;
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.cancelReservation(
+                memberId,
+                reservationId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/reservations/{reservationId}/cancel",
+                    reservationId
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.RESERVATION_ACCESS_DENIED
+                            .getCode()
+                    )
+            );
+
+        verify(reservationFacade)
+            .cancelReservation(
+                memberId,
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("취소할 수 없는 상태의 예약은 취소 요청이 거절된다")
+    void 취소할_수_없는_예약_상태이면_요청이_거절된다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+        Long reservationId = 30L;
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.cancelReservation(
+                memberId,
+                reservationId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_NOT_CANCELABLE
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/reservations/{reservationId}/cancel",
+                    reservationId
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.RESERVATION_NOT_CANCELABLE
+                            .getCode()
+                    )
+            );
+
+        verify(reservationFacade)
+            .cancelReservation(
+                memberId,
+                reservationId
+            );
     }
 }

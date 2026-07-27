@@ -22,6 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.member.entity.Member;
+import com.roompick.domain.reservation.dto.ReservationCancelResponseDto;
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
@@ -460,6 +461,87 @@ class ReservationFacadeTest {
         then(reservationService)
             .should()
             .findMyReservation(
+                memberId,
+                reservationId
+            );
+    }
+
+    @Test
+    @DisplayName("취소된 예약을 예약 취소 응답 DTO로 변환한다")
+    void 결제_대기_예약을_취소한다() {
+        // given: 인증된 회원이 소유한 결제 대기 예약이 있습니다.
+        Long memberId = 1L;
+        Long reservationId = 30L;
+
+        LocalDateTime canceledAt =
+            LocalDateTime.of(
+                2026,
+                8,
+                2,
+                10,
+                0
+            );
+
+        Accommodation accommodation =
+            createAccommodation(10L);
+
+        Room room =
+            createRoom(
+                20L,
+                accommodation
+            );
+
+        Member member =
+            createMember(memberId);
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                room,
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2,
+                LocalDateTime.of(2026, 8, 1, 14, 10)
+            );
+
+        ReflectionTestUtils.setField(
+            reservation,
+            "id",
+            reservationId
+        );
+
+        reservation.cancelByMember(
+            memberId,
+            canceledAt
+        );
+
+        given(
+            reservationService.cancelReservation(
+                memberId,
+                reservationId
+            )
+        ).willReturn(reservation);
+
+        // when: Facade를 통해 예약을 취소합니다.
+        ReservationCancelResponseDto response =
+            reservationFacade.cancelReservation(
+                memberId,
+                reservationId
+            );
+
+        // then: 취소 결과가 응답 DTO로 변환됩니다.
+        assertThat(response.reservationId())
+            .isEqualTo(reservationId);
+
+        assertThat(response.status())
+            .isEqualTo(ReservationStatus.CANCELED);
+
+        assertThat(response.canceledAt())
+            .isEqualTo(canceledAt);
+
+        then(reservationService)
+            .should()
+            .cancelReservation(
                 memberId,
                 reservationId
             );

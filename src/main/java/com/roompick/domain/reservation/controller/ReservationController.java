@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.roompick.domain.reservation.dto.ReservationCancelResponseDto;
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
@@ -117,6 +119,35 @@ public class ReservationController {
                 .ok(
                     ApiResponseDto.success(
                         "예약 상세 조회에 성공했습니다.",
+                        response
+                    )
+                );
+
+        return result;
+    }
+
+    /**
+     * 인증된 회원의 결제 대기 예약을 취소합니다.
+     *
+     * Request Body 없이 예약 ID와 인증 회원 ID만 사용합니다.
+     */
+    @PatchMapping("/{reservationId}/cancel")
+    public ResponseEntity<ApiResponseDto<ReservationCancelResponseDto>>
+    cancelReservation(
+        @AuthenticationPrincipal AuthMember authMember,
+        @PathVariable Long reservationId
+    ) {
+        ReservationCancelResponseDto response =
+            reservationFacade.cancelReservation(
+                authMember.memberId(),
+                reservationId
+            );
+
+        ResponseEntity<ApiResponseDto<ReservationCancelResponseDto>> result =
+            ResponseEntity
+                .ok(
+                    ApiResponseDto.success(
+                        "예약이 취소되었습니다.",
                         response
                     )
                 );

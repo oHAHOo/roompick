@@ -196,6 +196,35 @@ public class ReservationService {
     }
 
     /**
+     * 인증된 회원의 결제 대기 예약을 취소합니다.
+     *
+     * 취소 응답에는 객실·숙소 정보가 필요하지 않으므로
+     * 불필요한 fetch join 없이 예약만 조회합니다.
+     *
+     * 영속 상태의 Reservation 값을 변경하므로
+     * 별도의 save 호출 없이 변경 감지로 반영됩니다.
+     */
+    @Transactional
+    public Reservation cancelReservation(
+        Long memberId,
+        Long reservationId
+    ) {
+        validateMemberId(memberId);
+        validateReservationId(reservationId);
+
+        Reservation reservation =
+            reservationRepository
+                .findById(reservationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+
+        LocalDateTime canceledAt = LocalDateTime.now(SERVICE_ZONE_ID);
+
+        reservation.cancelByMember(memberId, canceledAt);
+
+        return reservation;
+    }
+
+    /**
      * 같은 객실에 활성 상태로 겹치는 예약이 있는지 확인합니다.
      */
     private boolean existsActiveOverlappingReservation(
