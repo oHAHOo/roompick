@@ -2,6 +2,7 @@ package com.roompick.domain.reservation.entity;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.reservation.vo.ReservationPrice;
@@ -155,6 +156,54 @@ public class Reservation extends BaseTimeEntity {
         this.totalAmount = totalAmount;
         this.status = status;
         this.expiresAt = expiresAt;
+    }
+
+    public void validatePaymentPreparation(
+        Long memberId,
+        LocalDateTime now
+    ) {
+        validateOwner(memberId);
+        validatePendingPaymentStatus();
+        validatePaymentNotExpired(now);
+    }
+
+    private void validateOwner(Long memberId) {
+        if (
+            memberId == null
+                || !Objects.equals(
+                member.getId(),
+                memberId
+            )
+        ) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+        }
+    }
+
+    private void validatePendingPaymentStatus() {
+        if (
+            status
+                != ReservationStatus.PENDING_PAYMENT
+        ) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_NOT_PAYABLE
+            );
+        }
+    }
+
+    private void validatePaymentNotExpired(
+        LocalDateTime now
+    ) {
+        if (
+            now == null
+                || expiresAt == null
+                || !expiresAt.isAfter(now)
+        ) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_PAYMENT_EXPIRED
+            );
+        }
     }
 
     private static void validateMember(Member member) {

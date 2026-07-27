@@ -1,9 +1,9 @@
 # RoomPick 테이블 명세서
 
 - 프로젝트명: **RoomPick(룸픽)**
-- 문서 버전: `v0.2`
+- 문서 버전: `v0.5`
 - 작성일: 2026-07-21
-- 최종 수정일: 2026-07-22
+- 최종 수정일: 2026-07-24
 - DBMS: MySQL 8.4
 - 문자 집합: `utf8mb4`
 - 범위: RoomPick MVP 전체 도메인
@@ -43,7 +43,7 @@
 | 숙소 | `accommodations` | 객실이 소속된 숙소 정보 | IMSUN9 |
 | 객실 | `rooms` | 실제로 예약되는 물리적 객실 정보 | IMSUN9 |
 | 예약 | `reservations` | 회원의 숙박 예약 및 예약 당시 가격 정보 | IMSUN9 |
-| 결제 | `payments` | 예약별 결제 시도와 결과 이력 | minjae123123 |
+| 결제 | `payments` | MVP 기준 예약별 단일 결제 정보와 처리 결과 | minjae123123 |
 
 ---
 
@@ -260,7 +260,7 @@
 | 항목 | 내용 |
 | --- | --- |
 | 물리 테이블명 | `payments` |
-| 설명 | 예약별 결제 시도와 성공·실패·환불 결과를 저장한다. |
+| 설명 | MVP 기준으로 예약별 하나의 결제 정보와 성공·실패·환불 상태를 저장한다. |
 | Primary Key | `payment_id` |
 | 담당자 | minjae123123 |
 
@@ -269,16 +269,12 @@
 | 물리 컬럼명 | 논리 컬럼명 | 데이터 타입 | Null | 기본값 | 키 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `payment_id` | 결제 ID | `BIGINT` | N | `AUTO_INCREMENT` | PK | 결제 식별자 |
-| `reservation_id` | 예약 ID | `BIGINT` | N | - | FK | 결제 대상 예약 ID |
-| `amount` | 결제 금액 | `BIGINT` | N | - | - | 결제 요청 금액, 원 단위 |
-| `method` | 결제 수단 | `VARCHAR(30)` | N | - | - | 카드 등 결제 수단 |
-| `provider` | 결제 제공자 | `VARCHAR(30)` | N | - | - | MVP에서는 `FAKE`, 추후 실제 PG사 |
-| `provider_payment_key` | 외부 결제 키 | `VARCHAR(255)` | Y | - | UK | 외부 결제의 고유 식별자 |
-| `status` | 결제 상태 | `VARCHAR(30)` | N | - | - | 결제 처리 상태 |
-| `failure_reason` | 실패 사유 | `VARCHAR(500)` | Y | - | - | 결제 실패 원인 |
-| `paid_at` | 결제 완료 시각 | `DATETIME(6)` | Y | - | - | 결제 승인 완료 시각 |
-| `refunded_at` | 환불 완료 시각 | `DATETIME(6)` | Y | - | - | 전액 환불 완료 시각 |
-| `created_at` | 생성 시각 | `DATETIME(6)` | N | - | - | 결제 시도 생성 시각 |
+| `reservation_id` | 예약 ID | `BIGINT` | N | - | FK, UK | 결제 대상 예약 ID. MVP에서는 예약당 결제 1건만 허용 |
+| `amount` | 결제 금액 | `BIGINT` | N | - | - | 예약의 `total_amount`를 복사한 원 단위 금액 |
+| `status` | 결제 상태 | `VARCHAR(20)` | N | - | - | `READY`, `PAID`, `FAILED`, `REFUNDED` |
+| `approved_at` | 결제 승인 시각 | `DATETIME(6)` | Y | - | - | Mock 결제가 승인된 시각 |
+| `failed_at` | 결제 실패 시각 | `DATETIME(6)` | Y | - | - | Mock 결제가 실패 처리된 시각 |
+| `created_at` | 생성 시각 | `DATETIME(6)` | N | - | - | 결제 생성 시각 |
 | `updated_at` | 수정 시각 | `DATETIME(6)` | N | - | - | 결제 정보 최종 수정 시각 |
 
 ### 키·제약조건·인덱스
@@ -287,25 +283,38 @@
 | --- | --- | --- | --- |
 | PK | `pk_payments` | `payment_id` | 결제 기본 키 |
 | FK | `fk_payments_reservation` | `reservation_id → reservations.reservation_id` | 결제 대상 예약 참조 |
-| UK | `uk_payments_provider_payment_key` | `provider_payment_key` | 외부 결제 결과의 중복 반영 방지 |
-| INDEX | `idx_payments_reservation_created_at` | `reservation_id, created_at` | 예약별 결제 시도 이력 조회 |
+| UK | `uk_payments_reservation_id` | `reservation_id` | MVP에서 예약 1건당 결제 1건만 허용 |
 | CHECK | `chk_payments_amount` | `amount >= 0` | 음수 결제 금액 방지 |
 
 ### 상태값
 
 | 값 | 설명 |
 | --- | --- |
-| `READY` | 결제 요청 전 준비 상태 |
-| `PAID` | 결제 승인 완료 상태 |
-| `FAILED` | 결제 실패 상태 |
+| `READY` | 결제 정보가 생성되고 Mock 승인을 기다리는 상태 |
+| `PAID` | Mock 결제 승인 완료 상태 |
+| `FAILED` | Mock 결제 실패 상태 |
 | `REFUNDED` | 전액 환불 완료 상태 |
+
+### 예약-결제 관계 정책
+
+| 단계 | 관계 | 적용 방식 |
+| --- | --- | --- |
+| 현재 MVP | 예약 `1` : 결제 `1` | `payments.reservation_id`에 Unique Constraint를 적용하여 예약당 하나의 결제만 생성 |
+| 후속 확장 | 예약 `1` : 결제 `N` | 재결제·결제 수단 변경·PG 재시도 이력 요구가 생기면 Unique Constraint를 제거하고 결제 시도 이력 구조로 전환 |
+
+> 현재 테이블 구조, ERD 관계, 외래 키 관계표, DBML 및 Flyway V4는 모두 MVP 기준 `1:1`만 표현한다. 후속 `1:N` 전환 계획은 정책 메모이며 현재 스키마 정의에는 반영하지 않는다.
 
 ### 정책
 
+- 결제 준비 시 클라이언트 요청 금액이 아니라 `reservations.total_amount`를 Payment에 복사한다.
 - 결제 금액은 `reservations.total_amount`와 일치해야 한다.
-- 하나의 예약에는 최종적으로 하나의 `PAID` 결제만 허용한다.
-- 결제 실패 기록과 환불 이력은 삭제하지 않는다.
+- MVP에서는 결제 실패 후 새로운 Payment 행을 생성하는 재결제 기능을 제공하지 않는다.
+- Mock 결제 성공 시 `Payment.status`를 `PAID`, 예약 상태를 `CONFIRMED`로 변경한다.
+- Mock 결제 실패 시 `Payment.status`를 `FAILED`, 예약 상태를 `CANCELED`로 변경하여 객실 예약 점유를 해제한다.
+- 후속 버전에서 여러 결제 시도 이력이 필요해지면 `uk_payments_reservation_id`를 제거하고 예약 `1` : 결제 `N` 구조로 변경한다.
+- 전액 환불은 성공한 결제의 상태를 `REFUNDED`로 변경한다.
 - 부분 환불과 여러 환불 이력이 필요해지면 별도의 `refunds` 테이블을 추가한다.
+- 결제 데이터는 감사 이력이므로 물리 삭제하지 않는다.
 
 ---
 
@@ -316,7 +325,7 @@
 | `rooms` | `accommodation_id` | `accommodations` | `accommodation_id` | N:1 |
 | `reservations` | `member_id` | `members` | `member_id` | N:1 |
 | `reservations` | `room_id` | `rooms` | `room_id` | N:1 |
-| `payments` | `reservation_id` | `reservations` | `reservation_id` | N:1 |
+| `payments` | `reservation_id` | `reservations` | `reservation_id` | 1:1 |
 
 ---
 
@@ -339,7 +348,7 @@
 - [x] 회원 인증 방식을 JWT로 확정할지 → JWT로 확정. 로그아웃은 추후 JWT + Redis로 구현
 - [ ] 최초 관리자 계정을 준비하는 방식을 무엇으로 할지
 - [ ] 결제 대기 만료 시각 `expires_at`을 MVP부터 사용할지
-- [ ] 예약과 결제의 1:N 관계를 유지할지
+- [x] 예약과 결제 관계 → 현재 MVP 및 관련 ERD·DBML·테이블 명세·Flyway V4는 `1:1`로 확정하고, 후속 버전에서만 `1:N` 전환을 검토
 - [ ] MVP에서 전액 환불을 처리할지
 - [ ] 예약 겹침 동시성 제어 방식을 무엇으로 할지
 - [ ] 모든 CHECK 제약조건을 Flyway 마이그레이션에 포함할지

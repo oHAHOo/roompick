@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Objects;
 
+import com.roompick.domain.reservation.entity.Reservation;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -246,6 +247,51 @@ public class ReservationService {
             );
         }
     }
+
+    /**
+     * 예약 ID를 기준으로 예약을 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public Reservation findById(
+        Long reservationId
+    ) {
+        return reservationRepository
+            .findById(reservationId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.RESERVATION_NOT_FOUND
+                )
+            );
+    }
+
+    /**
+     * 결제 준비가 가능한 예약을 조회하고 검증합니다.
+     */
+    @Transactional(readOnly = true)
+    public Reservation findForPaymentPreparation(
+        Long reservationId,
+        Long memberId
+    ) {
+        Reservation reservation =
+            reservationRepository
+                .findById(reservationId)
+                .orElseThrow(() ->
+                    new BusinessException(
+                        ErrorCode.RESERVATION_NOT_FOUND
+                    )
+                );
+
+        LocalDateTime now =
+            LocalDateTime.now(SERVICE_ZONE_ID);
+
+        reservation.validatePaymentPreparation(
+            memberId,
+            now
+        );
+
+        return reservation;
+    }
+
 
     /**
      * 예약 목록의 페이지 번호와 크기가 허용 범위인지 확인합니다.

@@ -1,6 +1,6 @@
 Project RoomPick {
   database_type: 'MySQL'
-  Note: 'RoomPick MVP 전체 ERD v0.2'
+  Note: 'RoomPick MVP 전체 ERD v0.3 - 예약과 결제는 MVP 기준 1:1'
 }
 
 Enum member_role {
@@ -97,21 +97,15 @@ Table reservations {
 
 Table payments {
   payment_id bigint [pk, increment]
-  reservation_id bigint [not null]
-  amount bigint [not null, note: '원 단위, 예약 금액과 일치']
-  method varchar(30) [not null]
-  provider varchar(30) [not null, note: 'MVP는 FAKE']
-  provider_payment_key varchar(255) [unique]
+  reservation_id bigint [not null, unique, note: 'MVP 예약 1건당 결제 1건']
+  amount bigint [not null, note: '원 단위, 예약 total_amount와 일치하며 0 이상']
   status payment_status [not null]
-  failure_reason varchar(500)
-  paid_at datetime
-  refunded_at datetime
+  approved_at datetime [note: 'Mock 결제 승인 완료 시각']
+  failed_at datetime [note: 'Mock 결제 실패 처리 시각']
   created_at datetime [not null]
   updated_at datetime [not null]
 
-  Indexes {
-    (reservation_id, created_at) [name: 'idx_payment_reservation_created']
-  }
+  Note: '현재 MVP는 예약과 결제 1:1. 후속 버전에서 재결제 이력이 필요하면 reservation_id unique를 제거하고 1:N으로 전환한다.'
 }
 
 Ref: rooms.accommodation_id > accommodations.accommodation_id [delete: restrict, update: cascade]
