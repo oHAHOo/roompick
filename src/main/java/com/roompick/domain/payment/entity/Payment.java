@@ -119,6 +119,17 @@ public class Payment extends BaseTimeEntity {
         this.approvedAt = approvedAt;
     }
 
+    /**
+     * READY 상태의 결제를 실패 상태로 변경합니다.
+     */
+    public void fail(LocalDateTime failedAt) {
+        validateReadyStatus();
+        validateFailedAt(failedAt);
+
+        this.status = PaymentStatus.FAILED;
+        this.failedAt = failedAt;
+    }
+
     private void validateReadyStatus() {
         if (status != PaymentStatus.READY) {
             throw new BusinessException(
@@ -141,6 +152,16 @@ public class Payment extends BaseTimeEntity {
         LocalDateTime approvedAt
     ) {
         if (approvedAt == null) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
+    private static void validateFailedAt(
+        LocalDateTime failedAt
+    ) {
+        if (failedAt == null) {
             throw new BusinessException(
                 ErrorCode.INVALID_INPUT_VALUE
             );

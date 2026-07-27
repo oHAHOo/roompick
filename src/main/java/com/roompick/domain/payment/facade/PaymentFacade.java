@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,6 +108,59 @@ public class PaymentFacade {
 
         return PaymentApproveResponseDto.from(
             approvedPayment
+        );
+    }
+
+    /**
+     * READY 상태의 Mock 결제를 실패 처리하고
+     * 연결된 예약을 취소합니다.
+     *
+     * 결제 상태를 먼저 검증하여 이미 처리된 결제에는
+     * INVALID_PAYMENT_STATUS를 반환합니다.
+     *
+     * 결제와 예약 상태 변경은 하나의 트랜잭션에서 처리되므로
+     * 예약 검증에 실패하면 Payment 변경도 롤백됩니다.
+     */
+    @Transactional
+    public PaymentFailResponseDto failPayment(
+        Long paymentId,
+        Long memberId
+    ) {
+        Payment payment =
+            paymentService.findById(paymentId);
+
+        Reservation reservation =
+            payment.getReservation();
+
+        LocalDateTime failedAt =
+            LocalDateTime.now(SERVICE_ZONE_ID)
+                .truncatedTo(ChronoUnit.MICROS);
+
+        /*
+         * Payment가 READY 상태인지 먼저 검증한 뒤
+         * FAILED 상태로 변경합니다.
+         */
+        Payment failedPayment =
+            paymentService.failPayment(
+                payment,
+                failedAt
+            );
+
+        /*
+         * 연결된 예약의 소유자와 상태를 검증한 뒤
+         * CANCELED 상태로 변경합니다.
+         *
+         * 결제 대기 시간이 만료된 예약도 객실 점유를
+         * 해제해야 하므로 만료 여부는 검사하지 않습니다.
+         */
+        reservationService.cancelByPaymentFailure(
+            reservation,
+            memberId,
+            failedAt
+        );
+
+        return PaymentFailResponseDto.from(
+            failedPayment
         );
     }
 }

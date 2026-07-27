@@ -414,4 +414,21 @@ public class ReservationService {
 
         return reservation;
     }
+
+    /**
+     * 결제 실패로 인해 결제 대기 상태의 예약을 취소합니다.
+     */
+    @Transactional
+    public Reservation cancelByPaymentFailure(
+        Reservation reservation,
+        Long memberId,
+        LocalDateTime canceledAt
+    ) {
+        reservation.cancelByPaymentFailure(
+            memberId,
+            canceledAt
+        );
+
+        return reservation;
+    }
 }
