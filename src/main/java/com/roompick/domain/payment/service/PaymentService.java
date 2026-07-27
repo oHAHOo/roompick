@@ -11,6 +11,8 @@ import com.roompick.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * 결제 생성과 결제 상태 관리를 담당하는 Service입니다.
  */
@@ -68,6 +70,33 @@ public class PaymentService {
                     ErrorCode.PAYMENT_NOT_FOUND
                 )
             );
+    }
+
+    /**
+     * READY 상태의 결제를 승인합니다.
+     */
+    @Transactional
+    public Payment approvePayment(
+        Payment payment,
+        long requestedAmount,
+        LocalDateTime approvedAt
+    ) {
+        validatePayment(payment);
+
+        payment.approve(
+            requestedAmount,
+            approvedAt
+        );
+
+        return payment;
+    }
+
+    private void validatePayment(Payment payment) {
+        if (payment == null) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_NOT_FOUND
+            );
+        }
     }
 
     private void validateReservation(

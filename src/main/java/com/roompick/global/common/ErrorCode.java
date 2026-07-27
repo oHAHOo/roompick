@@ -52,7 +52,9 @@ public enum ErrorCode {
     // 결제 오류
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_NOT_FOUND", "결제 정보를 찾을 수 없습니다."),
     PAYMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "PAYMENT_ALREADY_EXISTS", "해당 예약의 결제가 이미 생성되었습니다."),
-    INVALID_PAYMENT_AMOUNT(HttpStatus.BAD_REQUEST, "INVALID_PAYMENT_AMOUNT", "결제 금액이 올바르지 않습니다.");
+    INVALID_PAYMENT_AMOUNT(HttpStatus.BAD_REQUEST, "INVALID_PAYMENT_AMOUNT", "결제 금액이 올바르지 않습니다."),
+    INVALID_PAYMENT_STATUS(HttpStatus.CONFLICT,"INVALID_PAYMENT_STATUS","현재 결제 상태에서는 요청을 처리할 수 없습니다."),
+    PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST,"PAYMENT_AMOUNT_MISMATCH","결제 요청 금액이 저장된 결제 금액과 일치하지 않습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;
