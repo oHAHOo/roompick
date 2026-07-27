@@ -574,6 +574,13 @@ Authorization: Bearer {accessToken}
 
 인증된 회원이 자신의 결제 대기 또는 확정 예약을 취소한다.
 
+> **현재 구현 범위**
+>
+> - W1에서는 `PENDING_PAYMENT` 예약의 직접 취소를 구현한다.
+> - `CONFIRMED` 예약은 결제 환불 없이 예약 상태만 변경하지 않는다.
+> - `CONFIRMED → 결제 환불 → CANCELED` 통합 흐름은 W2에서 결제 도메인과 연결한다.
+> - 아래 상태별 처리와 처리 순서는 최종 MVP 통합 기준이다.
+
 ### Request
 
 ```http
