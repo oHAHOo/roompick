@@ -2,7 +2,7 @@
 
 - 문서 버전: `v0.2`
 - 작성일: 2026-07-22
-- 최종 수정일: 2026-07-23
+- 최종 수정일: 2026-07-27
 - 담당자: 황정후
 - 담당 기능: 회원가입·로그인, 토큰 재발급·로그아웃, JWT 인증·인가
 - 협업 도메인: 관리자(minjae123123), 숙소·객실·예약(임선구)
@@ -288,6 +288,19 @@ Content-Type: application/json
 | --- | --- | --- |
 | `401` | `UNAUTHORIZED` | Access Token 없음·형식 오류·만료·이미 블랙리스트에 등록됨 |
 | `400` | `INVALID_INPUT_VALUE` | `refreshToken` 누락 |
+| `401` | `INVALID_REFRESH_TOKEN` | Refresh Token 서명 불일치·만료·타입 불일치, 또는 인증된 회원과 Refresh Token 소유자가 다름 |
+
+### 처리 순서
+
+```text
+Access Token 인증 확인 (JwtAuthenticationFilter)
+→ Refresh Token 서명·만료·타입(REFRESH) 검증
+→ 인증된 회원(AuthMember)과 Refresh Token 소유자 일치 확인
+→ 검증 실패 시 401 INVALID_REFRESH_TOKEN 응답
+→ Access Token을 블랙리스트에 등록 (남은 만료 시간만큼 TTL 설정)
+→ 검증된 Refresh Token을 블랙리스트에 등록 (남은 만료 시간만큼 TTL 설정)
+→ 로그아웃 완료 응답
+```
 
 ### 처리 순서
 
