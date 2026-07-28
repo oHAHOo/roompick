@@ -27,7 +27,7 @@ public class RoomController {
     private final RoomFacade roomFacade;
 
     /**
-     * 객실과 소속 숙소의 상세 정보를 조회합니다.
+     * 객실 상세 화면에 필요한 객실 기본 정보를 조회합니다.
      */
     @GetMapping("/{roomId}")
     public ResponseEntity<ApiResponseDto<RoomDetailResponseDto>>
