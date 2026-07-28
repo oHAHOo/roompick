@@ -1,12 +1,13 @@
 # RoomPick API 명세서 — 조민재 담당
 
-- 문서 버전: `v0.1`
+- 문서 버전: `v0.2`
 - 작성일: 2026-07-22
+- 최종 수정일: 2026-07-28
 - 담당자: minjae123123
 - 담당 기능: 관리자 숙소·객실 등록
 - 협업 도메인: 숙소, 객실, 회원·인증·보안
 
-이 문서는 RoomPick MVP의 관리자 전용 숙소·객실 등록 API와 팀원 간 구현 경계를 정의한다. 결제 API는 minjae123123 담당의 별도 명세에서 관리한다.
+이 문서는 RoomPick MVP의 관리자 전용 숙소·객실 등록 API와 팀원 간 구현 경계를 정의한다. 결제 API는 minjae123123 담당의 별도 명세에서 관리한다. 객실 상태의 의미와 날짜별 `SOLD_OUT` 계산 규칙은 `docs/policy/ROOM_POLICY.md`를 우선 기준으로 삼는다.
 
 ---
 
@@ -15,11 +16,15 @@
 1. API 기본 경로는 `/api/v1`을 사용한다.
 2. 관리자 등록 API는 인증된 `ADMIN`만 호출할 수 있다.
 3. 일반 회원가입의 기본 권한은 `USER`이며 요청으로 `ADMIN`을 선택할 수 없다.
-4. 숙소와 객실의 생성 상태는 서버에서 `ACTIVE`로 정한다.
-5. 관리자 ID와 상태는 Request Body로 받지 않는다.
-6. 숙소·객실 수정·삭제·관리 목록과 검색은 MVP에서 제외한다.
-7. Controller는 Facade만 호출하고, AdminFacade가 숙소·객실 Service를 조율한다.
-8. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다.
+4. 숙소의 생성 상태는 서버에서 `ACTIVE`로 정한다.
+5. 객실의 생성 상태는 서버에서 `INACTIVE`로 정한다.
+6. 관리자 ID와 상태는 Request Body로 받지 않는다.
+7. 관리자가 `SOLD_OUT` 상태를 직접 지정하거나 변경하지 않는다.
+8. `SOLD_OUT`은 사용자가 선택한 숙박 기간의 활성 예약 존재 여부로 계산한다.
+9. 숙소·객실 수정·삭제·관리 목록과 검색은 MVP에서 제외한다.
+10. Controller는 Facade만 호출하고, AdminFacade가 숙소·객실 Service를 조율한다.
+11. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다.
+12. 객실 공개·비공개 상태 전환 API의 URL과 요청 형식은 별도 구현 이슈에서 확정한다.
 
 ---
 
@@ -67,6 +72,8 @@ Content-Type: application/json
 | 1 | `POST` | `/api/v1/admin/accommodations` | 관리자 숙소 등록 | `ADMIN` 필요 |
 | 2 | `POST` | `/api/v1/admin/accommodations/{accommodationId}/rooms` | 관리자 객실 등록 | `ADMIN` 필요 |
 
+> 객실 공개·비공개 상태 전환 API는 필요하지만 현재 등록 API 명세에는 포함하지 않는다. 별도 구현 이슈에서 Method, URL, Request Body를 확정한다.
+
 ---
 
 # 관리자 숙소·객실 등록 API
@@ -103,7 +110,7 @@ Content-Type: application/json
 | `checkInTime` | `LocalTime` | O | `HH:mm:ss` |
 | `checkOutTime` | `LocalTime` | O | `HH:mm:ss` |
 
-`status`와 관리자 ID는 Request Body로 받지 않는다. 상태는 서버에서 `ACTIVE`로 정하고 관리자 여부는 인증 정보로 검증한다.
+`status`와 관리자 ID는 Request Body로 받지 않는다. 숙소 상태는 서버에서 `ACTIVE`로 정하고 관리자 여부는 인증 정보로 검증한다.
 
 ### Response — 201 Created
 
@@ -147,7 +154,7 @@ Content-Type: application/json
 
 ## 5. 관리자 객실 등록
 
-인증된 관리자가 기존 숙소에 실제 객실을 등록한다. 생성된 객실의 초기 상태는 `ACTIVE`이다.
+인증된 관리자가 기존 숙소에 실제 객실을 등록한다. 생성된 객실의 초기 상태는 `INACTIVE`이며, 공개 처리 전에는 사용자 화면에 노출되지 않는다.
 
 ### Request
 
@@ -185,7 +192,7 @@ Content-Type: application/json
 | `standardCapacity` | `int` | O | 1명 이상 |
 | `maxCapacity` | `int` | O | 기준 인원 이상 |
 
-`status`는 Request Body로 받지 않고 서버에서 `ACTIVE`로 정한다.
+`status`는 Request Body로 받지 않고 서버에서 `INACTIVE`로 정한다. 관리자가 `SOLD_OUT`을 요청 값으로 전달할 수 없다.
 
 ### Response — 201 Created
 
@@ -202,7 +209,7 @@ Content-Type: application/json
     "pricePerNight": 100000,
     "standardCapacity": 2,
     "maxCapacity": 2,
-    "status": "ACTIVE"
+    "status": "INACTIVE"
   }
 }
 ```
@@ -228,9 +235,17 @@ Content-Type: application/json
 → 숙소 조회 및 운영 상태 확인
 → 요청 값 검증
 → 같은 숙소의 객실 번호 중복 확인
-→ ACTIVE 상태의 객실 생성 및 저장
+→ INACTIVE 상태의 객실 생성 및 저장
 → 생성 결과 반환
 ```
+
+### 등록 이후 상태 정책
+
+- 객실 등록 직후 사용자용 목록과 상세 조회에는 노출되지 않는다.
+- 관리자가 공개 처리하면 `ACTIVE`로 전환하고 사용자용 조회 대상에 포함한다.
+- 관리자가 운영을 중지하면 `INACTIVE`로 전환한다.
+- `SOLD_OUT`은 관리자가 변경하는 상태가 아니다.
+- `ACTIVE` 객실에 대해 사용자가 선택한 기간과 겹치는 활성 예약이 존재할 때만 화면에서 `SOLD_OUT`으로 표시한다.
 
 ---
 
@@ -284,3 +299,5 @@ AdminController
 - [ ] 실제 인증 객체에서 권한을 어떤 형태로 제공할지
 - [ ] AdminFacade가 사용할 숙소·객실 Service 메서드 계약
 - [ ] 결제 관리자 기능이 추가될 경우 같은 관리자 API 명세에 포함할지
+- [ ] 객실 공개·비공개 상태 전환 API의 Method, URL, Request Body
+- [ ] 객실 등록 기능과 상태 전환 기능을 같은 이슈에서 구현할지 별도 이슈로 분리할지
