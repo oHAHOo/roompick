@@ -121,15 +121,42 @@ class RoomServiceTest {
         given(roomRepository.findById(roomId))
             .willReturn(Optional.of(room));
 
-        // when & then
-        assertThatThrownBy(() ->
-            roomService.findReservableRoom(roomId, 3)
-        )
-            .isInstanceOf(BusinessException.class)
-            .extracting(exception ->
-                ((BusinessException) exception).getErrorCode()
-            )
-            .isEqualTo(ErrorCode.ROOM_CAPACITY_EXCEEDED);
+        // when
+        BusinessException exception =
+            assertThrows(
+                BusinessException.class,
+                () -> roomService.findReservableRoom(
+                    roomId,
+                    3
+                )
+            );
+
+        // then: 기존 비즈니스 에러 코드를 유지합니다.
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.ROOM_CAPACITY_EXCEEDED
+            );
+
+        /*
+         * 상단 에러 메시지보다 구체적인 최대 허용 인원을
+         * guestCount 필드 상세 오류로 전달하는지 확인합니다.
+         */
+        assertThat(exception.getFieldErrors())
+            .hasSize(1);
+
+        assertThat(
+            exception.getFieldErrors()
+                .get(0)
+                .field()
+        ).isEqualTo("guestCount");
+
+        assertThat(
+            exception.getFieldErrors()
+                .get(0)
+                .message()
+        ).isEqualTo(
+            "선택한 객실은 최대 2명까지 예약할 수 있습니다."
+        );
     }
 
     @Test

@@ -150,15 +150,34 @@ public class RoomService {
         Room room,
         int guestCount
     ) {
+        /*
+         * DTO 검증을 거치지 않고 Service가 직접 호출되는 경우를 대비한
+         * 방어 검증입니다.
+         */
         if (guestCount < 1) {
             throw new BusinessException(
                 ErrorCode.INVALID_GUEST_COUNT
             );
         }
 
-        if (guestCount > room.getMaxCapacity()) {
+        int maxCapacity =
+            room.getMaxCapacity();
+
+        if (guestCount > maxCapacity) {
+            /*
+             * 상단 메시지보다 구체적인 최대 허용 인원을 제공하므로
+             * guestCount 필드 상세 오류를 함께 전달합니다.
+             */
             throw new BusinessException(
-                ErrorCode.ROOM_CAPACITY_EXCEEDED
+                ErrorCode.ROOM_CAPACITY_EXCEEDED,
+                List.of(
+                    new BusinessException.BusinessFieldError(
+                        "guestCount",
+                        "선택한 객실은 최대 "
+                            + maxCapacity
+                            + "명까지 예약할 수 있습니다."
+                    )
+                )
             );
         }
     }
