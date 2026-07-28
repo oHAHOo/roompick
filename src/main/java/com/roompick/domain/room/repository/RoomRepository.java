@@ -16,9 +16,11 @@ import com.roompick.domain.room.entity.Room;
 public interface RoomRepository extends JpaRepository<Room, Long> {
 
     /**
-     * 객실 상세 조회에 필요한 숙소까지 한 번의 쿼리로 조회합니다.
+     * 예약 생성에 필요한 객실과 소속 숙소를
+     * fetch join으로 한 번에 조회합니다.
      *
-     * LAZY 연관관계를 개별 조회하면서 발생할 수 있는 추가 쿼리를 방지합니다.
+     * 예약 생성 응답에서 숙소 정보를 사용할 때
+     * LAZY 연관관계의 추가 조회 쿼리가 발생하지 않도록 합니다.
      */
     @Query("""
             SELECT room
@@ -32,11 +34,11 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
      * 특정 숙소에 포함된 객실을 한 번의 쿼리로 조회합니다.
      */
     @Query("""
-            SELECT room
-            FROM Room room
-            WHERE room.accommodation.id = :accommodationId
-            ORDER BY room.id ASC
-            """)
+        SELECT room
+        FROM Room room
+        WHERE room.accommodation.id = :accommodationId
+        ORDER BY room.id ASC
+        """)
     List<Room> findAllByAccommodationId(@Param("accommodationId") Long accommodationId);
 
     /**

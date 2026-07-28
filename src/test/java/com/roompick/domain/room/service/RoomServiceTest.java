@@ -46,7 +46,7 @@ class RoomServiceTest {
         Long roomId = 1L;
         Room room = createRoom();
 
-        given(roomRepository.findByIdWithAccommodation(roomId))
+        given(roomRepository.findById(roomId))
             .willReturn(Optional.of(room));
 
         // when: 객실 ID로 상세 조회합니다.
@@ -61,7 +61,7 @@ class RoomServiceTest {
         // given: 해당 ID의 객실이 존재하지 않습니다.
         Long roomId = 999L;
 
-        given(roomRepository.findByIdWithAccommodation(roomId))
+        given(roomRepository.findById(roomId))
             .willReturn(Optional.empty());
 
         // when & then: 객실 없음 공통 예외가 발생합니다.
