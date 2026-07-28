@@ -11,7 +11,6 @@ import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.room.dto.RoomListResponseDto;
-import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
 
 import lombok.RequiredArgsConstructor;
@@ -45,17 +44,22 @@ public class AccommodationFacade {
     }
 
     /**
-     * 숙소 기본 정보와 소속 객실 목록을 함께 조회합니다.
+     * 운영 중인 숙소의 기본 정보를 조회합니다.
      *
-     * 각 도메인의 Service를 직접 연결하지 않고
-     * Facade에서 전체 조회 흐름을 조율합니다.
+     * 객실 목록은 별도의 숙소별 객실 목록 조회 API가 담당하므로
+     * 숙소 상세 조회에서는 불필요한 객실 조회를 수행하지 않습니다.
      */
-    public AccommodationDetailResponseDto getAccommodationDetail(Long accommodationId) {
-        Accommodation accommodation = accommodationService.findById(accommodationId);
+    public AccommodationDetailResponseDto getAccommodationDetail(
+        Long accommodationId
+    ) {
+        Accommodation accommodation =
+            accommodationService.findActiveById(
+                accommodationId
+            );
 
-        List<Room> rooms = roomService.findAllByAccommodationId(accommodationId);
-
-        return AccommodationDetailResponseDto.of(accommodation, rooms);
+        return AccommodationDetailResponseDto.from(
+            accommodation
+        );
     }
 
     /**
