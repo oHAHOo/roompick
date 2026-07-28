@@ -19,26 +19,26 @@ public class GlobalExceptionHandler {
         ErrorResponseDto body = ErrorResponseDto.from(errorCode);
 
         ResponseEntity<ErrorResponseDto> response = ResponseEntity
-                .status(errorCode.getHttpStatus())
-                .body(body);
+            .status(errorCode.getHttpStatus())
+            .body(body);
         return response;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponseDto> handleValidationException(
-            MethodArgumentNotValidException exception
+        MethodArgumentNotValidException exception
     ) {
         List<ValidationErrorDto> errors = exception.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .map(this::toValidationError)
-                .toList();
+            .getFieldErrors()
+            .stream()
+            .map(this::toValidationError)
+            .toList();
         ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
         ErrorResponseDto body = ErrorResponseDto.of(errorCode, errors);
 
         ResponseEntity<ErrorResponseDto> response = ResponseEntity
-                .status(errorCode.getHttpStatus())
-                .body(body);
+            .status(errorCode.getHttpStatus())
+            .body(body);
         return response;
     }
 
@@ -49,8 +49,8 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
         ErrorResponseDto body = ErrorResponseDto.from(errorCode);
         ResponseEntity<ErrorResponseDto> response = ResponseEntity
-                .status(errorCode.getHttpStatus())
-                .body(body);
+            .status(errorCode.getHttpStatus())
+            .body(body);
         return response;
     }
 

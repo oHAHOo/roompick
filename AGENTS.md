@@ -5,16 +5,21 @@
 ## 작업 전 필수 확인
 
 1. `docs/MVP_CONTEXT.md`
-2. `docs/CODE_CONVENTION.md`
-3. `docs/ERD.md`
-4. 변경 대상 API가 있다면 `docs/API_SPEC_OWNER.md`
+2. 기능별 비즈니스 규칙과 역할 기반 접근 권한은 `docs/policy/`
+3. `docs/CODE_CONVENTION.md`
+4. `docs/ERD.md`
+5. 임선구 담당 API는 `docs/API_SPEC_OWNER.md`
+6. 관리자 담당 API는 `docs/API_SPEC_ADMIN.md`
 
 ## 고정된 MVP 범위
 
 - 서비스는 숙박 예약 애플리케이션이다.
-- 숙소 1개와 실제 객실 1개의 더미 데이터만 사용한다.
+- 관리자는 `ADMIN` 권한으로 숙소와 실제 객실을 등록한다.
+- 일반 회원가입으로는 `ADMIN` 권한을 선택할 수 없다.
+- MVP 검증에는 관리자가 등록한 숙소 1개와 실제 객실 1개를 사용한다.
 - 검색 기능은 구현하지 않는다.
-- 핵심 흐름은 객실 확인 → 예약 → 결제 → 예약 확인·취소이다.
+- 관리자 기능은 숙소·객실 등록까지만 포함하고 수정·삭제·관리 화면은 제외한다.
+- 핵심 흐름은 관리자 숙소·객실 등록 → 객실 확인 → 예약 → 결제 → 예약 확인·취소이다.
 - MVP 밖의 기능을 임의로 추가하지 않는다.
 
 ## 고정된 코드 규칙
@@ -31,10 +36,12 @@
 ## 도메인 담당자
 
 - IMSUN9: accommodation, room, reservation, integration
-- minjae123123: payment
+- minjae123123: payment, admin
 - oHAHOo: member, auth, security
 
 공통 파일이나 다른 담당자의 영역을 변경해야 하면 PR에 이유와 영향 범위를 명시한다.
+
+관리자 숙소·객실 등록은 minjae123123이 Controller·Facade·DTO를 담당하고, IMSUN9이 소유한 Accommodation·Room Service를 통해 처리한다. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다. `ADMIN` 권한과 접근 제어는 oHAHOo가 담당한다.
 
 ## 작업 완료 조건
 
