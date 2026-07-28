@@ -23,32 +23,17 @@ public class RoomService {
     private final RoomRepository roomRepository;
 
     /**
-     * 객실 ID로 객실과 소속 숙소를 함께 조회합니다.
+     * 객실 상세 조회에 필요한 객실만 조회합니다.
      *
-     * fetch join을 사용해 객실 상세 응답을 만들 때
-     * 숙소 조회 쿼리가 추가로 발생하지 않도록 합니다.
+     * 숙소 정보는 객실 상세 응답에 사용하지 않으므로
+     * fetch join 없이 객실만 조회합니다.
      */
     @Transactional(readOnly = true)
     public Room findById(Long roomId) {
-        return roomRepository.findByIdWithAccommodation(roomId)
+        return roomRepository.findById(roomId)
             .orElseThrow(() ->
                 new BusinessException(ErrorCode.ROOM_NOT_FOUND)
             );
-    }
-
-    /**
-     * 특정 숙소에 소속된 객실 목록을 조회합니다.
-     *
-     * 숙소의 존재 여부는 AccommodationService에서 먼저 확인하므로
-     * 객실이 없으면 빈 목록을 반환합니다.
-     */
-    @Transactional(readOnly = true)
-    public List<Room> findAllByAccommodationId(
-        Long accommodationId
-    ) {
-        return roomRepository.findAllByAccommodationId(
-            accommodationId
-        );
     }
 
     /**

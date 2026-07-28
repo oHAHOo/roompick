@@ -159,7 +159,8 @@ GET /api/v1/accommodations?page=0&size=20
       {
         "accommodationId": 1,
         "name": "룸픽 호텔",
-        "address": "서울특별시 강남구 테헤란로 123"
+        "address": "서울특별시 강남구 테헤란로 123",
+        "imageUrl": null
       }
     ],
     "pageNumber": 0,
@@ -182,7 +183,8 @@ GET /api/v1/accommodations?page=0&size=20
 - `ACTIVE` 상태의 숙소만 공개 목록에 포함한다.
 - 숙소가 없으면 오류가 아닌 빈 `content`를 반환한다.
 - 숙소 ID 오름차순으로 고정 정렬한다.
-- 목록 화면에 필요한 `accommodationId`, `name`, `address`만 DTO로 직접 조회한다.
+- 목록 화면에 필요한 `accommodationId`, `name`, `address`, `imageUrl`을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 검색·필터·사용자 지정 정렬은 W3 확장 범위에서 구현한다.
 
 ---
@@ -215,7 +217,8 @@ GET /api/v1/accommodations/1/rooms
       "name": "디럭스 더블룸",
       "pricePerNight": 100000,
       "standardCapacity": 2,
-      "maxCapacity": 2
+      "maxCapacity": 2,
+      "imageUrl": null
     }
   ]
 }
@@ -234,7 +237,8 @@ GET /api/v1/accommodations/1/rooms
 - `ACTIVE` 상태의 객실만 공개 목록에 포함한다.
 - 객실이 없으면 오류가 아닌 빈 배열을 반환한다.
 - 객실 번호 오름차순, 동일한 객실 번호에서는 객실 ID 오름차순으로 정렬한다.
-- 목록 화면에 필요한 `roomId`, `name`, `pricePerNight`, `standardCapacity`, `maxCapacity`만 DTO로 직접 조회한다.
+- 목록 화면에 필요한 `roomId`, `name`, `pricePerNight`, `standardCapacity`, `maxCapacity`, `imageUrl`을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 
 ---
 
@@ -268,7 +272,8 @@ GET /api/v1/accommodations/1
     "address": "서울특별시 강남구 테헤란로 123",
     "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
     "checkInTime": "15:00:00",
-    "checkOutTime": "11:00:00"
+    "checkOutTime": "11:00:00",
+    "imageUrl": null
   }
 }
 ```
@@ -283,7 +288,8 @@ GET /api/v1/accommodations/1
 ### 구현 메모
 
 - `ACTIVE` 상태의 숙소만 공개 상세 조회를 허용한다.
-- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간만 반환한다.
+- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간, `imageUrl`을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 객실 목록은 `/api/v1/accommodations/{accommodationId}/rooms` API에서 별도로 조회한다.
 - 숙소 상세 조회에서는 불필요한 객실 조회 쿼리를 실행하지 않는다.
 - 조회 전용 트랜잭션을 사용한다.
@@ -294,7 +300,7 @@ GET /api/v1/accommodations/1
 
 ## 8. 객실 상세 조회
 
-객실과 소속 숙소의 기본 정보를 조회한다.
+객실 상세·예약 화면에 필요한 객실 기본 정보를 조회한다.
 
 ### Request
 
@@ -316,18 +322,13 @@ GET /api/v1/rooms/1
   "message": "객실 상세 조회에 성공했습니다.",
   "data": {
     "roomId": 1,
-    "accommodation": {
-      "accommodationId": 1,
-      "name": "룸픽 호텔",
-      "address": "서울특별시 강남구 테헤란로 123"
-    },
     "roomNumber": "101",
     "name": "디럭스 더블룸",
     "description": "2인이 이용할 수 있는 더블룸입니다.",
     "pricePerNight": 100000,
     "standardCapacity": 2,
     "maxCapacity": 2,
-    "status": "ACTIVE"
+    "imageUrl": null
   }
 }
 ```
@@ -340,7 +341,10 @@ GET /api/v1/rooms/1
 
 ### 구현 메모
 
-- 숙소 정보를 얻기 위해 추가 쿼리가 반복되지 않도록 필요한 연관 데이터만 조회한다.
+- 객실 상세 화면에서 사용하는 객실 기본 정보만 반환한다.
+- 숙소명과 숙소 주소는 객실 상세 응답에 포함하지 않는다.
+- 객실 운영 상태는 공개 응답에 포함하지 않는다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 현재 날짜의 예약 가능 여부는 객실 상세 응답에 포함하지 않는다.
 - 사용자가 선택한 날짜의 예약 가능 여부는 별도 API에서 확인한다.
 

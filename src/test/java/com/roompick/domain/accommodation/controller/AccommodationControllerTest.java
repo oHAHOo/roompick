@@ -85,6 +85,8 @@ class AccommodationControllerTest {
                 .value("룸픽 서울 호텔"))
             .andExpect(jsonPath("$.data.content[0].address")
                 .value("서울특별시 강남구"))
+            .andExpect(jsonPath("$.data.content[0].imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
             .andExpect(jsonPath("$.data.pageNumber")
                 .value(0))
             .andExpect(jsonPath("$.data.pageSize")
@@ -131,6 +133,8 @@ class AccommodationControllerTest {
                 .value("15:00:00"))
             .andExpect(jsonPath("$.data.checkOutTime")
                 .value("11:00:00"))
+            .andExpect(jsonPath("$.data.imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
             .andExpect(jsonPath("$.data.status")
                 .doesNotExist())
             .andExpect(jsonPath("$.data.rooms")
@@ -213,10 +217,14 @@ class AccommodationControllerTest {
                 .value(2))
             .andExpect(jsonPath("$.data[0].maxCapacity")
                 .value(2))
+            .andExpect(jsonPath("$.data[0].imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
             .andExpect(jsonPath("$.data[1].roomId")
                 .value(secondRoom.getId()))
             .andExpect(jsonPath("$.data[1].name")
-                .value("스위트룸"));
+                .value("스위트룸"))
+            .andExpect(jsonPath("$.data[1].imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
