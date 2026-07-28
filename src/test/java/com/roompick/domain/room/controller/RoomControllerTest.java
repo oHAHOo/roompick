@@ -54,13 +54,16 @@ class RoomControllerTest {
     void 객실_상세_조회에_성공한다() throws Exception {
         // given: 숙소와 소속 객실이 저장되어 있습니다.
         Accommodation accommodation =
-            accommodationRepository.save(createAccommodation());
+            accommodationRepository.save(
+                createAccommodation()
+            );
 
         Room room = roomRepository.save(
             createRoom(accommodation)
         );
 
-        // when & then: 인증 헤더 없이 객실 상세 정보를 조회합니다.
+        // when & then:
+        // 객실 상세 화면에 필요한 객실 정보만 반환합니다.
         mockMvc.perform(
                 get(
                     "/api/v1/rooms/{roomId}",
@@ -68,29 +71,30 @@ class RoomControllerTest {
                 )
             )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.success")
+                .value(true))
             .andExpect(jsonPath("$.message")
                 .value("객실 상세 조회에 성공했습니다."))
             .andExpect(jsonPath("$.data.roomId")
                 .value(room.getId()))
-            .andExpect(jsonPath("$.data.accommodation.accommodationId")
-                .value(accommodation.getId()))
-            .andExpect(jsonPath("$.data.accommodation.name")
-                .value("룸픽 호텔"))
-            .andExpect(jsonPath("$.data.accommodation.address")
-                .value("서울특별시 강남구"))
             .andExpect(jsonPath("$.data.roomNumber")
                 .value("101"))
             .andExpect(jsonPath("$.data.name")
                 .value("디럭스 더블룸"))
+            .andExpect(jsonPath("$.data.description")
+                .value("2인이 이용할 수 있는 더블룸"))
             .andExpect(jsonPath("$.data.pricePerNight")
                 .value(100000))
             .andExpect(jsonPath("$.data.standardCapacity")
                 .value(2))
             .andExpect(jsonPath("$.data.maxCapacity")
                 .value(2))
+            .andExpect(jsonPath("$.data.imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.data.accommodation")
+                .doesNotExist())
             .andExpect(jsonPath("$.data.status")
-                .value("ACTIVE"));
+                .doesNotExist());
     }
 
     @Test
