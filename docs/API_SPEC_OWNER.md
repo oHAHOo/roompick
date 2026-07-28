@@ -240,7 +240,9 @@ GET /api/v1/accommodations/1/rooms
 
 ## 7. 숙소 상세 조회
 
-등록된 숙소의 기본 정보와 소속 객실 요약을 조회한다.
+운영 중인 숙소의 기본 정보를 조회한다.
+
+객실 목록은 숙소별 객실 목록 조회 API에서 별도로 조회한다.
 
 ### Request
 
@@ -252,7 +254,7 @@ GET /api/v1/accommodations/1
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
-| `accommodationId` | `Long` | O | 숙소 ID |
+| `accommodationId` | `Long` | O | 상세 정보를 조회할 숙소 ID |
 
 ### Response — 200 OK
 
@@ -266,18 +268,7 @@ GET /api/v1/accommodations/1
     "address": "서울특별시 강남구 테헤란로 123",
     "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
     "checkInTime": "15:00:00",
-    "checkOutTime": "11:00:00",
-    "status": "ACTIVE",
-    "rooms": [
-      {
-        "roomId": 1,
-        "name": "디럭스 더블룸",
-        "pricePerNight": 100000,
-        "standardCapacity": 2,
-        "maxCapacity": 2,
-        "status": "ACTIVE"
-      }
-    ]
+    "checkOutTime": "11:00:00"
   }
 }
 ```
@@ -287,13 +278,15 @@ GET /api/v1/accommodations/1
 | HTTP | Error Code | 조건 |
 | --- | --- | --- |
 | `404` | `ACCOMMODATION_NOT_FOUND` | 존재하지 않는 숙소 ID |
+| `409` | `ACCOMMODATION_INACTIVE` | 운영이 중단된 숙소 |
 
 ### 구현 메모
 
-- 객실 목록은 해당 숙소에 포함된 객실 요약만 반환한다.
-- MVP 시연에는 객실을 최소 1개 사용하지만 응답은 여러 객실을 고려해 배열로 반환한다.
+- `ACTIVE` 상태의 숙소만 공개 상세 조회를 허용한다.
+- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간만 반환한다.
+- 객실 목록은 `/api/v1/accommodations/{accommodationId}/rooms` API에서 별도로 조회한다.
+- 숙소 상세 조회에서는 불필요한 객실 조회 쿼리를 실행하지 않는다.
 - 조회 전용 트랜잭션을 사용한다.
-- 숙소와 객실을 따로 반복 조회하지 않도록 DTO 직접 조회 또는 필요한 범위의 fetch join을 검토한다.
 
 ---
 

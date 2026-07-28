@@ -92,7 +92,10 @@ public class AccommodationController {
     }
 
     /**
-     * 등록된 숙소의 기본 정보와 소속 객실 목록을 조회합니다.
+     * 운영 중인 숙소의 기본 정보를 조회합니다.
+     *
+     * 객실 목록은 숙소별 객실 목록 조회 API에서
+     * 별도로 제공합니다.
      */
     @GetMapping("/{accommodationId}")
     public ResponseEntity<ApiResponseDto<AccommodationDetailResponseDto>> getAccommodationDetail(

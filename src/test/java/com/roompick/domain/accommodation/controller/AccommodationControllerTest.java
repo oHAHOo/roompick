@@ -99,15 +99,15 @@ class AccommodationControllerTest {
 
     @Test
     void 숙소_상세_조회에_성공한다() throws Exception {
-        // given: 숙소와 소속 객실이 저장되어 있습니다.
+        // given: 운영 중인 숙소가 저장되어 있습니다.
         Accommodation accommodation =
-            accommodationRepository.save(createAccommodation());
+            accommodationRepository.save(
+                createAccommodation()
+            );
 
-        Room room = roomRepository.save(
-            createRoom(accommodation)
-        );
-
-        // when & then: 인증 헤더 없이 숙소 상세 정보를 조회합니다.
+        // when & then:
+        // 숙소 상세 조회는 숙소 기본 정보만 반환하고,
+        // 객실 목록과 운영 상태는 응답에 포함하지 않습니다.
         mockMvc.perform(
                 get(
                     "/api/v1/accommodations/{accommodationId}",
@@ -115,7 +115,8 @@ class AccommodationControllerTest {
                 )
             )
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.success")
+                .value(true))
             .andExpect(jsonPath("$.message")
                 .value("숙소 상세 조회에 성공했습니다."))
             .andExpect(jsonPath("$.data.accommodationId")
@@ -124,18 +125,16 @@ class AccommodationControllerTest {
                 .value("룸픽 호텔"))
             .andExpect(jsonPath("$.data.address")
                 .value("서울특별시 강남구"))
+            .andExpect(jsonPath("$.data.description")
+                .value("RoomPick 테스트 숙소"))
+            .andExpect(jsonPath("$.data.checkInTime")
+                .value("15:00:00"))
+            .andExpect(jsonPath("$.data.checkOutTime")
+                .value("11:00:00"))
             .andExpect(jsonPath("$.data.status")
-                .value("ACTIVE"))
-            .andExpect(jsonPath("$.data.rooms.length()")
-                .value(1))
-            .andExpect(jsonPath("$.data.rooms[0].roomId")
-                .value(room.getId()))
-            .andExpect(jsonPath("$.data.rooms[0].name")
-                .value("디럭스 더블룸"))
-            .andExpect(jsonPath("$.data.rooms[0].pricePerNight")
-                .value(100000))
-            .andExpect(jsonPath("$.data.rooms[0].status")
-                .value("ACTIVE"));
+                .doesNotExist())
+            .andExpect(jsonPath("$.data.rooms")
+                .doesNotExist());
     }
 
     @Test
