@@ -17,6 +17,7 @@ public record RoomAvailabilityResponseDto(
     int nightCount,
     long pricePerNight,
     long totalAmount,
+    RoomAvailabilityStatus status,
     boolean available,
     String unavailableReason
 
@@ -43,6 +44,10 @@ public record RoomAvailabilityResponseDto(
             ? null
             : OVERLAPPING_RESERVATION_REASON;
 
+        RoomAvailabilityStatus status = available
+            ? RoomAvailabilityStatus.ACTIVE
+            : RoomAvailabilityStatus.SOLD_OUT;
+
         return new RoomAvailabilityResponseDto(
             room.getId(),
             request.checkInDate(),
@@ -51,6 +56,7 @@ public record RoomAvailabilityResponseDto(
             reservationPrice.nightCount(),
             reservationPrice.pricePerNight(),
             reservationPrice.totalAmount(),
+            status,
             available,
             unavailableReason
         );

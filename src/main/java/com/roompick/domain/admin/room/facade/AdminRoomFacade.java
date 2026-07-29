@@ -5,7 +5,9 @@ import org.springframework.stereotype.Component;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.admin.room.dto.request.RoomCreateRequestDto;
+import com.roompick.domain.admin.room.dto.request.RoomStatusUpdateRequestDto;
 import com.roompick.domain.admin.room.dto.response.RoomCreateResponseDto;
+import com.roompick.domain.admin.room.dto.response.RoomStatusUpdateResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
 
@@ -36,5 +38,24 @@ public class AdminRoomFacade {
         );
 
         return RoomCreateResponseDto.from(room);
+    }
+
+    public RoomStatusUpdateResponseDto updateRoomStatus(
+        Long accommodationId,
+        Long roomId,
+        RoomStatusUpdateRequestDto request
+    ) {
+        Room room = switch (request.status()) {
+            case ACTIVE -> roomService.activateRoom(
+                accommodationId,
+                roomId
+            );
+            case INACTIVE -> roomService.deactivateRoom(
+                accommodationId,
+                roomId
+            );
+        };
+
+        return RoomStatusUpdateResponseDto.from(room);
     }
 }

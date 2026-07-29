@@ -337,7 +337,7 @@ GET /api/v1/rooms/1
 
 | HTTP | Error Code | 조건 |
 | --- | --- | --- |
-| `404` | `ROOM_NOT_FOUND` | 존재하지 않는 객실 ID |
+| `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않거나 객실 또는 소속 숙소가 운영 중지 상태인 경우 |
 
 ### 구현 메모
 
@@ -388,6 +388,7 @@ GET /api/v1/rooms/1/availability?checkInDate=2026-08-10&checkOutDate=2026-08-12&
     "nightCount": 2,
     "pricePerNight": 100000,
     "totalAmount": 200000,
+    "status": "ACTIVE",
     "available": true,
     "unavailableReason": null
   }
@@ -410,6 +411,7 @@ GET /api/v1/rooms/1/availability?checkInDate=2026-08-10&checkOutDate=2026-08-12&
     "nightCount": 2,
     "pricePerNight": 100000,
     "totalAmount": 200000,
+    "status": "SOLD_OUT",
     "available": false,
     "unavailableReason": "선택한 날짜에 이미 예약된 객실입니다."
   }
@@ -424,7 +426,11 @@ GET /api/v1/rooms/1/availability?checkInDate=2026-08-10&checkOutDate=2026-08-12&
 | `400` | `INVALID_GUEST_COUNT` | 인원이 1명 미만 |
 | `400` | `ROOM_CAPACITY_EXCEEDED` | 객실 최대 인원을 초과함 |
 | `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않음 |
-| `409` | `ROOM_INACTIVE` | 운영 중지된 객실 |
+| `409` | `ROOM_INACTIVE` | 객실 또는 소속 숙소가 운영 중지 상태인 경우 |
+
+`status`는 화면 표시용 상태다. 예약 가능하면 `ACTIVE`, 선택한 날짜와 겹치는 활성 예약이 있으면 `SOLD_OUT`을 반환한다. 기존 `available`, `unavailableReason` 필드는 그대로 유지한다.
+
+공개 상세 조회와 예약 API의 오류 정책은 의도적으로 다르다. 상세 조회에서는 비공개 자원의 존재를 노출하지 않기 위해 객실 또는 숙소가 `INACTIVE`이면 `ROOM_NOT_FOUND`(`404`)를 반환한다. 예약 가능 여부 조회와 예약 생성에서는 예약 불가 원인을 명확히 전달하기 위해 `ROOM_INACTIVE`(`409`)를 반환한다.
 
 ### 날짜 겹침 조건
 
@@ -518,7 +524,7 @@ Content-Type: application/json
 | `400` | `ROOM_CAPACITY_EXCEEDED` | 객실 최대 인원을 초과함 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
 | `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않음 |
-| `409` | `ROOM_INACTIVE` | 운영 중지된 객실 |
+| `409` | `ROOM_INACTIVE` | 객실 또는 소속 숙소가 운영 중지 상태인 경우 |
 | `409` | `ROOM_NOT_AVAILABLE` | 동일 기간에 활성 예약이 존재함 |
 
 ### 처리 순서

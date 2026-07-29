@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.roompick.domain.admin.room.dto.response.RoomCreateResponseDto;
+import com.roompick.domain.admin.room.dto.response.RoomStatusUpdateResponseDto;
 import com.roompick.domain.admin.room.facade.AdminRoomFacade;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.global.common.BusinessException;
@@ -54,7 +56,7 @@ class AdminRoomControllerTest {
                 150000L,
                 2,
                 4,
-                RoomStatus.ACTIVE
+                RoomStatus.INACTIVE
             );
 
         given(
@@ -120,7 +122,7 @@ class AdminRoomControllerTest {
             )
             .andExpect(
                 jsonPath("$.data.status")
-                    .value("ACTIVE")
+                    .value("INACTIVE")
             );
     }
 
@@ -141,7 +143,7 @@ class AdminRoomControllerTest {
                 0L,
                 1,
                 2,
-                RoomStatus.ACTIVE
+                RoomStatus.INACTIVE
             );
 
         given(
@@ -385,5 +387,275 @@ class AdminRoomControllerTest {
                             .getCode()
                     )
             );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자는 객실을 공개할 수 있다")
+    void 관리자는_객실을_공개할_수_있다()
+        throws Exception {
+        // given
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willReturn(
+            new RoomStatusUpdateResponseDto(
+                10L,
+                RoomStatus.ACTIVE
+            )
+        );
+
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.roomId").value(10L))
+            .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자는 객실을 비공개할 수 있다")
+    void 관리자는_객실을_비공개할_수_있다()
+        throws Exception {
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willReturn(
+            new RoomStatusUpdateResponseDto(
+                10L,
+                RoomStatus.INACTIVE
+            )
+        );
+
+        String requestBody = """
+            {
+              "status": "INACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.roomId").value(10L))
+            .andExpect(jsonPath("$.data.status").value("INACTIVE"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("운영 중지된 숙소의 객실 공개 요청은 409를 반환한다")
+    void 운영_중지된_숙소의_객실_공개는_409를_반환한다()
+        throws Exception {
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willThrow(
+            new BusinessException(ErrorCode.ACCOMMODATION_INACTIVE)
+        );
+
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.ACCOMMODATION_INACTIVE.getCode())
+            );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("객실 상태가 누락되면 400을 반환한다")
+    void 객실_상태가_누락되면_400을_반환한다()
+        throws Exception {
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}")
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("SOLD_OUT 상태 변경 요청은 400을 반환한다")
+    void SOLD_OUT_상태_변경_요청은_400을_반환한다()
+        throws Exception {
+        String requestBody = """
+            {
+              "status": "SOLD_OUT"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 회원은 객실 상태를 변경할 수 없다")
+    void 일반_회원은_객실_상태를_변경할_수_없다()
+        throws Exception {
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.FORBIDDEN.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @DisplayName("미인증 사용자는 객실 상태를 변경할 수 없다")
+    void 미인증_사용자는_객실_상태를_변경할_수_없다()
+        throws Exception {
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.UNAUTHORIZED.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("다른 숙소 객실의 상태 변경 요청은 404를 반환한다")
+    void 다른_숙소_객실의_상태_변경은_404를_반환한다()
+        throws Exception {
+        // given
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willThrow(
+            new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+        );
+
+        String requestBody = """
+            {
+              "status": "INACTIVE"
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
     }
 }
