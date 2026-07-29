@@ -110,6 +110,20 @@ jobs:
               ${{ env.IMAGE }}:${{ github.sha }}
             sudo docker image prune -af
 
+      - name: Smoke test - app and DB reachable
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 15); do
+            if curl -sf "http://${{ secrets.EC2_HOST }}:8080/api/v1/accommodations" > /dev/null; then
+              echo "smoke test passed"
+              exit 0
+            fi
+            echo "not ready yet, retry $i"
+            sleep 2
+          done
+          echo "smoke test failed after retries" >&2
+          exit 1
+
       - name: Revoke runner IP
         if: always() && steps.allow.outputs.rule_id != ''
         run: |
