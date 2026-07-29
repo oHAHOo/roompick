@@ -5,6 +5,10 @@ on:
     branches: [develop]
   workflow_dispatch:
 
+concurrency:
+  group: roompick-production-cd
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write
@@ -59,6 +63,35 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: Get runner public IP
+        id: ip
+        run: |
+          set -euo pipefail
+          IP=$(curl -sf https://checkip.amazonaws.com)
+          if [ -z "$IP" ]; then
+            echo "failed to resolve runner public IP" >&2
+            exit 1
+          fi
+          echo "ip=${IP}" >> "$GITHUB_OUTPUT"
+
+      - name: Allow runner IP for SSH
+        id: allow
+        run: |
+          set -euo pipefail
+          RULE_ID=$(aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${{ steps.ip.outputs.ip }}/32,Description=gha-cd-${{ github.run_id }}}]" \
+            --query 'SecurityGroupRules[0].SecurityGroupRuleId' \
+            --output text)
+          echo "rule_id=${RULE_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to EC2 over SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -67,12 +100,19 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            sudo docker pull ${{ env.IMAGE }}:latest
+            sudo docker pull ${{ env.IMAGE }}:${{ github.sha }}
             sudo docker stop roompick-backend || true
             sudo docker rm roompick-backend || true
             sudo docker run -d --name roompick-backend \
               --env-file /home/ec2-user/app/.env.prod \
               -p 8080:8080 \
               --restart unless-stopped \
-              ${{ env.IMAGE }}:latest
+              ${{ env.IMAGE }}:${{ github.sha }}
             sudo docker image prune -af
+
+      - name: Revoke runner IP
+        if: always() && steps.allow.outputs.rule_id != ''
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --security-group-rule-ids ${{ steps.allow.outputs.rule_id }}
