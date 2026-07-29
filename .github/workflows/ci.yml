@@ -28,3 +28,36 @@ jobs:
 
       - name: Run tests
         run: ./gradlew test
+
+  flyway-check:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: roompick_check
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=3s --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Verify Flyway migrations against MySQL
+        run: |
+          ./gradlew flywayMigrate \
+            -Dflyway.url=jdbc:mysql://localhost:3306/roompick_check \
+            -Dflyway.user=root \
+            -Dflyway.password=test
