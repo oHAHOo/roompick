@@ -204,15 +204,15 @@ public class PaymentFacade {
         Long memberId
     ) {
         /*
-         * 내부 결제 정보를 먼저 조회합니다.
-         *
-         * PaymentService의 조회 트랜잭션은
-         * 해당 메서드 반환 시 종료됩니다.
+         * PortOne 외부 API 호출 전에
+         * 요청 회원의 소유권과 Payment READY 상태를 검증합니다.
          */
         Payment paymentSnapshot =
-            paymentService.findById(
-                paymentId
-            );
+            paymentService
+                .findForPortOneCompletion(
+                    paymentId,
+                    memberId
+                );
 
         String expectedPortOnePaymentId =
             paymentSnapshot.getPortOnePaymentId();
@@ -285,13 +285,15 @@ public class PaymentFacade {
     ) {
 
         /*
-         * 외부 API 호출 중 DB 상태가 변경됐을 수 있으므로
-         * 트랜잭션 안에서 Payment를 다시 조회합니다.
+         * 외부 API 응답을 기다리는 사이 상태가 변경됐을 수 있으므로
+         * 쓰기 트랜잭션 안에서 소유권과 READY 상태를 다시 검증합니다.
          */
         Payment payment =
-            paymentService.findById(
-                paymentId
-            );
+            paymentService
+                .findForPortOneCompletion(
+                    paymentId,
+                    memberId
+                );
 
         validatePortOnePaymentIdUnchanged(
             payment,

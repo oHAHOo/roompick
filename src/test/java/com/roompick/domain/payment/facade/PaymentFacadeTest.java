@@ -3,6 +3,7 @@ package com.roompick.domain.payment.facade;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -608,8 +609,9 @@ class PaymentFacadeTest {
             createVerificationResult();
 
         given(
-            paymentService.findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            paymentService.findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             )
         ).willReturn(
             paymentSnapshot,
@@ -756,8 +758,9 @@ class PaymentFacadeTest {
 
         then(paymentService)
             .should(times(2))
-            .findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            .findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             );
 
         then(portOneClient)
@@ -806,8 +809,9 @@ class PaymentFacadeTest {
             createPaidPortOneResponse();
 
         given(
-            paymentService.findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            paymentService.findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             )
         ).willReturn(
             paymentSnapshot
@@ -864,8 +868,9 @@ class PaymentFacadeTest {
 
         then(paymentService)
             .should(times(1))
-            .findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            .findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             );
 
         verifyNoInteractions(
@@ -877,7 +882,7 @@ class PaymentFacadeTest {
             .approvePortOnePayment(
                 any(Payment.class),
                 any(String.class),
-                any(Long.class),
+                anyLong(),
                 any(LocalDateTime.class)
             );
 
@@ -911,8 +916,9 @@ class PaymentFacadeTest {
             createVerificationResult();
 
         given(
-            paymentService.findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            paymentService.findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             )
         ).willReturn(
             paymentSnapshot,
@@ -974,8 +980,9 @@ class PaymentFacadeTest {
 
         then(paymentService)
             .should(times(2))
-            .findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            .findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             );
 
         then(paymentService)
@@ -983,7 +990,7 @@ class PaymentFacadeTest {
             .approvePortOnePayment(
                 any(Payment.class),
                 any(String.class),
-                any(Long.class),
+                anyLong(),
                 any(LocalDateTime.class)
             );
 
@@ -1022,8 +1029,9 @@ class PaymentFacadeTest {
             createVerificationResult();
 
         given(
-            paymentService.findById(
-                PORTONE_PAYMENT_INTERNAL_ID
+            paymentService.findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             )
         ).willReturn(
             paymentSnapshot,
@@ -1115,7 +1123,7 @@ class PaymentFacadeTest {
             .should(never())
             .confirmPayment(
                 any(Reservation.class),
-                any(Long.class),
+                anyLong(),
                 any(LocalDateTime.class)
             );
     }

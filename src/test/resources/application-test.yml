@@ -29,5 +29,7 @@ portone:
   api:
     base-url: http://localhost
     secret: test-portone-api-secret
+    connect-timeout: 1s
+    read-timeout: 1s
   store-id: test-store-id
   channel-key: test-channel-key

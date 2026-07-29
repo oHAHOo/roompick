@@ -1,5 +1,7 @@
 package com.roompick.global.config.portone;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "portone")
@@ -11,7 +13,9 @@ public record PortOneProperties(
 
     public record Api(
         String baseUrl,
-        String secret
+        String secret,
+        Duration connectTimeout,
+        Duration readTimeout
     ) {
     }
 }

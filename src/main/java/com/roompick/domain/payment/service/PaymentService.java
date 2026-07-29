@@ -1,7 +1,9 @@
 package com.roompick.domain.payment.service;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
+import com.roompick.domain.payment.entity.PaymentStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,6 +58,42 @@ public class PaymentService {
                     ErrorCode.PAYMENT_NOT_FOUND
                 )
             );
+    }
+
+    /**
+     * PortOne 외부 API를 호출하기 전에
+     * 결제 소유권과 현재 상태를 검증합니다.
+     *
+     * PortOne 호출 이후 쓰기 트랜잭션 안에서도
+     * 동일한 메서드를 호출해 상태를 다시 검증합니다.
+     */
+    @Transactional(readOnly = true)
+    public Payment findForPortOneCompletion(
+        Long paymentId,
+        Long memberId
+    ) {
+        validatePaymentId(paymentId);
+        validateMemberId(memberId);
+
+        Payment payment =
+            paymentRepository
+                .findByIdWithReservationAndMember(
+                    paymentId
+                )
+                .orElseThrow(() ->
+                    new BusinessException(
+                        ErrorCode.PAYMENT_NOT_FOUND
+                    )
+                );
+
+        validatePaymentOwner(
+            payment,
+            memberId
+        );
+
+        validateReadyStatus(payment);
+
+        return payment;
     }
 
     /**
@@ -168,6 +206,82 @@ public class PaymentService {
         if (paymentExists) {
             throw new BusinessException(
                 ErrorCode.PAYMENT_ALREADY_EXISTS
+            );
+        }
+    }
+
+    /**
+     * 결제에 연결된 예약이 요청 회원의 예약인지 검증합니다.
+     */
+    private void validatePaymentOwner(
+        Payment payment,
+        Long memberId
+    ) {
+        validatePayment(payment);
+
+        Reservation reservation =
+            payment.getReservation();
+
+        if (reservation == null) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_NOT_FOUND
+            );
+        }
+
+        Long reservationMemberId =
+            reservation
+                .getMember()
+                .getId();
+
+        if (!Objects.equals(
+            reservationMemberId,
+            memberId
+        )) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+        }
+    }
+
+    /**
+     * PortOne 결제 완료 처리가 가능한
+     * READY 상태인지 검증합니다.
+     */
+    private void validateReadyStatus(
+        Payment payment
+    ) {
+        if (
+            payment.getStatus()
+                != PaymentStatus.READY
+        ) {
+            throw new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+        }
+    }
+
+    /**
+     * 결제 ID가 정상적으로 전달됐는지 검증합니다.
+     */
+    private void validatePaymentId(
+        Long paymentId
+    ) {
+        if (paymentId == null) {
+            throw new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+        }
+    }
+
+    /**
+     * 인증된 회원 ID가 전달됐는지 검증합니다.
+     */
+    private void validateMemberId(
+        Long memberId
+    ) {
+        if (memberId == null) {
+            throw new BusinessException(
+                ErrorCode.UNAUTHORIZED
             );
         }
     }
