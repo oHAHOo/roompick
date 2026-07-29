@@ -1,6 +1,7 @@
 package com.roompick.domain.accommodation.repository;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -68,5 +69,37 @@ public class PopularAccommodationRankingRepository {
             accommodationId.toString(),
             KEY_TTL_SECONDS
         );
+    }
+
+    /**
+     * 일간 인기 숙소 랭킹에서 점수가 높은 숙소 ID를 조회합니다.
+     *
+     * Redis Sorted Set을 점수 내림차순으로 한 번만 조회하며,
+     * 동일한 점수에서는 Redis의 역방향 사전순 정렬을 따릅니다.
+     *
+     * 랭킹 데이터가 없으면 빈 목록을 반환합니다.
+     */
+    public List<Long> findTopAccommodationIds(
+        String key,
+        int limit
+    ) {
+        Set<String> accommodationIds =
+            stringRedisTemplate.opsForZSet()
+                .reverseRange(
+                    key,
+                    0,
+                    limit - 1L
+                );
+
+        if (
+            accommodationIds == null
+                || accommodationIds.isEmpty()
+        ) {
+            return List.of();
+        }
+
+        return accommodationIds.stream()
+            .map(Long::valueOf)
+            .toList();
     }
 }

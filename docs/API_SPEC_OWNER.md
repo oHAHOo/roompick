@@ -1,8 +1,8 @@
 # RoomPick API 명세서 — 임선구 담당
 
-- 문서 버전: `v0.3`
+- 문서 버전: `v0.4`
 - 작성일: 2026-07-21
-- 최종 수정일: 2026-07-27
+- 최종 수정일: 2026-07-29
 - 담당자: 임선구
 - 담당 도메인: 숙소, 객실, 예약
 - MVP 기준: 관리자가 등록한 숙소·객실 사용, 검색 기능 없음
@@ -114,6 +114,7 @@ HH:mm:ss
 | 번호 | Method | URL | 기능 | 인증 |
 | --- | --- | --- | --- | --- |
 | 1 | `GET` | `/api/v1/accommodations` | 전체 숙소 목록 조회 | 불필요 |
+| 1-1 | `GET` | `/api/v1/accommodations/popular` | 일간 인기 숙소 TOP N 조회 | 불필요 |
 | 2 | `GET` | `/api/v1/accommodations/{accommodationId}/rooms` | 숙소별 객실 목록 조회 | 불필요 |
 | 3 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
 | 4 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
@@ -186,6 +187,71 @@ GET /api/v1/accommodations?page=0&size=20
 - 목록 화면에 필요한 `accommodationId`, `name`, `address`, `imageUrl`을 반환한다.
 - 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 검색·필터·사용자 지정 정렬은 W3 확장 범위에서 구현한다.
+
+---
+
+## 5-1. 일간 인기 숙소 TOP N 조회
+
+오늘 발생한 숙소 상세 조회 점수를 기준으로 인기 숙소 목록을 조회한다.
+
+기본 조회 개수는 10개이며, 요청에 따라 1개 이상 20개 이하로 조정할 수 있다.
+
+### Request
+
+```http
+GET /api/v1/accommodations/popular?limit=10
+```
+
+### Query Parameter
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+| --- | --- | --- | --- | --- |
+| `limit` | `int` | X | `10` | 조회할 인기 숙소 수, 1 이상 20 이하 |
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "인기 숙소 목록 조회에 성공했습니다.",
+  "data": [
+    {
+      "rank": 1,
+      "accommodationId": 3,
+      "name": "룸픽 부산 호텔",
+      "address": "부산광역시 해운대구",
+      "imageUrl": null
+    },
+    {
+      "rank": 2,
+      "accommodationId": 1,
+      "name": "룸픽 서울 호텔",
+      "address": "서울특별시 중구",
+      "imageUrl": null
+    }
+  ]
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT_VALUE` | `limit`이 1 미만이거나 20을 초과한 경우 |
+
+### 구현 메모
+
+- 오늘 날짜의 Redis Sorted Set 점수를 기준으로 점수 내림차순 조회한다.
+- Redis 랭킹은 한 번만 조회한다.
+- 숙소 정보는 Redis에서 조회한 ID 목록을 이용해 DB `IN` 쿼리 한 번으로 조회한다.
+- 숙소별 반복 조회를 실행하지 않아 N+1 문제가 발생하지 않는다.
+- DB 조회 결과는 Redis 랭킹 순서에 맞게 다시 정렬한다.
+- 존재하지 않거나 `INACTIVE` 상태인 숙소는 결과에서 제외한다.
+- 제외된 숙소가 있으면 최종 응답 목록을 기준으로 `rank`를 1부터 다시 계산한다.
+- 동일 점수에서는 Redis의 역방향 사전순 정렬 결과를 따른다.
+- 랭킹 데이터가 없으면 오류가 아닌 빈 배열을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- Redis 장애 시 DB fallback 처리는 후속 캐시·장애 대응 기능에서 구현한다.
 
 ---
 
