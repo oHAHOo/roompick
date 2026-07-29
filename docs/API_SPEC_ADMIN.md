@@ -24,7 +24,7 @@
 9. 숙소·객실 수정·삭제·관리 목록과 검색은 MVP에서 제외한다.
 10. Controller는 Facade만 호출하고, AdminFacade가 숙소·객실 Service를 조율한다.
 11. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다.
-12. 객실 공개·비공개 상태 전환 API의 URL과 요청 형식은 별도 구현 이슈에서 확정한다.
+12. 객실 공개·비공개 상태는 관리자 상태 변경 API로 전환한다.
 
 ---
 
@@ -40,7 +40,7 @@ Content-Type: application/json
 | 상황 | HTTP | Error Code |
 | --- | --- | --- |
 | 인증 정보 없음 | `401 Unauthorized` | `UNAUTHORIZED` |
-| `USER` 권한으로 관리자 API 호출 | `403 Forbidden` | `ADMIN_ACCESS_DENIED` |
+| `USER` 권한으로 관리자 API 호출 | `403 Forbidden` | `FORBIDDEN` |
 | `ADMIN` 권한으로 정상 요청 | API 처리 계속 | - |
 
 ### 성공 응답
@@ -58,8 +58,8 @@ Content-Type: application/json
 ```json
 {
   "success": false,
-  "code": "ADMIN_ACCESS_DENIED",
-  "message": "관리자 권한이 필요합니다."
+  "code": "COMMON_004",
+  "message": "접근 권한이 없습니다."
 }
 ```
 
@@ -71,8 +71,7 @@ Content-Type: application/json
 | --- | --- | --- | --- | --- |
 | 1 | `POST` | `/api/v1/admin/accommodations` | 관리자 숙소 등록 | `ADMIN` 필요 |
 | 2 | `POST` | `/api/v1/admin/accommodations/{accommodationId}/rooms` | 관리자 객실 등록 | `ADMIN` 필요 |
-
-> 객실 공개·비공개 상태 전환 API는 필요하지만 현재 등록 API 명세에는 포함하지 않는다. 별도 구현 이슈에서 Method, URL, Request Body를 확정한다.
+| 3 | `PATCH` | `/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status` | 관리자 객실 공개 상태 변경 | `ADMIN` 필요 |
 
 ---
 
@@ -138,7 +137,7 @@ Content-Type: application/json
 | `400` | `ACCOMMODATION_ADDRESS_REQUIRED` | 숙소 주소가 없거나 공백임 |
 | `400` | `ACCOMMODATION_TIME_REQUIRED` | 체크인 또는 체크아웃 시간이 없음 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
-| `403` | `ADMIN_ACCESS_DENIED` | `ADMIN` 권한이 없는 회원의 요청 |
+| `403` | `FORBIDDEN` | `ADMIN` 권한이 없는 회원의 요청 |
 
 ### 처리 순서
 
@@ -223,7 +222,7 @@ Content-Type: application/json
 | `400` | `INVALID_ROOM_PRICE` | 1박 가격이 0원 미만임 |
 | `400` | `INVALID_ROOM_CAPACITY` | 기준·최대 인원 조건이 올바르지 않음 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
-| `403` | `ADMIN_ACCESS_DENIED` | `ADMIN` 권한이 없는 회원의 요청 |
+| `403` | `FORBIDDEN` | `ADMIN` 권한이 없는 회원의 요청 |
 | `404` | `ACCOMMODATION_NOT_FOUND` | 숙소가 존재하지 않음 |
 | `409` | `ACCOMMODATION_INACTIVE` | 운영 중지된 숙소에 객실 등록을 요청함 |
 | `409` | `ROOM_NUMBER_DUPLICATED` | 같은 숙소에 동일한 객실 번호가 이미 존재함 |
@@ -249,7 +248,69 @@ Content-Type: application/json
 
 ---
 
-## 6. 담당자별 구현 경계
+## 6. 관리자 객실 공개 상태 변경
+
+인증된 관리자가 지정한 숙소에 소속된 객실을 공개하거나 비공개로 변경한다.
+
+### Request — ACTIVE
+
+```http
+PATCH /api/v1/admin/accommodations/1/rooms/10/status
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "ACTIVE"
+}
+```
+
+### Request — INACTIVE
+
+```json
+{
+  "status": "INACTIVE"
+}
+```
+
+`status`에는 `ACTIVE`, `INACTIVE`만 요청할 수 있다. `SOLD_OUT`은 날짜별 예약 데이터로 계산하는 화면 표시 상태이므로 요청할 수 없다.
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "객실 상태가 변경되었습니다.",
+  "data": {
+    "roomId": 10,
+    "status": "ACTIVE"
+  }
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT_VALUE` | `status`가 누락되거나 `ACTIVE`, `INACTIVE` 이외의 값인 경우 |
+| `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
+| `403` | `FORBIDDEN` | 일반 회원이 관리자 API를 호출한 경우 |
+| `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않거나 URL의 숙소에 소속되지 않은 경우 |
+| `409` | `ACCOMMODATION_INACTIVE` | 운영 중지된 숙소의 객실을 `ACTIVE`로 변경하려는 경우 |
+
+### 상태 변경 정책
+
+- 같은 상태를 다시 요청해도 `200 OK`를 반환하는 멱등 API다.
+- 숙소가 `INACTIVE`이면 객실을 `ACTIVE`로 변경할 수 없다.
+- 객실을 `INACTIVE`로 변경하는 것은 숙소 상태와 관계없이 허용한다.
+- `PENDING_PAYMENT` 또는 `CONFIRMED` 예약이 있어도 객실을 `INACTIVE`로 변경할 수 있다.
+- 객실 비공개 전환은 기존 예약을 취소하거나 변경하지 않으며 이후 신규 공개 조회와 신규 예약만 차단한다.
+- 숙소 상태 변경 시 소속 객실 상태를 일괄 변경하지 않는다.
+
+---
+
+## 7. 담당자별 구현 경계
 
 | 담당자 | 구현 범위 |
 | --- | --- |
@@ -274,12 +335,12 @@ AdminController
 
 ---
 
-## 7. 에러 코드 목록
+## 8. 에러 코드 목록
 
 | Error Code | HTTP | 메시지 초안 |
 | --- | --- | --- |
 | `UNAUTHORIZED` | `401` | 인증이 필요합니다. |
-| `ADMIN_ACCESS_DENIED` | `403` | 관리자 권한이 필요합니다. |
+| `FORBIDDEN` | `403` | 접근 권한이 없습니다. |
 | `ACCOMMODATION_NOT_FOUND` | `404` | 숙소를 찾을 수 없습니다. |
 | `ACCOMMODATION_INACTIVE` | `409` | 운영 중지된 숙소에는 객실을 등록할 수 없습니다. |
 | `ACCOMMODATION_NAME_REQUIRED` | `400` | 숙소명은 필수입니다. |
@@ -293,11 +354,9 @@ AdminController
 
 ---
 
-## 8. 팀 회의에서 최종 확정할 항목
+## 9. 팀 회의에서 최종 확정할 항목
 
 - [ ] 최초 관리자 계정을 어떤 방식으로 준비할지
 - [ ] 실제 인증 객체에서 권한을 어떤 형태로 제공할지
 - [ ] AdminFacade가 사용할 숙소·객실 Service 메서드 계약
 - [ ] 결제 관리자 기능이 추가될 경우 같은 관리자 API 명세에 포함할지
-- [ ] 객실 공개·비공개 상태 전환 API의 Method, URL, Request Body
-- [ ] 객실 등록 기능과 상태 전환 기능을 같은 이슈에서 구현할지 별도 이슈로 분리할지

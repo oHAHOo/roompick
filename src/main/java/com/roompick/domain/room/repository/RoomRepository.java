@@ -7,8 +7,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.entity.RoomStatus;
 
 /**
  * 객실 데이터를 저장하고 조회하는 Repository입니다.
@@ -29,6 +31,47 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
             WHERE room.id = :roomId
             """)
     Optional<Room> findByIdWithAccommodation(@Param("roomId") Long roomId);
+
+    /**
+     * 관리자 객실 활성화 요청에서 객실 소속과 숙소 상태를
+     * 한 번의 조회로 확인할 수 있도록 숙소를 fetch join합니다.
+     */
+    @Query("""
+        SELECT room
+        FROM Room room
+        JOIN FETCH room.accommodation accommodation
+        WHERE room.id = :roomId
+          AND accommodation.id = :accommodationId
+        """)
+    Optional<Room> findByIdAndAccommodationIdWithAccommodation(
+        @Param("roomId") Long roomId,
+        @Param("accommodationId") Long accommodationId
+    );
+
+    /**
+     * 사용자 상세 조회에서 공개 중인 객실만 조회합니다.
+     */
+    @Query("""
+        SELECT room
+        FROM Room room
+        JOIN room.accommodation accommodation
+        WHERE room.id = :roomId
+          AND room.status = :roomStatus
+          AND accommodation.status = :accommodationStatus
+        """)
+    Optional<Room> findPublicById(
+        @Param("roomId") Long roomId,
+        @Param("roomStatus") RoomStatus roomStatus,
+        @Param("accommodationStatus") AccommodationStatus accommodationStatus
+    );
+
+    /**
+     * 관리자 요청의 숙소 ID와 객실 소속을 한 번의 조회로 검증합니다.
+     */
+    Optional<Room> findByIdAndAccommodationId(
+        Long roomId,
+        Long accommodationId
+    );
 
     /**
      * 특정 숙소에 포함된 객실을 한 번의 쿼리로 조회합니다.
