@@ -1,5 +1,7 @@
 package com.roompick.domain.payment.service;
 
+import java.time.LocalDateTime;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,8 +12,6 @@ import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /**
  * 결제 생성과 결제 상태 관리를 담당하는 Service입니다.
@@ -25,7 +25,8 @@ public class PaymentService {
     /**
      * 예약에 대한 결제를 준비합니다.
      *
-     * 동일한 예약에 결제가 이미 존재하면 새 결제를 생성하지 않습니다.
+     * 동일한 예약에 결제가 이미 존재하면
+     * 새 결제를 생성하지 않습니다.
      */
     @Transactional
     public Payment preparePayment(
@@ -48,7 +49,8 @@ public class PaymentService {
      */
     @Transactional(readOnly = true)
     public Payment findById(Long paymentId) {
-        return paymentRepository.findById(paymentId)
+        return paymentRepository
+            .findById(paymentId)
             .orElseThrow(() ->
                 new BusinessException(
                     ErrorCode.PAYMENT_NOT_FOUND
@@ -73,7 +75,7 @@ public class PaymentService {
     }
 
     /**
-     * READY 상태의 결제를 승인합니다.
+     * 기존 Mock 결제를 승인합니다.
      */
     @Transactional
     public Payment approvePayment(
@@ -91,7 +93,46 @@ public class PaymentService {
         return payment;
     }
 
-    private void validatePayment(Payment payment) {
+    /**
+     * PortOne에서 검증된 결제 정보를 기준으로
+     * 결제를 승인합니다.
+     */
+    @Transactional
+    public Payment approvePortOnePayment(
+        Payment payment,
+        String portOneTransactionId,
+        long verifiedAmount,
+        LocalDateTime approvedAt
+    ) {
+        validatePayment(payment);
+
+        payment.approveWithPortOne(
+            portOneTransactionId,
+            verifiedAmount,
+            approvedAt
+        );
+
+        return payment;
+    }
+
+    /**
+     * READY 상태의 결제를 실패 처리합니다.
+     */
+    @Transactional
+    public Payment failPayment(
+        Payment payment,
+        LocalDateTime failedAt
+    ) {
+        validatePayment(payment);
+
+        payment.fail(failedAt);
+
+        return payment;
+    }
+
+    private void validatePayment(
+        Payment payment
+    ) {
         if (payment == null) {
             throw new BusinessException(
                 ErrorCode.PAYMENT_NOT_FOUND
@@ -119,27 +160,15 @@ public class PaymentService {
         Long reservationId
     ) {
         boolean paymentExists =
-            paymentRepository.existsByReservationId(
-                reservationId
-            );
+            paymentRepository
+                .existsByReservationId(
+                    reservationId
+                );
 
         if (paymentExists) {
             throw new BusinessException(
                 ErrorCode.PAYMENT_ALREADY_EXISTS
             );
         }
-    }
-
-    /**
-     * READY 상태의 결제를 실패 처리합니다.
-     */
-    @Transactional
-    public Payment failPayment(
-        Payment payment,
-        LocalDateTime failedAt
-    ) {
-        payment.fail(failedAt);
-
-        return payment;
     }
 }
