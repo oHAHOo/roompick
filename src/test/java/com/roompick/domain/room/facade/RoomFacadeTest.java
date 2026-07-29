@@ -1,7 +1,9 @@
 package com.roompick.domain.room.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -21,6 +23,8 @@ import com.roompick.domain.room.dto.RoomAvailabilityResponseDto;
 import com.roompick.domain.room.dto.RoomAvailabilityStatus;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 /**
  * 객실과 예약 Service를 연결하는 RoomFacade의 흐름을 검증합니다.
@@ -116,6 +120,36 @@ class RoomFacadeTest {
             .isEqualTo(RoomAvailabilityStatus.SOLD_OUT);
         assertThat(response.unavailableReason())
             .isEqualTo("선택한 날짜에 이미 예약된 객실입니다.");
+    }
+
+    @Test
+    @DisplayName("숙소 또는 객실이 운영 중지 상태면 예약 가능 여부 조회를 중단한다")
+    void inactiveRoomOrAccommodationStopsAvailabilityCheck() {
+        // given
+        Long roomId = 1L;
+        RoomAvailabilityRequestDto request =
+            createAvailabilityRequest();
+
+        given(
+            roomService.findReservableRoom(
+                roomId,
+                request.guestCount()
+            )
+        ).willThrow(
+            new BusinessException(ErrorCode.ROOM_INACTIVE)
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomFacade.getRoomAvailability(roomId, request)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_INACTIVE);
+
+        then(reservationService).shouldHaveNoInteractions();
     }
 
     private RoomAvailabilityRequestDto createAvailabilityRequest() {

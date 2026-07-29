@@ -3,6 +3,7 @@ package com.roompick.domain.room.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * RoomRepository의 저장 및 조회 쿼리를 검증하는 JPA 테스트입니다.
@@ -150,18 +152,44 @@ class RoomRepositoryTest {
     }
 
     @Test
-    @DisplayName("ACTIVE 상태인 객실만 사용자 상세 조회 조건에 일치한다")
-    void findByIdAndStatus() {
+    @DisplayName("객실과 숙소가 모두 ACTIVE인 경우에만 사용자 상세 조회 조건에 일치한다")
+    void findPublicById() {
         // given
-        Accommodation accommodation =
+        Accommodation activeAccommodation =
             accommodationRepository.save(createAccommodation());
-        Room room = roomRepository.save(createRoom(accommodation));
+        Room publicRoom = createRoom(activeAccommodation);
+        publicRoom.activate();
+        roomRepository.save(publicRoom);
+
+        Accommodation inactiveAccommodation = createAccommodation();
+        ReflectionTestUtils.setField(
+            inactiveAccommodation,
+            "status",
+            AccommodationStatus.INACTIVE
+        );
+        accommodationRepository.save(inactiveAccommodation);
+
+        Room hiddenRoom = createRoom(inactiveAccommodation);
+        hiddenRoom.activate();
+        roomRepository.save(hiddenRoom);
+
+        entityManager.flush();
+        entityManager.clear();
 
         // when & then
         assertThat(
-            roomRepository.findByIdAndStatus(
-                room.getId(),
-                RoomStatus.ACTIVE
+            roomRepository.findPublicById(
+                publicRoom.getId(),
+                RoomStatus.ACTIVE,
+                AccommodationStatus.ACTIVE
+            )
+        ).isPresent();
+
+        assertThat(
+            roomRepository.findPublicById(
+                hiddenRoom.getId(),
+                RoomStatus.ACTIVE,
+                AccommodationStatus.ACTIVE
             )
         ).isEmpty();
     }

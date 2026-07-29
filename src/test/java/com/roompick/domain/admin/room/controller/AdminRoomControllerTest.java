@@ -432,6 +432,65 @@ class AdminRoomControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 회원은 객실 상태를 변경할 수 없다")
+    void 일반_회원은_객실_상태를_변경할_수_없다()
+        throws Exception {
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.FORBIDDEN.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @DisplayName("미인증 사용자는 객실 상태를 변경할 수 없다")
+    void 미인증_사용자는_객실_상태를_변경할_수_없다()
+        throws Exception {
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.UNAUTHORIZED.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
     @WithMockUser(roles = "ADMIN")
     @DisplayName("다른 숙소 객실의 상태 변경 요청은 404를 반환한다")
     void 다른_숙소_객실의_상태_변경은_404를_반환한다()
