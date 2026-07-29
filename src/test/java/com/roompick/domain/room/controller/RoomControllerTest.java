@@ -116,6 +116,36 @@ class RoomControllerTest {
     }
 
     @Test
+    void 비공개_객실을_상세_조회하면_404를_반환한다()
+        throws Exception {
+        // given: 새 객실은 INACTIVE 상태로 저장됩니다.
+        Accommodation accommodation =
+            accommodationRepository.save(
+                createAccommodation()
+            );
+
+        Room room = roomRepository.save(
+            Room.create(
+                accommodation,
+                "102",
+                "비공개 객실",
+                "아직 공개하지 않은 객실",
+                100000L,
+                2,
+                2
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                get("/api/v1/rooms/{roomId}", room.getId())
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code")
+                .value("ROOM_NOT_FOUND"));
+    }
+
+    @Test
     void 날짜_형식이_올바르지_않으면_400을_반환한다()
         throws Exception {
         // given
@@ -214,6 +244,8 @@ class RoomControllerTest {
                 .value(200000))
             .andExpect(jsonPath("$.data.available")
                 .value(true))
+            .andExpect(jsonPath("$.data.status")
+                .value("ACTIVE"))
             .andExpect(jsonPath("$.data.unavailableReason")
                 .doesNotExist());
     }
@@ -276,6 +308,8 @@ class RoomControllerTest {
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.data.available")
                 .value(false))
+            .andExpect(jsonPath("$.data.status")
+                .value("SOLD_OUT"))
             .andExpect(jsonPath("$.data.unavailableReason")
                 .value("선택한 날짜에 이미 예약된 객실입니다."));
     }
@@ -326,7 +360,7 @@ class RoomControllerTest {
     private Room createRoom(
         Accommodation accommodation
     ) {
-        return Room.create(
+        Room room = Room.create(
             accommodation,
             "101",
             "디럭스 더블룸",
@@ -335,5 +369,9 @@ class RoomControllerTest {
             2,
             2
         );
+
+        room.activate();
+
+        return room;
     }
 }

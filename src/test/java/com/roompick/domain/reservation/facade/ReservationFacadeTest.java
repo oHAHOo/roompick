@@ -1,6 +1,7 @@
 package com.roompick.domain.reservation.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -33,6 +34,8 @@ import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 /**
  * 객실 Service와 예약 Service를 연결하는
@@ -183,6 +186,42 @@ class ReservationFacadeTest {
                 checkOutDate,
                 2
             );
+    }
+
+    @Test
+    @DisplayName("숙소 또는 객실이 운영 중지 상태면 예약을 생성하지 않는다")
+    void 운영_중지된_숙소나_객실에는_예약을_생성하지_않는다() {
+        // given
+        Long memberId = 1L;
+        Long roomId = 20L;
+        ReservationCreateRequestDto request =
+            new ReservationCreateRequestDto(
+                roomId,
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2
+            );
+
+        given(
+            roomService.findReservableRoomWithAccommodation(
+                roomId,
+                2
+            )
+        ).willThrow(
+            new BusinessException(ErrorCode.ROOM_INACTIVE)
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            reservationFacade.createReservation(memberId, request)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_INACTIVE);
+
+        then(reservationService).shouldHaveNoInteractions();
     }
 
     @Test
