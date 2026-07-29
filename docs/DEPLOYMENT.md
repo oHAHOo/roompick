@@ -141,6 +141,14 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 | --- | --- |
 | `EC2_HOST` | EC2 퍼블릭 IP |
 | `EC2_SSH_KEY` | EC2 접속용 키페어의 개인키(`.pem`) 전체 내용 |
+| `AWS_ACCESS_KEY_ID` | 1단계에서 발급한 IAM 사용자의 Access Key ID |
+| `AWS_SECRET_ACCESS_KEY` | 1단계에서 발급한 IAM 사용자의 Secret Access Key |
+| `EC2_SG_ID` | EC2용 보안그룹 ID (`sg-`로 시작, 3-4단계에서 만든 EC2 보안그룹). AWS 콘솔 → EC2 → 보안 그룹에서 확인 |
+
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`는 CD가 배포 실행마다 GitHub Actions 러너의
+공인 IP를 `EC2_SG_ID` 보안그룹의 22번 포트에 임시로 추가·제거하는 데 사용합니다
+(`.github/workflows/cd.yml`, [docs/bug/cd-ec2-ssh-timeout-security-group.md](bug/cd-ec2-ssh-timeout-security-group.md) 참고).
+1단계에서 만든 IAM 사용자의 키를 그대로 등록하면 됩니다.
 
 `GITHUB_TOKEN`은 Actions가 자동으로 제공하므로 별도 등록이 필요 없습니다.
 
@@ -221,3 +229,11 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 
 - HTTPS 적용 (도메인 + Nginx + Let's Encrypt)
 - ECS/Fargate 등 컨테이너 오케스트레이션으로 전환
+- IAM 사용자 최소 권한 전환: 현재 CD가 쓰는 IAM 사용자가 `AmazonEC2FullAccess`,
+  `AmazonRDSFullAccess`를 갖고 있으나, 실제 필요한 권한은 `EC2_SG_ID` 보안그룹의
+  `AuthorizeSecurityGroupIngress`/`RevokeSecurityGroupIngress`뿐이다. 커스텀 정책으로
+  좁히거나 CD 전용 IAM 사용자를 새로 분리한다.
+- 장기 AWS Access Key 제거: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`를 GitHub Secrets에
+  장기 보관하는 대신, GitHub OIDC + `role-to-assume` 방식으로 전환해 만료 없는 키 자체를
+  없앤다. 전환 전까지는 이 키가 노출되면 EC2/RDS 전체가 위험해지므로, 위 IAM 최소 권한
+  전환과 함께 진행하는 것이 안전하다.
