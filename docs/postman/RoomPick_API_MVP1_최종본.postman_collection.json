@@ -312,7 +312,163 @@
                 "rooms"
               ]
             },
-            "description": "최종 와이어프레임 4번 객실 선택과 5번 객실 상세에서 사용할 ACTIVE 객실을 등록합니다.\n성공 응답의 roomId를 컬렉션 변수에 자동 저장합니다."
+            "description": "최종 와이어프레임 4번 객실 선택과 5번 객실 상세에서 사용할 INACTIVE 객실을 등록합니다.\n성공 응답의 roomId를 컬렉션 변수에 자동 저장합니다. 다음 ACTIVE 상태 변경 요청을 실행해야 공개 API에서 조회할 수 있습니다."
+          },
+          "response": []
+        },
+        {
+          "name": "관리자 객실 상태 변경 - ACTIVE 공개",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('객실 ACTIVE 변경 성공(200)', () => pm.response.to.have.status(200));",
+                  "pm.test('객실 상태 ACTIVE', () => pm.expect(json.data.status).to.eql('ACTIVE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/accommodations/{{accommodationId}}/rooms/{{roomId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "accommodations", "{{accommodationId}}", "rooms", "{{roomId}}", "status"]
+            },
+            "description": "등록 직후 INACTIVE인 객실을 ACTIVE로 공개합니다. 같은 상태를 다시 요청해도 성공하는 멱등 API입니다."
+          },
+          "response": []
+        },
+        {
+          "name": "관리자 객실 상태 변경 - INACTIVE 비공개",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('객실 INACTIVE 변경 성공(200)', () => pm.response.to.have.status(200));",
+                  "pm.test('객실 상태 INACTIVE', () => pm.expect(json.data.status).to.eql('INACTIVE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"INACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/accommodations/{{accommodationId}}/rooms/{{roomId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "accommodations", "{{accommodationId}}", "rooms", "{{roomId}}", "status"]
+            },
+            "description": "객실을 비공개로 변경합니다. 기존 예약은 유지하고 이후 신규 공개 조회와 신규 예약만 차단합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "관리자 객실 상태 변경 실패 - SOLD_OUT 요청 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SOLD_OUT 요청 거절(400)', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SOLD_OUT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/accommodations/{{accommodationId}}/rooms/{{roomId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "accommodations", "{{accommodationId}}", "rooms", "{{roomId}}", "status"]
+            },
+            "description": "SOLD_OUT은 날짜별 예약 데이터로 계산하는 화면 상태이므로 관리자 변경 요청에 사용할 수 없습니다."
+          },
+          "response": []
+        },
+        {
+          "name": "관리자 객실 활성화 실패 - INACTIVE 숙소 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('INACTIVE 숙소 객실 활성화 거절(409)', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/accommodations/{{accommodationId}}/rooms/{{roomId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "accommodations", "{{accommodationId}}", "rooms", "{{roomId}}", "status"]
+            },
+            "description": "사전 조건: accommodationId가 INACTIVE 숙소를 가리키고 roomId가 해당 숙소의 객실을 가리켜야 합니다. ACCOMMODATION_INACTIVE 409 응답을 확인합니다."
           },
           "response": []
         }
@@ -499,9 +655,34 @@
                 }
               ]
             },
-            "description": "최종 와이어프레임 5번 화면에서 체크인·체크아웃·인원을 입력한 뒤 예약 가능 여부를 확인합니다.\n날짜와 인원은 checkInDate, checkOutDate, guestCount 컬렉션 변수를 사용합니다.\n\n예약 가능하면 available=true와 예상 숙박일수·총금액을 반환합니다.\n겹치는 활성 예약이 있으면 HTTP 200 응답 안에서 available=false와 unavailableReason을 반환합니다."
+            "description": "최종 와이어프레임 5번 화면에서 체크인·체크아웃·인원을 입력한 뒤 예약 가능 여부를 확인합니다.\n날짜와 인원은 checkInDate, checkOutDate, guestCount 컬렉션 변수를 사용합니다.\n\n예약 가능하면 status=ACTIVE, available=true와 예상 숙박일수·총금액을 반환합니다.\n겹치는 활성 예약이 있으면 HTTP 200 응답 안에서 status=SOLD_OUT, available=false와 unavailableReason을 반환합니다."
           },
-          "response": [],
+          "response": [
+            {
+              "name": "예약 가능 - status ACTIVE",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"객실 예약 가능 여부 확인에 성공했습니다.\",\n  \"data\": {\n    \"roomId\": 1,\n    \"checkInDate\": \"2026-08-10\",\n    \"checkOutDate\": \"2026-08-11\",\n    \"guestCount\": 2,\n    \"nightCount\": 1,\n    \"pricePerNight\": 100000,\n    \"totalAmount\": 100000,\n    \"status\": \"ACTIVE\",\n    \"available\": true,\n    \"unavailableReason\": null\n  }\n}"
+            },
+            {
+              "name": "예약 불가 - status SOLD_OUT",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"객실 예약 가능 여부 확인에 성공했습니다.\",\n  \"data\": {\n    \"roomId\": 1,\n    \"checkInDate\": \"2026-08-10\",\n    \"checkOutDate\": \"2026-08-11\",\n    \"guestCount\": 2,\n    \"nightCount\": 1,\n    \"pricePerNight\": 100000,\n    \"totalAmount\": 100000,\n    \"status\": \"SOLD_OUT\",\n    \"available\": false,\n    \"unavailableReason\": \"선택한 날짜에 이미 예약된 객실입니다.\"\n  }\n}"
+            }
+          ],
           "event": [
             {
               "listen": "test",
@@ -512,6 +693,9 @@
                   "pm.test('예약 가능 여부 조회 성공(200)', () => pm.response.to.have.status(200));",
                   "pm.test('available 필드 존재', () => {",
                   "    pm.expect(json && json.data).to.have.property('available');",
+                  "});",
+                  "pm.test('화면 상태가 available과 일치', () => {",
+                  "    pm.expect(json.data.status).to.eql(json.data.available ? 'ACTIVE' : 'SOLD_OUT');",
                   "});"
                 ]
               }

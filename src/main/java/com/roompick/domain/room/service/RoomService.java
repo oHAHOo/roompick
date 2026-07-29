@@ -139,11 +139,12 @@ public class RoomService {
         Long accommodationId,
         Long roomId
     ) {
-        Room room = findByIdAndAccommodationId(
+        Room room = findByIdAndAccommodationIdWithAccommodation(
             accommodationId,
             roomId
         );
 
+        validateAccommodationActive(room.getAccommodation());
         room.activate();
 
         return room;
@@ -173,6 +174,20 @@ public class RoomService {
     ) {
         return roomRepository
             .findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+            );
+    }
+
+    private Room findByIdAndAccommodationIdWithAccommodation(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository
+            .findByIdAndAccommodationIdWithAccommodation(
                 roomId,
                 accommodationId
             )

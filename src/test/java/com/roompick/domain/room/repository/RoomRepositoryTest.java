@@ -63,6 +63,49 @@ class RoomRepositoryTest {
     }
 
     @Test
+    @DisplayName("관리자 객실 활성화 조회 시 소속 숙소를 fetch join한다")
+    void findByIdAndAccommodationIdWithAccommodation() {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        Accommodation otherAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "다른 호텔",
+                    "서울특별시 종로구",
+                    "다른 테스트 숙소",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+        Room room = roomRepository.save(createRoom(accommodation));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        var matchingRoom = roomRepository
+            .findByIdAndAccommodationIdWithAccommodation(
+                room.getId(),
+                accommodation.getId()
+            );
+        var mismatchedRoom = roomRepository
+            .findByIdAndAccommodationIdWithAccommodation(
+                room.getId(),
+                otherAccommodation.getId()
+            );
+
+        // then
+        assertThat(matchingRoom).isPresent();
+        assertThat(mismatchedRoom).isEmpty();
+        assertThat(
+            Persistence.getPersistenceUtil().isLoaded(
+                matchingRoom.orElseThrow().getAccommodation()
+            )
+        ).isTrue();
+    }
+
+    @Test
     @DisplayName("숙소 ID로 해당 숙소의 객실 목록을 조회한다")
     void findAllByAccommodationId() {
         // given

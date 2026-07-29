@@ -33,6 +33,22 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     Optional<Room> findByIdWithAccommodation(@Param("roomId") Long roomId);
 
     /**
+     * 관리자 객실 활성화 요청에서 객실 소속과 숙소 상태를
+     * 한 번의 조회로 확인할 수 있도록 숙소를 fetch join합니다.
+     */
+    @Query("""
+        SELECT room
+        FROM Room room
+        JOIN FETCH room.accommodation accommodation
+        WHERE room.id = :roomId
+          AND accommodation.id = :accommodationId
+        """)
+    Optional<Room> findByIdAndAccommodationIdWithAccommodation(
+        @Param("roomId") Long roomId,
+        @Param("accommodationId") Long accommodationId
+    );
+
+    /**
      * 사용자 상세 조회에서 공개 중인 객실만 조회합니다.
      */
     @Query("""

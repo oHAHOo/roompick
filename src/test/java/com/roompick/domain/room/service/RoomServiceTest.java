@@ -524,7 +524,7 @@ class RoomServiceTest {
         room.deactivate();
 
         given(
-            roomRepository.findByIdAndAccommodationId(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
                 roomId,
                 accommodationId
             )
@@ -568,6 +568,84 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("운영 중지된 숙소의 객실은 공개할 수 없다")
+    void 운영_중지된_숙소의_객실은_공개할_수_없다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+        deactivateAccommodation(room);
+
+        given(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.activateRoom(accommodationId, roomId)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ACCOMMODATION_INACTIVE);
+
+        assertThat(room.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("이미 공개된 객실을 다시 공개해도 성공한다")
+    void 객실_공개는_멱등하게_동작한다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+
+        given(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.activateRoom(accommodationId, roomId);
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.ACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("이미 비공개된 객실을 다시 비공개해도 성공한다")
+    void 객실_비공개는_멱등하게_동작한다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.deactivateRoom(accommodationId, roomId);
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
     @DisplayName("다른 숙소에 소속된 객실의 상태 변경 요청은 404로 처리한다")
     void 다른_숙소의_객실은_상태를_변경할_수_없다() {
         // given
@@ -575,7 +653,7 @@ class RoomServiceTest {
         Long roomId = 10L;
 
         given(
-            roomRepository.findByIdAndAccommodationId(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
                 roomId,
                 accommodationId
             )

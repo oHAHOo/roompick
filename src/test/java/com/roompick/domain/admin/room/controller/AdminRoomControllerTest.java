@@ -432,6 +432,138 @@ class AdminRoomControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자는 객실을 비공개할 수 있다")
+    void 관리자는_객실을_비공개할_수_있다()
+        throws Exception {
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willReturn(
+            new RoomStatusUpdateResponseDto(
+                10L,
+                RoomStatus.INACTIVE
+            )
+        );
+
+        String requestBody = """
+            {
+              "status": "INACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.roomId").value(10L))
+            .andExpect(jsonPath("$.data.status").value("INACTIVE"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("운영 중지된 숙소의 객실 공개 요청은 409를 반환한다")
+    void 운영_중지된_숙소의_객실_공개는_409를_반환한다()
+        throws Exception {
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willThrow(
+            new BusinessException(ErrorCode.ACCOMMODATION_INACTIVE)
+        );
+
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.ACCOMMODATION_INACTIVE.getCode())
+            );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("객실 상태가 누락되면 400을 반환한다")
+    void 객실_상태가_누락되면_400을_반환한다()
+        throws Exception {
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}")
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("SOLD_OUT 상태 변경 요청은 400을 반환한다")
+    void SOLD_OUT_상태_변경_요청은_400을_반환한다()
+        throws Exception {
+        String requestBody = """
+            {
+              "status": "SOLD_OUT"
+            }
+            """;
+
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
     @WithMockUser(roles = "USER")
     @DisplayName("일반 회원은 객실 상태를 변경할 수 없다")
     void 일반_회원은_객실_상태를_변경할_수_없다()
