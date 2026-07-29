@@ -10,6 +10,7 @@ import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
+import com.roompick.domain.accommodation.service.PopularAccommodationService;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
 
@@ -21,6 +22,7 @@ public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
     private final RoomService roomService;
+    private final PopularAccommodationService popularAccommodationService;
 
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
@@ -44,7 +46,10 @@ public class AccommodationFacade {
     }
 
     /**
-     * 운영 중인 숙소의 기본 정보를 조회합니다.
+     * 운영 중인 숙소의 기본 정보를 조회하고 조회 점수를 기록합니다.
+     *
+     * 숙소 조회와 응답 DTO 변환이 성공한 경우에만 인기 점수를 기록합니다.
+     * Redis 기록에 실패하더라도 상세 조회 응답에는 영향을 주지 않습니다.
      *
      * 객실 목록은 별도의 숙소별 객실 목록 조회 API가 담당하므로
      * 숙소 상세 조회에서는 불필요한 객실 조회를 수행하지 않습니다.
@@ -57,9 +62,16 @@ public class AccommodationFacade {
                 accommodationId
             );
 
-        return AccommodationDetailResponseDto.from(
-            accommodation
+        AccommodationDetailResponseDto response =
+            AccommodationDetailResponseDto.from(
+                accommodation
+            );
+
+        popularAccommodationService.recordView(
+            accommodationId
         );
+
+        return response;
     }
 
     /**
