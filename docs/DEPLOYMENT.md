@@ -144,10 +144,61 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 
 `GITHUB_TOKEN`은 Actions가 자동으로 제공하므로 별도 등록이 필요 없습니다.
 
-## 10. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
+## 10. 장애 시 재배포·롤백 절차
+
+### 10-1. 배포 실패 감지
+
+- GitHub Actions `CD` 워크플로우가 실패하면(테스트/빌드/배포 어느 단계든) `deploy` job의
+  `Deploy to EC2 over SSH` 스텝은 실행되지 않거나 중간에 실패로 끝나므로, **기존에 떠 있던
+  컨테이너는 그대로 남아 서비스가 유지됩니다.** 즉 새 이미지 pull이나 컨테이너 교체가
+  실패해도 자동으로 서비스가 끊기지는 않습니다.
+- 단, 컨테이너 교체 스텝(`docker stop` → `docker rm` → `docker run`) 도중에 실패하면
+  이전 컨테이너는 이미 내려간 상태에서 새 컨테이너 기동이 안 됐을 수 있습니다. 이 경우
+  `curl http://<EC2 퍼블릭 IP>:8080/actuator/health`가 응답하지 않는 것으로 확인합니다.
+
+### 10-2. 이전 버전으로 롤백
+
+배포는 `latest`가 아닌 커밋 SHA 태그(`${{ github.sha }}`)로 이루어지므로, GHCR에 남아있는
+과거 이미지로 즉시 롤백할 수 있습니다.
+
+1. 롤백할 커밋의 SHA 확인 (`git log --oneline`)
+2. EC2에 SSH 접속
+   ```bash
+   ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
+   ```
+3. 해당 SHA의 이미지로 컨테이너 교체
+   ```bash
+   sudo docker pull ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
+   sudo docker stop roompick-backend || true
+   sudo docker rm roompick-backend || true
+   sudo docker run -d --name roompick-backend \
+     --env-file /home/ec2-user/app/.env.prod \
+     -p 8080:8080 \
+     --restart unless-stopped \
+     ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
+   ```
+4. `curl http://<EC2 퍼블릭 IP>:8080/actuator/health`로 정상 기동 확인
+
+### 10-3. 코드 원인 수정 후 재배포
+
+일회성 롤백이 아니라 `develop` 자체를 되돌려야 하는 경우:
+
+1. 문제가 된 커밋을 `revert`하거나 원인을 수정한 새 커밋을 `develop`에 push
+2. push 시 CD가 자동으로 test → build → deploy를 다시 실행
+3. 또는 GitHub 저장소 Actions 탭 → `CD` 워크플로우 → `Run workflow`(`workflow_dispatch`)로
+   특정 시점 재배포를 수동 트리거
+
+### 10-4. DB 마이그레이션이 원인인 경우
+
+`ddl-auto: validate`이므로 Flyway가 적용한 스키마와 엔티티가 어긋나면 앱이 기동 자체를
+못 합니다. 이 경우 이미지 롤백만으로는 부족하고, 문제가 된 `V*__*.sql` 마이그레이션을
+되돌리는 새 마이그레이션(`V(n+1)__revert_xxx.sql`)을 추가해야 합니다. Flyway는 이미 적용된
+마이그레이션 파일을 수정하면 체크섬 불일치로 실패하므로, 기존 파일을 고치지 말고 항상
+새 버전을 추가합니다.
+
+## 11. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
 
 다음 항목은 이번 배포 범위에 포함하지 않았습니다. 필요 시 팀 논의 후 별도 작업으로 진행합니다.
 
 - HTTPS 적용 (도메인 + Nginx + Let's Encrypt)
 - ECS/Fargate 등 컨테이너 오케스트레이션으로 전환
-- Flyway/Liquibase 마이그레이션 도구 도입 (도입 시 `application-prod.yml`의 `ddl-auto`를 `validate`로 전환)
