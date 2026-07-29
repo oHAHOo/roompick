@@ -17,3 +17,10 @@ spring:
       port: ${REDIS_PORT:6379}
   flyway:
     locations: classpath:db/migration,classpath:db/dev-migration
+
+portone:
+  api:
+    base-url: https://api.portone.io
+    secret: ${PORTONE_API_SECRET}
+  store-id: ${PORTONE_STORE_ID}
+  channel-key: ${PORTONE_CHANNEL_KEY}

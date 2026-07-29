@@ -9,6 +9,7 @@ import com.roompick.domain.payment.entity.PaymentStatus;
 public record PaymentPrepareResponseDto(
 
     Long paymentId,
+    String portOnePaymentId,
     Long reservationId,
     long amount,
     PaymentStatus status
@@ -20,6 +21,7 @@ public record PaymentPrepareResponseDto(
     ) {
         return new PaymentPrepareResponseDto(
             payment.getId(),
+            payment.getPortOnePaymentId(),
             payment.getReservation().getId(),
             payment.getAmount(),
             payment.getStatus()

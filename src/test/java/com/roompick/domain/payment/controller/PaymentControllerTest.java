@@ -11,9 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.LocalDateTime;
 import java.util.List;
 
-import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
-import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
-import com.roompick.domain.reservation.entity.ReservationStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,9 +25,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.roompick.domain.member.entity.MemberRole;
+import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import com.roompick.domain.payment.dto.response.PaymentPrepareResponseDto;
 import com.roompick.domain.payment.entity.PaymentStatus;
 import com.roompick.domain.payment.facade.PaymentFacade;
+import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.security.AuthMember;
@@ -54,10 +54,12 @@ class PaymentControllerTest {
         // given
         Long reservationId = 1L;
         Long memberId = 10L;
+        String portOnePaymentId = "roompick-payment-test-001";
 
         PaymentPrepareResponseDto result =
             new PaymentPrepareResponseDto(
                 100L,
+                portOnePaymentId,
                 reservationId,
                 200000L,
                 PaymentStatus.READY
@@ -76,7 +78,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isCreated())
             .andExpect(
@@ -90,6 +96,10 @@ class PaymentControllerTest {
             .andExpect(
                 jsonPath("$.data.paymentId")
                     .value(100L)
+            )
+            .andExpect(
+                jsonPath("$.data.portOnePaymentId")
+                    .value(portOnePaymentId)
             )
             .andExpect(
                 jsonPath("$.data.reservationId")
@@ -155,7 +165,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isForbidden())
             .andExpect(
@@ -204,7 +218,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isNotFound())
             .andExpect(
@@ -242,7 +260,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -280,7 +302,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -318,7 +344,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -328,26 +358,6 @@ class PaymentControllerTest {
                             .getCode()
                     )
             );
-    }
-
-    private Authentication userAuthentication(
-        Long memberId
-    ) {
-        AuthMember authMember =
-            new AuthMember(
-                memberId,
-                MemberRole.USER
-            );
-
-        return new UsernamePasswordAuthenticationToken(
-            authMember,
-            null,
-            List.of(
-                new SimpleGrantedAuthority(
-                    "ROLE_USER"
-                )
-            )
-        );
     }
 
     @Test
@@ -1011,5 +1021,25 @@ class PaymentControllerTest {
             .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(paymentFacade);
+    }
+
+    private Authentication userAuthentication(
+        Long memberId
+    ) {
+        AuthMember authMember =
+            new AuthMember(
+                memberId,
+                MemberRole.USER
+            );
+
+        return new UsernamePasswordAuthenticationToken(
+            authMember,
+            null,
+            List.of(
+                new SimpleGrantedAuthority(
+                    "ROLE_USER"
+                )
+            )
+        );
     }
 }

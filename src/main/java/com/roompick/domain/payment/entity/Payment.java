@@ -1,6 +1,7 @@
 package com.roompick.domain.payment.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.global.common.BaseTimeEntity;
@@ -36,11 +37,18 @@ import lombok.NoArgsConstructor;
         @UniqueConstraint(
             name = "uk_payments_reservation_id",
             columnNames = "reservation_id"
+        ),
+        @UniqueConstraint(
+            name = "uk_payments_portone_payment_id",
+            columnNames = "portone_payment_id"
         )
     }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Payment extends BaseTimeEntity {
+
+    private static final String PORTONE_PAYMENT_ID_PREFIX =
+        "roompick-payment-";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -56,6 +64,19 @@ public class Payment extends BaseTimeEntity {
         nullable = false
     )
     private Reservation reservation;
+
+    /**
+     * PortOne 결제 요청과 조회에 사용하는 결제 식별값입니다.
+     *
+     * RoomPick 내부 Payment ID와 구분하기 위해 문자열로 관리합니다.
+     */
+    @Column(
+        name = "portone_payment_id",
+        nullable = false,
+        updatable = false,
+        length = 100
+    )
+    private String portOnePaymentId;
 
     /**
      * 예약 생성 시 저장된 총 결제 금액입니다.
@@ -87,8 +108,12 @@ public class Payment extends BaseTimeEntity {
 
         validateAmount(amount);
 
+        String portOnePaymentId =
+            generatePortOnePaymentId();
+
         return new Payment(
             reservation,
+            portOnePaymentId,
             amount,
             PaymentStatus.READY
         );
@@ -96,10 +121,12 @@ public class Payment extends BaseTimeEntity {
 
     private Payment(
         Reservation reservation,
+        String portOnePaymentId,
         long amount,
         PaymentStatus status
     ) {
         this.reservation = reservation;
+        this.portOnePaymentId = portOnePaymentId;
         this.amount = amount;
         this.status = status;
     }
@@ -128,6 +155,14 @@ public class Payment extends BaseTimeEntity {
 
         this.status = PaymentStatus.FAILED;
         this.failedAt = failedAt;
+    }
+
+    /**
+     * PortOne에서 사용할 고유한 결제 ID를 생성합니다.
+     */
+    private static String generatePortOnePaymentId() {
+        return PORTONE_PAYMENT_ID_PREFIX
+            + UUID.randomUUID();
     }
 
     private void validateReadyStatus() {
