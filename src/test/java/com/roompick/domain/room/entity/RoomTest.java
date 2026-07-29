@@ -41,7 +41,34 @@ class RoomTest {
         assertThat(room.getPricePerNight()).isEqualTo(100_000L);
         assertThat(room.getStandardCapacity()).isEqualTo(2);
         assertThat(room.getMaxCapacity()).isEqualTo(2);
+        assertThat(room.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+    }
+
+    @Test
+    @DisplayName("객실을 공개 상태로 변경할 수 있다")
+    void activateRoom() {
+        // given
+        Room room = createDefaultRoom();
+
+        // when
+        room.activate();
+
+        // then
         assertThat(room.getStatus()).isEqualTo(RoomStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("객실을 비공개 상태로 변경할 수 있다")
+    void deactivateRoom() {
+        // given
+        Room room = createDefaultRoom();
+        room.activate();
+
+        // when
+        room.deactivate();
+
+        // then
+        assertThat(room.getStatus()).isEqualTo(RoomStatus.INACTIVE);
     }
 
     @Test
@@ -166,6 +193,18 @@ class RoomTest {
             "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
             LocalTime.of(15, 0),
             LocalTime.of(11, 0)
+        );
+    }
+
+    private Room createDefaultRoom() {
+        return Room.create(
+            createAccommodation(),
+            "101",
+            "디럭스 더블룸",
+            "객실 설명",
+            100_000L,
+            2,
+            2
         );
     }
 }

@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -21,6 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.roompick.domain.admin.room.dto.response.RoomCreateResponseDto;
+import com.roompick.domain.admin.room.dto.response.RoomStatusUpdateResponseDto;
 import com.roompick.domain.admin.room.facade.AdminRoomFacade;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.global.common.BusinessException;
@@ -54,7 +56,7 @@ class AdminRoomControllerTest {
                 150000L,
                 2,
                 4,
-                RoomStatus.ACTIVE
+                RoomStatus.INACTIVE
             );
 
         given(
@@ -120,7 +122,7 @@ class AdminRoomControllerTest {
             )
             .andExpect(
                 jsonPath("$.data.status")
-                    .value("ACTIVE")
+                    .value("INACTIVE")
             );
     }
 
@@ -141,7 +143,7 @@ class AdminRoomControllerTest {
                 0L,
                 1,
                 2,
-                RoomStatus.ACTIVE
+                RoomStatus.INACTIVE
             );
 
         given(
@@ -385,5 +387,84 @@ class AdminRoomControllerTest {
                             .getCode()
                     )
             );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자는 객실을 공개할 수 있다")
+    void 관리자는_객실을_공개할_수_있다()
+        throws Exception {
+        // given
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willReturn(
+            new RoomStatusUpdateResponseDto(
+                10L,
+                RoomStatus.ACTIVE
+            )
+        );
+
+        String requestBody = """
+            {
+              "status": "ACTIVE"
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.roomId").value(10L))
+            .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("다른 숙소 객실의 상태 변경 요청은 404를 반환한다")
+    void 다른_숙소_객실의_상태_변경은_404를_반환한다()
+        throws Exception {
+        // given
+        given(
+            adminRoomFacade.updateRoomStatus(
+                eq(1L),
+                eq(10L),
+                any()
+            )
+        ).willThrow(
+            new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+        );
+
+        String requestBody = """
+            {
+              "status": "INACTIVE"
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                patch(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
     }
 }

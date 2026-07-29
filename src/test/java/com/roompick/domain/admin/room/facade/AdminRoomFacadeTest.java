@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.admin.room.dto.request.RoomCreateRequestDto;
+import com.roompick.domain.admin.room.dto.request.RoomStatusUpdateRequestDto;
 import com.roompick.domain.admin.room.dto.response.RoomCreateResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
@@ -88,7 +89,7 @@ class AdminRoomFacadeTest {
         given(room.getMaxCapacity())
             .willReturn(request.maxCapacity());
         given(room.getStatus())
-            .willReturn(RoomStatus.ACTIVE);
+            .willReturn(RoomStatus.INACTIVE);
 
         // when
         RoomCreateResponseDto response =
@@ -115,7 +116,7 @@ class AdminRoomFacadeTest {
         assertThat(response.maxCapacity())
             .isEqualTo(4);
         assertThat(response.status())
-            .isEqualTo(RoomStatus.ACTIVE);
+            .isEqualTo(RoomStatus.INACTIVE);
 
         then(accommodationService)
             .should()
@@ -132,5 +133,62 @@ class AdminRoomFacadeTest {
                 request.standardCapacity(),
                 request.maxCapacity()
             );
+    }
+
+    @Test
+    @DisplayName("관리자 객실 공개 요청을 처리한다")
+    void 관리자_객실_공개_요청을_처리한다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        RoomStatusUpdateRequestDto request =
+            new RoomStatusUpdateRequestDto(RoomStatus.ACTIVE);
+
+        given(
+            roomService.activateRoom(accommodationId, roomId)
+        ).willReturn(room);
+        given(room.getId()).willReturn(roomId);
+        given(room.getStatus()).willReturn(RoomStatus.ACTIVE);
+
+        // when
+        var response = adminRoomFacade.updateRoomStatus(
+            accommodationId,
+            roomId,
+            request
+        );
+
+        // then
+        assertThat(response.roomId()).isEqualTo(roomId);
+        assertThat(response.status()).isEqualTo(RoomStatus.ACTIVE);
+        then(roomService).should()
+            .activateRoom(accommodationId, roomId);
+    }
+
+    @Test
+    @DisplayName("관리자 객실 비공개 요청을 처리한다")
+    void 관리자_객실_비공개_요청을_처리한다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        RoomStatusUpdateRequestDto request =
+            new RoomStatusUpdateRequestDto(RoomStatus.INACTIVE);
+
+        given(
+            roomService.deactivateRoom(accommodationId, roomId)
+        ).willReturn(room);
+        given(room.getId()).willReturn(roomId);
+        given(room.getStatus()).willReturn(RoomStatus.INACTIVE);
+
+        // when
+        var response = adminRoomFacade.updateRoomStatus(
+            accommodationId,
+            roomId,
+            request
+        );
+
+        // then
+        assertThat(response.status()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomService).should()
+            .deactivateRoom(accommodationId, roomId);
     }
 }

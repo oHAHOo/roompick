@@ -46,11 +46,11 @@ class RoomServiceTest {
         Long roomId = 1L;
         Room room = createRoom();
 
-        given(roomRepository.findById(roomId))
+        given(roomRepository.findByIdAndStatus(roomId, RoomStatus.ACTIVE))
             .willReturn(Optional.of(room));
 
         // when: 객실 ID로 상세 조회합니다.
-        Room result = roomService.findById(roomId);
+        Room result = roomService.findActiveById(roomId);
 
         // then: Repository에서 조회한 객실이 반환됩니다.
         assertThat(result).isSameAs(room);
@@ -61,11 +61,11 @@ class RoomServiceTest {
         // given: 해당 ID의 객실이 존재하지 않습니다.
         Long roomId = 999L;
 
-        given(roomRepository.findById(roomId))
+        given(roomRepository.findByIdAndStatus(roomId, RoomStatus.ACTIVE))
             .willReturn(Optional.empty());
 
         // when & then: 객실 없음 공통 예외가 발생합니다.
-        assertThatThrownBy(() -> roomService.findById(roomId))
+        assertThatThrownBy(() -> roomService.findActiveById(roomId))
             .isInstanceOf(BusinessException.class)
             .extracting(exception ->
                 ((BusinessException) exception).getErrorCode()
@@ -195,7 +195,7 @@ class RoomServiceTest {
             LocalTime.of(11, 0)
         );
 
-        return Room.create(
+        Room room = Room.create(
             accommodation,
             "101",
             "디럭스 더블룸",
@@ -204,6 +204,10 @@ class RoomServiceTest {
             2,
             2
         );
+
+        room.activate();
+
+        return room;
     }
 
     @Test
@@ -243,9 +247,7 @@ class RoomServiceTest {
         assertThat(room.getPricePerNight())
             .isZero();
         assertThat(room.getStatus())
-            .isEqualTo(
-                com.roompick.domain.room.entity.RoomStatus.ACTIVE
-            );
+            .isEqualTo(RoomStatus.INACTIVE);
 
         then(roomRepository)
             .should()
@@ -427,5 +429,83 @@ class RoomServiceTest {
                 ((BusinessException) exception).getErrorCode()
             )
             .isEqualTo(ErrorCode.ROOM_CAPACITY_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("관리자가 같은 숙소의 객실을 공개할 수 있다")
+    void 객실을_공개할_수_있다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.activateRoom(
+            accommodationId,
+            roomId
+        );
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.ACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 같은 숙소의 객실을 비공개할 수 있다")
+    void 객실을_비공개할_수_있다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.deactivateRoom(
+            accommodationId,
+            roomId
+        );
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("다른 숙소에 소속된 객실의 상태 변경 요청은 404로 처리한다")
+    void 다른_숙소의_객실은_상태를_변경할_수_없다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.activateRoom(accommodationId, roomId)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
     }
 }

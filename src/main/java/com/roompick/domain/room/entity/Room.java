@@ -77,7 +77,7 @@ public class Room extends BaseTimeEntity {
     /**
      * 새로운 객실을 생성합니다.
      *
-     * 객실은 처음 생성될 때 항상 ACTIVE 상태로 시작합니다.
+     * 관리자가 공개 여부를 결정할 수 있도록 INACTIVE 상태로 시작합니다.
      */
     public static Room create(
         Accommodation accommodation,
@@ -102,8 +102,22 @@ public class Room extends BaseTimeEntity {
             pricePerNight,
             standardCapacity,
             maxCapacity,
-            RoomStatus.ACTIVE
+            RoomStatus.INACTIVE
         );
+    }
+
+    /**
+     * 사용자에게 객실을 공개합니다.
+     */
+    public void activate() {
+        this.status = RoomStatus.ACTIVE;
+    }
+
+    /**
+     * 사용자에게 객실을 노출하지 않도록 변경합니다.
+     */
+    public void deactivate() {
+        this.status = RoomStatus.INACTIVE;
     }
 
     private Room(

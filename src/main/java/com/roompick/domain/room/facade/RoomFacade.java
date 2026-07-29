@@ -25,7 +25,7 @@ public class RoomFacade {
      * 객실 상세 정보를 조회하고 공개 응답으로 변환합니다.
      */
     public RoomDetailResponseDto getRoomDetail(Long roomId) {
-        Room room = roomService.findById(roomId);
+        Room room = roomService.findActiveById(roomId);
 
         return RoomDetailResponseDto.from(room);
     }

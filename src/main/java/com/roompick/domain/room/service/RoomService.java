@@ -29,8 +29,9 @@ public class RoomService {
      * fetch join 없이 객실만 조회합니다.
      */
     @Transactional(readOnly = true)
-    public Room findById(Long roomId) {
-        return roomRepository.findById(roomId)
+    public Room findActiveById(Long roomId) {
+        return roomRepository
+            .findByIdAndStatus(roomId, RoomStatus.ACTIVE)
             .orElseThrow(() ->
                 new BusinessException(ErrorCode.ROOM_NOT_FOUND)
             );
@@ -129,6 +130,58 @@ public class RoomService {
         );
 
         return roomRepository.save(room);
+    }
+
+    /**
+     * 지정한 숙소에 실제로 소속된 객실을 사용자에게 공개합니다.
+     *
+     * 영속 상태의 Entity를 변경하므로 별도의 save 호출은 필요하지 않습니다.
+     */
+    @Transactional
+    public Room activateRoom(
+        Long accommodationId,
+        Long roomId
+    ) {
+        Room room = findByIdAndAccommodationId(
+            accommodationId,
+            roomId
+        );
+
+        room.activate();
+
+        return room;
+    }
+
+    /**
+     * 지정한 숙소에 실제로 소속된 객실을 사용자에게 비공개합니다.
+     */
+    @Transactional
+    public Room deactivateRoom(
+        Long accommodationId,
+        Long roomId
+    ) {
+        Room room = findByIdAndAccommodationId(
+            accommodationId,
+            roomId
+        );
+
+        room.deactivate();
+
+        return room;
+    }
+
+    private Room findByIdAndAccommodationId(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository
+            .findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+            );
     }
 
     /**

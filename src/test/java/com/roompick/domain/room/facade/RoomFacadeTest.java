@@ -18,6 +18,7 @@ import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.dto.RoomAvailabilityRequestDto;
 import com.roompick.domain.room.dto.RoomAvailabilityResponseDto;
+import com.roompick.domain.room.dto.RoomAvailabilityStatus;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
 
@@ -73,6 +74,8 @@ class RoomFacadeTest {
         assertThat(response.pricePerNight()).isEqualTo(100_000L);
         assertThat(response.totalAmount()).isEqualTo(200_000L);
         assertThat(response.available()).isTrue();
+        assertThat(response.status())
+            .isEqualTo(RoomAvailabilityStatus.ACTIVE);
         assertThat(response.unavailableReason()).isNull();
     }
 
@@ -109,6 +112,8 @@ class RoomFacadeTest {
 
         // then
         assertThat(response.available()).isFalse();
+        assertThat(response.status())
+            .isEqualTo(RoomAvailabilityStatus.SOLD_OUT);
         assertThat(response.unavailableReason())
             .isEqualTo("선택한 날짜에 이미 예약된 객실입니다.");
     }
@@ -139,6 +144,8 @@ class RoomFacadeTest {
             2,
             2
         );
+
+        room.activate();
 
         // 저장하지 않은 단위 테스트 객체에 ID를 지정합니다.
         ReflectionTestUtils.setField(
