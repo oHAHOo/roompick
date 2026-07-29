@@ -144,6 +144,25 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 
 `GITHUB_TOKEN`은 Actions가 자동으로 제공하므로 별도 등록이 필요 없습니다.
 
+### Flyway 마이그레이션 CI 검증
+
+`test`(H2, `flyway.enabled: false`)에서는 Flyway 마이그레이션이 실제로 실행되지 않으므로,
+`src/main/resources/db/migration`의 SQL이 실제 MySQL에서 문제없이 적용되는지는 별도로
+검증해야 합니다. 검증 방식으로 두 가지를 검토했습니다.
+
+- **A. `flywayMigrate` Gradle 태스크**: Flyway만 단독 실행해 마이그레이션 SQL 자체를 검증.
+  Flyway Gradle 플러그인 추가가 필요하지만, 앱 기동 없이 SQL만 실행하므로 빠르고 실패 시
+  원인(Flyway 에러 로그)이 명확함.
+- **B. prod 유사 프로필로 앱 실기동**: 마이그레이션 + Hibernate `ddl-auto: validate`의
+  엔티티-스키마 일치까지 한 번에 검증하고 실제 배포 경로와 가장 가깝지만, 앱 전체를
+  띄우는 만큼 느리고 실패 시 원인(Flyway vs Hibernate vs 다른 빈 초기화)을 특정하기
+  상대적으로 어려움.
+
+**A안 채택.** 마이그레이션 파일이 아직 4개뿐이라 검증 대상이 단순하고, CI를 자주 돌리는
+단계에서는 실행 속도와 실패 시 원인 파악의 명확성이 더 중요하다고 판단했습니다. 엔티티와
+스키마 일치 여부는 이미 `test` job과 실제 배포 시 `ddl-auto: validate`가 걸러주므로, 이
+검증에서 굳이 앱 전체 기동까지 중복으로 확인할 필요는 없습니다.
+
 ## 10. 장애 시 재배포·롤백 절차
 
 ### 10-1. 배포 실패 감지
