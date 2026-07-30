@@ -1,9 +1,12 @@
 package com.roompick.domain.accommodation.repository;
 
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -44,5 +47,31 @@ public interface AccommodationRepository
     )
     Page<AccommodationListResponseDto> findAllActive(
         Pageable pageable
+    );
+
+    /**
+     * 전달받은 숙소 ID 중 운영 중인 숙소의 공개 요약 정보만 조회합니다.
+     *
+     * Redis 랭킹에 포함된 숙소를 IN 조건으로 한 번에 조회하여
+     * 숙소별 반복 SELECT가 발생하지 않도록 합니다.
+     *
+     * 반환 순서는 데이터베이스가 보장하지 않으므로
+     * Redis 랭킹 순서에 맞춘 재정렬은 Service에서 담당합니다.
+     */
+    @Query(
+        """
+        SELECT new com.roompick.domain.accommodation.dto.AccommodationListResponseDto(
+            accommodation.id,
+            accommodation.name,
+            accommodation.address
+        )
+        FROM Accommodation accommodation
+        WHERE accommodation.id IN :accommodationIds
+            AND accommodation.status =
+                com.roompick.domain.accommodation.entity.AccommodationStatus.ACTIVE
+        """
+    )
+    List<AccommodationListResponseDto> findAllActiveSummaryByIdIn(
+        @Param("accommodationIds") List<Long> accommodationIds
     );
 }

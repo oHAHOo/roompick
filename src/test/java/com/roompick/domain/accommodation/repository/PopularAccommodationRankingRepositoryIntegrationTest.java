@@ -2,6 +2,7 @@ package com.roompick.domain.accommodation.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
@@ -117,5 +118,96 @@ class PopularAccommodationRankingRepositoryIntegrationTest {
             .isLessThanOrEqualTo(
                 172800L
             );
+    }
+
+    @Test
+    void 인기_숙소_ID_전체를_점수_내림차순으로_조회한다() {
+        // given
+        Long firstAccommodationId = 1L;
+        Long secondAccommodationId = 2L;
+        Long thirdAccommodationId = 3L;
+
+        popularAccommodationRankingRepository.incrementScore(
+            DAILY_KEY,
+            firstAccommodationId
+        );
+
+        for (int count = 0; count < 3; count++) {
+            popularAccommodationRankingRepository.incrementScore(
+                DAILY_KEY,
+                secondAccommodationId
+            );
+        }
+
+        for (int count = 0; count < 2; count++) {
+            popularAccommodationRankingRepository.incrementScore(
+                DAILY_KEY,
+                thirdAccommodationId
+            );
+        }
+
+        // when
+        List<Long> result =
+            popularAccommodationRankingRepository
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
+                );
+
+        // then
+        assertThat(result).containsExactly(
+            secondAccommodationId,
+            thirdAccommodationId,
+            firstAccommodationId
+        );
+    }
+
+    @Test
+    void 점수가_같은_숙소는_Redis_역방향_사전순으로_조회한다() {
+        // given
+        Long firstAccommodationId = 1L;
+        Long secondAccommodationId = 2L;
+        Long thirdAccommodationId = 3L;
+
+        popularAccommodationRankingRepository.incrementScore(
+            DAILY_KEY,
+            firstAccommodationId
+        );
+
+        popularAccommodationRankingRepository.incrementScore(
+            DAILY_KEY,
+            secondAccommodationId
+        );
+
+        popularAccommodationRankingRepository.incrementScore(
+            DAILY_KEY,
+            thirdAccommodationId
+        );
+
+        // when
+        List<Long> result =
+            popularAccommodationRankingRepository
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
+                );
+
+        // then
+        assertThat(result).containsExactly(
+            thirdAccommodationId,
+            secondAccommodationId,
+            firstAccommodationId
+        );
+    }
+
+    @Test
+    void 인기_숙소_랭킹이_없으면_빈_목록을_반환한다() {
+        // when
+        List<Long> result =
+            popularAccommodationRankingRepository
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
+                );
+
+        // then
+        assertThat(result).isEmpty();
     }
 }
