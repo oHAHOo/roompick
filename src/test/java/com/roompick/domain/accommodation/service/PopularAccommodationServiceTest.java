@@ -101,7 +101,7 @@ class PopularAccommodationServiceTest {
     }
 
     @Test
-    void 인기_숙소_ID를_요청한_limit만큼_조회한다() {
+    void 인기_숙소_ID_전체를_점수_순서대로_조회한다() {
         // given
         int limit = 10;
 
@@ -120,9 +120,8 @@ class PopularAccommodationServiceTest {
 
         when(
             popularAccommodationRankingRepository
-                .findTopAccommodationIds(
-                    DAILY_KEY,
-                    limit
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
                 )
         ).thenReturn(
             rankedAccommodationIds
@@ -131,7 +130,7 @@ class PopularAccommodationServiceTest {
         // when
         List<Long> result =
             popularAccommodationService
-                .findTopAccommodationIds(
+                .findRankedAccommodationIds(
                     limit
                 );
 
@@ -144,9 +143,8 @@ class PopularAccommodationServiceTest {
 
         verify(
             popularAccommodationRankingRepository
-        ).findTopAccommodationIds(
-            DAILY_KEY,
-            limit
+        ).findAllRankedAccommodationIds(
+            DAILY_KEY
         );
     }
 
@@ -158,7 +156,7 @@ class PopularAccommodationServiceTest {
         // when & then
         assertThatThrownBy(
             () -> popularAccommodationService
-                .findTopAccommodationIds(
+                .findRankedAccommodationIds(
                     invalidLimit
                 )
         )

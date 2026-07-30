@@ -121,7 +121,7 @@ class PopularAccommodationRankingRepositoryIntegrationTest {
     }
 
     @Test
-    void 인기_숙소_ID를_점수_내림차순으로_limit만큼_조회한다() {
+    void 인기_숙소_ID_전체를_점수_내림차순으로_조회한다() {
         // given
         Long firstAccommodationId = 1L;
         Long secondAccommodationId = 2L;
@@ -149,15 +149,15 @@ class PopularAccommodationRankingRepositoryIntegrationTest {
         // when
         List<Long> result =
             popularAccommodationRankingRepository
-                .findTopAccommodationIds(
-                    DAILY_KEY,
-                    2
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
                 );
 
         // then
         assertThat(result).containsExactly(
             secondAccommodationId,
-            thirdAccommodationId
+            thirdAccommodationId,
+            firstAccommodationId
         );
     }
 
@@ -186,9 +186,8 @@ class PopularAccommodationRankingRepositoryIntegrationTest {
         // when
         List<Long> result =
             popularAccommodationRankingRepository
-                .findTopAccommodationIds(
-                    DAILY_KEY,
-                    3
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
                 );
 
         // then
@@ -204,9 +203,8 @@ class PopularAccommodationRankingRepositoryIntegrationTest {
         // when
         List<Long> result =
             popularAccommodationRankingRepository
-                .findTopAccommodationIds(
-                    DAILY_KEY,
-                    10
+                .findAllRankedAccommodationIds(
+                    DAILY_KEY
                 );
 
         // then

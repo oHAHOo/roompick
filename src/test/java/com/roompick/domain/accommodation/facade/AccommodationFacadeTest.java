@@ -181,7 +181,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            popularAccommodationService.findTopAccommodationIds(
+            popularAccommodationService.findRankedAccommodationIds(
                 limit
             )
         ).willReturn(
@@ -234,7 +234,122 @@ class AccommodationFacadeTest {
 
         then(popularAccommodationService)
             .should()
-            .findTopAccommodationIds(
+            .findRankedAccommodationIds(
+                limit
+            );
+
+        then(accommodationService)
+            .should()
+            .findAllActiveSummaryByIds(
+                rankedAccommodationIds
+            );
+    }
+
+    @Test
+    @DisplayName("상위 랭킹에 비공개 숙소가 있어도 하위 ACTIVE 숙소로 limit을 채운다")
+    void 상위_랭킹에_비공개_숙소가_있어도_하위_ACTIVE_숙소로_limit을_채운다() {
+        // given
+        int limit = 2;
+
+        /*
+         * Redis 인기 순위는 4번 → 3번 → 2번 → 1번입니다.
+         *
+         * 상위 2개 중 3번 숙소는 삭제됐거나 INACTIVE 상태이며,
+         * 그 아래 순위인 2번 숙소가 ACTIVE 상태라고 가정합니다.
+         */
+        List<Long> rankedAccommodationIds =
+            List.of(
+                4L,
+                3L,
+                2L,
+                1L
+            );
+
+        /*
+         * DB는 ACTIVE 숙소만 반환합니다.
+         * 반환 순서는 Redis 순서와 다르게 구성합니다.
+         */
+        List<AccommodationListResponseDto> activeAccommodations =
+            List.of(
+                new AccommodationListResponseDto(
+                    1L,
+                    "룸픽 제주 호텔",
+                    "제주특별자치도 제주시"
+                ),
+                new AccommodationListResponseDto(
+                    2L,
+                    "룸픽 서울 호텔",
+                    "서울특별시 중구"
+                ),
+                new AccommodationListResponseDto(
+                    4L,
+                    "룸픽 부산 호텔",
+                    "부산광역시 해운대구"
+                )
+            );
+
+        given(
+            popularAccommodationService.findRankedAccommodationIds(
+                limit
+            )
+        ).willReturn(
+            rankedAccommodationIds
+        );
+
+        given(
+            accommodationService.findAllActiveSummaryByIds(
+                rankedAccommodationIds
+            )
+        ).willReturn(
+            activeAccommodations
+        );
+
+        // when
+        List<PopularAccommodationResponseDto> result =
+            accommodationFacade.getPopularAccommodations(
+                limit
+            );
+
+        // then
+        assertThat(result).hasSize(
+            limit
+        );
+
+        /*
+         * Redis 1위인 4번 숙소는 최종 1위입니다.
+         */
+        assertThat(result.get(0).rank())
+            .isEqualTo(1);
+
+        assertThat(result.get(0).accommodationId())
+            .isEqualTo(4L);
+
+        /*
+         * Redis 2위인 3번 숙소가 제외되므로
+         * Redis 3위인 2번 숙소가 최종 2위를 채웁니다.
+         */
+        assertThat(result.get(1).rank())
+            .isEqualTo(2);
+
+        assertThat(result.get(1).accommodationId())
+            .isEqualTo(2L);
+
+        /*
+         * limit이 채워진 뒤에는 더 낮은 순위의
+         * 1번 ACTIVE 숙소를 결과에 포함하지 않습니다.
+         */
+        assertThat(result)
+            .extracting(
+                PopularAccommodationResponseDto::accommodationId
+            )
+            .containsExactly(
+                4L,
+                2L
+            );
+
+        then(popularAccommodationService)
+            .should()
+            .findRankedAccommodationIds(
                 limit
             );
 
@@ -255,7 +370,7 @@ class AccommodationFacadeTest {
             List.of();
 
         given(
-            popularAccommodationService.findTopAccommodationIds(
+            popularAccommodationService.findRankedAccommodationIds(
                 limit
             )
         ).willReturn(
@@ -281,7 +396,7 @@ class AccommodationFacadeTest {
 
         then(popularAccommodationService)
             .should()
-            .findTopAccommodationIds(
+            .findRankedAccommodationIds(
                 limit
             );
 

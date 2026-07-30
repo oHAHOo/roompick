@@ -206,7 +206,7 @@ GET /api/v1/accommodations/popular?limit=10
 
 | 이름 | 타입 | 필수 | 기본값 | 설명 |
 | --- | --- | --- | --- | --- |
-| `limit` | `int` | X | `10` | 조회할 인기 숙소 수, 1 이상 20 이하 |
+| `limit` | `int` | X | `10` | 최종 반환할 ACTIVE 인기 숙소 수, 1 이상 20 이하 |
 
 ### Response — 200 OK
 
@@ -241,9 +241,10 @@ GET /api/v1/accommodations/popular?limit=10
 
 ### 구현 메모
 
-- 오늘 날짜의 Redis Sorted Set 점수를 기준으로 점수 내림차순 조회한다.
-- Redis 랭킹은 한 번만 조회한다.
-- 숙소 정보는 Redis에서 조회한 ID 목록을 이용해 DB `IN` 쿼리 한 번으로 조회한다.
+- 오늘 날짜의 Redis Sorted Set 전체를 점수 내림차순으로 한 번 조회한다.
+- 숙소 정보는 Redis에서 조회한 전체 ID 목록을 이용해 DB `IN` 쿼리 한 번으로 조회한다.
+- 상위 랭킹에 존재하지 않거나 `INACTIVE`인 숙소가 있으면, 그 아래 순위의 ACTIVE 숙소를 포함하여 가능한 범위에서 `limit`개를 채운다.
+- ACTIVE 숙소 수 자체가 `limit`보다 부족한 경우에는 존재하는 숙소만 반환한다.
 - 숙소별 반복 조회를 실행하지 않아 N+1 문제가 발생하지 않는다.
 - DB 조회 결과는 Redis 랭킹 순서에 맞게 다시 정렬한다.
 - 존재하지 않거나 `INACTIVE` 상태인 숙소는 결과에서 제외한다.

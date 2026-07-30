@@ -1,5 +1,6 @@
 package com.roompick.domain.accommodation.facade;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,18 +52,19 @@ public class AccommodationFacade {
     /**
      * 오늘 날짜의 인기 숙소 목록을 조회합니다.
      *
-     * Redis에서 인기 숙소 ID를 순위대로 조회하고,
+     * Redis에서 전체 인기 숙소 ID를 순위대로 한 번 조회하고,
      * 해당 숙소의 공개 정보는 IN 조건으로 한 번만 DB에서 조회합니다.
      *
      * DB 조회 결과는 순서가 보장되지 않으므로 Redis 랭킹 순서로 다시 정렬합니다.
-     * 존재하지 않거나 비공개 상태인 숙소는 제외한 뒤 순위를 다시 계산합니다.
+     * 존재하지 않거나 비공개 상태인 숙소는 제외하고,
+     * 최종 ACTIVE 숙소가 요청한 limit만큼 채워지면 조회 결과 생성을 종료합니다.
      */
     public List<PopularAccommodationResponseDto>
     getPopularAccommodations(
         int limit
     ) {
         List<Long> rankedAccommodationIds =
-            popularAccommodationService.findTopAccommodationIds(
+            popularAccommodationService.findRankedAccommodationIds(
                 limit
             );
 
@@ -85,7 +87,7 @@ public class AccommodationFacade {
         }
 
         List<PopularAccommodationResponseDto> result =
-            new java.util.ArrayList<>();
+            new ArrayList<>();
 
         for (Long accommodationId : rankedAccommodationIds) {
             AccommodationListResponseDto accommodation =
@@ -105,6 +107,10 @@ public class AccommodationFacade {
                     accommodation
                 )
             );
+
+            if (result.size() == limit) {
+                break;
+            }
         }
 
         return result;

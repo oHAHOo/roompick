@@ -72,23 +72,25 @@ public class PopularAccommodationRankingRepository {
     }
 
     /**
-     * 일간 인기 숙소 랭킹에서 점수가 높은 숙소 ID를 조회합니다.
+     * 일간 인기 숙소 랭킹의 숙소 ID 전체를 점수 내림차순으로 조회합니다.
      *
-     * Redis Sorted Set을 점수 내림차순으로 한 번만 조회하며,
+     * Redis Sorted Set을 한 번만 조회하며,
      * 동일한 점수에서는 Redis의 역방향 사전순 정렬을 따릅니다.
+     *
+     * 이후 Facade에서 존재하지 않거나 비공개 상태인 숙소를 제외하고
+     * 요청한 limit만큼 최종 인기 숙소를 선별합니다.
      *
      * 랭킹 데이터가 없으면 빈 목록을 반환합니다.
      */
-    public List<Long> findTopAccommodationIds(
-        String key,
-        int limit
+    public List<Long> findAllRankedAccommodationIds(
+        String key
     ) {
         Set<String> accommodationIds =
             stringRedisTemplate.opsForZSet()
                 .reverseRange(
                     key,
                     0,
-                    limit - 1L
+                    -1
                 );
 
         if (

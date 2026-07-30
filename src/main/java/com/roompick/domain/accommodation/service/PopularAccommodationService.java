@@ -60,12 +60,15 @@ public class PopularAccommodationService {
     }
 
     /**
-     * 오늘 날짜의 인기 숙소 ID를 점수 내림차순으로 조회합니다.
+     * 오늘 날짜의 인기 숙소 ID 전체를 점수 내림차순으로 조회합니다.
      *
-     * limit을 먼저 검증한 뒤 Redis Sorted Set을 한 번 조회합니다.
+     * limit은 최종 ACTIVE 숙소 개수 검증에 사용하며,
+     * 실제 개수 제한은 비공개·삭제 숙소를 제외한 뒤 Facade에서 적용합니다.
+     *
+     * Redis Sorted Set은 한 번만 조회합니다.
      * Redis 장애에 대한 DB fallback은 후속 캐시·장애 대응 기능에서 처리합니다.
      */
-    public List<Long> findTopAccommodationIds(
+    public List<Long> findRankedAccommodationIds(
         int limit
     ) {
         validateLimit(
@@ -76,9 +79,8 @@ public class PopularAccommodationService {
             popularAccommodationKeyGenerator.generateTodayKey();
 
         return popularAccommodationRankingRepository
-            .findTopAccommodationIds(
-                key,
-                limit
+            .findAllRankedAccommodationIds(
+                key
             );
     }
 
