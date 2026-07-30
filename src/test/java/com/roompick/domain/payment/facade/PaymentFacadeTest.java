@@ -44,6 +44,7 @@ import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+import com.roompick.global.config.portone.PortOneProperties;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentFacadeTest {
@@ -62,6 +63,12 @@ class PaymentFacadeTest {
 
     private static final String PORTONE_TRANSACTION_ID =
         "transaction-test-001";
+
+    private static final String PORTONE_STORE_ID =
+        "store-test-001";
+
+    private static final String PORTONE_CHANNEL_KEY =
+        "channel-key-test-001";
 
     private static final long PORTONE_PAYMENT_AMOUNT =
         200_000L;
@@ -88,6 +95,9 @@ class PaymentFacadeTest {
     private PortOnePaymentVerifier portOnePaymentVerifier;
 
     @Mock
+    private PortOneProperties portOneProperties;
+
+    @Mock
     private TransactionTemplate transactionTemplate;
 
     @Mock
@@ -103,7 +113,9 @@ class PaymentFacadeTest {
     private PaymentFacade paymentFacade;
 
     @Test
-    @DisplayName("회원의 예약을 확인하고 READY 상태의 결제를 준비한다")
+    @DisplayName(
+        "회원의 예약을 확인하고 PortOne 설정이 포함된 READY 결제를 준비한다"
+    )
     void preparePayment() {
 
         // given
@@ -111,28 +123,29 @@ class PaymentFacadeTest {
         Long memberId = 10L;
         Long paymentId = 100L;
 
-        String portOnePaymentId =
-            "roompick-payment-test-001";
-
         given(
             reservationService
                 .findForPaymentPreparation(
                     reservationId,
                     memberId
                 )
-        ).willReturn(reservation);
+        ).willReturn(
+            reservation
+        );
 
         given(
             paymentService.preparePayment(
                 reservation
             )
-        ).willReturn(payment);
+        ).willReturn(
+            payment
+        );
 
         given(payment.getId())
             .willReturn(paymentId);
 
         given(payment.getPortOnePaymentId())
-            .willReturn(portOnePaymentId);
+            .willReturn(PORTONE_PAYMENT_ID);
 
         given(payment.getReservation())
             .willReturn(reservation);
@@ -141,10 +154,16 @@ class PaymentFacadeTest {
             .willReturn(reservationId);
 
         given(payment.getAmount())
-            .willReturn(200_000L);
+            .willReturn(PORTONE_PAYMENT_AMOUNT);
 
         given(payment.getStatus())
             .willReturn(PaymentStatus.READY);
+
+        given(portOneProperties.storeId())
+            .willReturn(PORTONE_STORE_ID);
+
+        given(portOneProperties.channelKey())
+            .willReturn(PORTONE_CHANNEL_KEY);
 
         // when
         PaymentPrepareResponseDto response =
@@ -158,16 +177,22 @@ class PaymentFacadeTest {
             .isEqualTo(paymentId);
 
         assertThat(response.portOnePaymentId())
-            .isEqualTo(portOnePaymentId);
+            .isEqualTo(PORTONE_PAYMENT_ID);
 
         assertThat(response.reservationId())
             .isEqualTo(reservationId);
 
         assertThat(response.amount())
-            .isEqualTo(200_000L);
+            .isEqualTo(PORTONE_PAYMENT_AMOUNT);
 
         assertThat(response.status())
             .isEqualTo(PaymentStatus.READY);
+
+        assertThat(response.storeId())
+            .isEqualTo(PORTONE_STORE_ID);
+
+        assertThat(response.channelKey())
+            .isEqualTo(PORTONE_CHANNEL_KEY);
 
         then(reservationService)
             .should()
@@ -184,7 +209,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("결제 상태와 금액을 먼저 검증한 뒤 예약을 확정한다")
+    @DisplayName(
+        "결제 상태와 금액을 먼저 검증한 뒤 예약을 확정한다"
+    )
     void approvePaymentAndConfirmReservation() {
 
         // given
@@ -314,7 +341,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("이미 승인된 결제는 예약 검증 전에 거절한다")
+    @DisplayName(
+        "이미 승인된 결제는 예약 검증 전에 거절한다"
+    )
     void rejectDuplicatedApprovalBeforeReservationValidation() {
 
         // given
@@ -364,7 +393,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("결제 금액이 다르면 예약 확정 처리를 호출하지 않는다")
+    @DisplayName(
+        "결제 금액이 다르면 예약 확정 처리를 호출하지 않는다"
+    )
     void rejectAmountMismatchBeforeReservationConfirmation() {
 
         // given
@@ -414,7 +445,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("결제 실패 시 Payment 실패 처리 후 Reservation을 취소한다")
+    @DisplayName(
+        "결제 실패 시 Payment 실패 처리 후 Reservation을 취소한다"
+    )
     void failPayment() {
 
         // given
@@ -534,7 +567,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("결제 상태 검증에 실패하면 예약 취소를 호출하지 않는다")
+    @DisplayName(
+        "결제 상태 검증에 실패하면 예약 취소를 호출하지 않는다"
+    )
     void paymentFailureValidationStopsBeforeReservationCancellation() {
 
         // given
@@ -580,7 +615,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("PortOne 결제 검증에 성공하면 결제와 예약을 확정한다")
+    @DisplayName(
+        "PortOne 결제 검증에 성공하면 결제와 예약을 확정한다"
+    )
     void completePortOnePaymentSuccessfully() {
 
         // given
@@ -677,8 +714,7 @@ class PaymentFacadeTest {
             );
 
         given(
-            paymentForUpdate
-                .getPortOneTransactionId()
+            paymentForUpdate.getPortOneTransactionId()
         ).willReturn(
             PORTONE_TRANSACTION_ID
         );
@@ -796,7 +832,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("PortOne 결제 검증에 실패하면 DB 상태를 변경하지 않는다")
+    @DisplayName(
+        "PortOne 결제 검증에 실패하면 DB 상태를 변경하지 않는다"
+    )
     void doNotUpdatePaymentWhenPortOneVerificationFails() {
 
         // given
@@ -892,7 +930,113 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("PortOne 조회 전후 결제 식별값이 다르면 완료 처리를 거절한다")
+    @DisplayName(
+        "다른 회원의 결제이면 PortOne 외부 API를 호출하지 않는다"
+    )
+    void doNotCallPortOneWhenPaymentOwnerIsDifferent() {
+
+        // given
+        given(
+            paymentService.findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            )
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentFacade.completePortOnePayment(
+                        PORTONE_PAYMENT_INTERNAL_ID,
+                        PORTONE_MEMBER_ID
+                    ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+
+        verifyNoInteractions(
+            portOneClient,
+            portOnePaymentVerifier,
+            transactionTemplate,
+            reservationService
+        );
+
+        then(paymentService)
+            .should(never())
+            .approvePortOnePayment(
+                any(Payment.class),
+                any(String.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "READY 상태가 아닌 결제이면 PortOne 외부 API를 호출하지 않는다"
+    )
+    void doNotCallPortOneWhenPaymentIsNotReady() {
+
+        // given
+        given(
+            paymentService.findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            )
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentFacade.completePortOnePayment(
+                        PORTONE_PAYMENT_INTERNAL_ID,
+                        PORTONE_MEMBER_ID
+                    ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        verifyNoInteractions(
+            portOneClient,
+            portOnePaymentVerifier,
+            transactionTemplate,
+            reservationService
+        );
+
+        then(paymentService)
+            .should(never())
+            .approvePortOnePayment(
+                any(Payment.class),
+                any(String.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "PortOne 조회 전후 결제 식별값이 다르면 완료 처리를 거절한다"
+    )
     void rejectWhenPortOnePaymentIdChanges() {
 
         // given
@@ -1000,7 +1144,9 @@ class PaymentFacadeTest {
     }
 
     @Test
-    @DisplayName("이미 처리된 결제이면 PortOne 완료 처리로 예약을 확정하지 않는다")
+    @DisplayName(
+        "이미 처리된 결제이면 PortOne 완료 처리로 예약을 확정하지 않는다"
+    )
     void doNotConfirmReservationWhenPortOnePaymentStatusIsInvalid() {
 
         // given
@@ -1128,12 +1274,6 @@ class PaymentFacadeTest {
             );
     }
 
-    /**
-     * TransactionTemplate에 전달된 콜백을
-     * 단위 테스트에서 즉시 실행하도록 설정합니다.
-     *
-     * 트랜잭션 구간에 진입하는 테스트에서만 호출합니다.
-     */
     private void stubTransactionTemplate() {
         given(
             transactionTemplate.execute(
