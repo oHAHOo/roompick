@@ -1,6 +1,7 @@
 package com.roompick.domain.accommodation.service;
 
 import java.time.LocalTime;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -77,6 +78,33 @@ public class AccommodationService {
         );
 
         return accommodationRepository.findAllActive(pageable);
+    }
+
+    /**
+     * 전달받은 숙소 ID 중 운영 중인 숙소의 공개 요약 정보를 조회합니다.
+     *
+     * ID 목록 전체를 IN 조건으로 한 번에 조회하여
+     * 숙소 개수만큼 반복 SELECT가 발생하지 않도록 합니다.
+     *
+     * Redis 랭킹 데이터가 비어 있으면 DB 조회를 생략하고
+     * 즉시 빈 목록을 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<AccommodationListResponseDto>
+    findAllActiveSummaryByIds(
+        List<Long> accommodationIds
+    ) {
+        if (
+            accommodationIds == null
+                || accommodationIds.isEmpty()
+        ) {
+            return List.of();
+        }
+
+        return accommodationRepository
+            .findAllActiveSummaryByIdIn(
+                accommodationIds
+            );
     }
 
     @Transactional

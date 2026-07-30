@@ -1,5 +1,6 @@
 package com.roompick.domain.accommodation.service;
 
+import static org.mockito.BDDMockito.then;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
@@ -161,5 +162,24 @@ class AccommodationServiceTest {
                 ((BusinessException) exception).getErrorCode()
             )
             .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+    }
+
+    @Test
+    void 숙소_ID_목록이_비어_있으면_DB를_조회하지_않고_빈_목록을_반환한다() {
+        // given: Redis 인기 숙소 랭킹에 숙소 ID가 없습니다.
+        List<Long> accommodationIds =
+            List.of();
+
+        // when: 운영 중인 숙소 요약 정보를 조회합니다.
+        List<AccommodationListResponseDto> result =
+            accommodationService.findAllActiveSummaryByIds(
+                accommodationIds
+            );
+
+        // then: 빈 목록을 반환하고 불필요한 DB 조회는 실행하지 않습니다.
+        assertThat(result).isEmpty();
+
+        then(accommodationRepository)
+            .shouldHaveNoInteractions();
     }
 }
