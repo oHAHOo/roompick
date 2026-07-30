@@ -3,8 +3,10 @@ package com.roompick.domain.room.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.global.config.JpaConfig;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Persistence;
@@ -16,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * RoomRepository의 저장 및 조회 쿼리를 검증하는 JPA 테스트입니다.
@@ -60,6 +63,49 @@ class RoomRepositoryTest {
     }
 
     @Test
+    @DisplayName("관리자 객실 활성화 조회 시 소속 숙소를 fetch join한다")
+    void findByIdAndAccommodationIdWithAccommodation() {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        Accommodation otherAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "다른 호텔",
+                    "서울특별시 종로구",
+                    "다른 테스트 숙소",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+        Room room = roomRepository.save(createRoom(accommodation));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        var matchingRoom = roomRepository
+            .findByIdAndAccommodationIdWithAccommodation(
+                room.getId(),
+                accommodation.getId()
+            );
+        var mismatchedRoom = roomRepository
+            .findByIdAndAccommodationIdWithAccommodation(
+                room.getId(),
+                otherAccommodation.getId()
+            );
+
+        // then
+        assertThat(matchingRoom).isPresent();
+        assertThat(mismatchedRoom).isEmpty();
+        assertThat(
+            Persistence.getPersistenceUtil().isLoaded(
+                matchingRoom.orElseThrow().getAccommodation()
+            )
+        ).isTrue();
+    }
+
+    @Test
     @DisplayName("숙소 ID로 해당 숙소의 객실 목록을 조회한다")
     void findAllByAccommodationId() {
         // given
@@ -78,6 +124,117 @@ class RoomRepositoryTest {
         assertThat(rooms).hasSize(1);
         assertThat(rooms.get(0).getRoomNumber()).isEqualTo("101");
         assertThat(rooms.get(0).getName()).isEqualTo("디럭스 더블룸");
+    }
+
+    @Test
+    @DisplayName("사용자 객실 목록에는 ACTIVE 객실만 조회한다")
+    void findAllActiveSummaryByAccommodationId() {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        Room activeRoom = createRoom(accommodation);
+        activeRoom.activate();
+        roomRepository.save(activeRoom);
+        roomRepository.save(
+            Room.create(
+                accommodation,
+                "102",
+                "비공개 객실",
+                "비공개 객실 설명",
+                120_000L,
+                2,
+                2
+            )
+        );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        var rooms = roomRepository
+            .findAllActiveSummaryByAccommodationId(
+                accommodation.getId()
+            );
+
+        // then
+        assertThat(rooms).hasSize(1);
+        assertThat(rooms.get(0).roomId()).isEqualTo(activeRoom.getId());
+    }
+
+    @Test
+    @DisplayName("roomId와 accommodationId가 모두 일치하는 객실만 조회한다")
+    void findByIdAndAccommodationId() {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        Accommodation otherAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "다른 호텔",
+                    "서울특별시 종로구",
+                    "다른 테스트 숙소",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+        Room room = roomRepository.save(createRoom(accommodation));
+
+        // when
+        var matchingRoom = roomRepository.findByIdAndAccommodationId(
+            room.getId(),
+            accommodation.getId()
+        );
+        var mismatchedRoom = roomRepository.findByIdAndAccommodationId(
+            room.getId(),
+            otherAccommodation.getId()
+        );
+
+        // then
+        assertThat(matchingRoom).isPresent();
+        assertThat(mismatchedRoom).isEmpty();
+    }
+
+    @Test
+    @DisplayName("객실과 숙소가 모두 ACTIVE인 경우에만 사용자 상세 조회 조건에 일치한다")
+    void findPublicById() {
+        // given
+        Accommodation activeAccommodation =
+            accommodationRepository.save(createAccommodation());
+        Room publicRoom = createRoom(activeAccommodation);
+        publicRoom.activate();
+        roomRepository.save(publicRoom);
+
+        Accommodation inactiveAccommodation = createAccommodation();
+        ReflectionTestUtils.setField(
+            inactiveAccommodation,
+            "status",
+            AccommodationStatus.INACTIVE
+        );
+        accommodationRepository.save(inactiveAccommodation);
+
+        Room hiddenRoom = createRoom(inactiveAccommodation);
+        hiddenRoom.activate();
+        roomRepository.save(hiddenRoom);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when & then
+        assertThat(
+            roomRepository.findPublicById(
+                publicRoom.getId(),
+                RoomStatus.ACTIVE,
+                AccommodationStatus.ACTIVE
+            )
+        ).isPresent();
+
+        assertThat(
+            roomRepository.findPublicById(
+                hiddenRoom.getId(),
+                RoomStatus.ACTIVE,
+                AccommodationStatus.ACTIVE
+            )
+        ).isEmpty();
     }
 
     private Accommodation createAccommodation() {

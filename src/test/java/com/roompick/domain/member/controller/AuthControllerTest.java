@@ -72,16 +72,44 @@ class AuthControllerTest {
 
     @Test
     void 요청_값이_올바르지_않으면_회원가입에_실패한다() throws Exception {
-        // given: 이메일 형식이 잘못되고 비밀번호·이름이 규칙을 어긴 요청입니다.
-        SignupRequestDto request = new SignupRequestDto("not-an-email", "short", "");
+        /*
+         * 이메일 형식, 비밀번호 규칙, 이름 필수값을
+         * 각각 한 번씩 위반하는 요청입니다.
+         *
+         * 이름에 공백 한 칸을 사용하면 @NotBlank만 실패하고
+         * @Size는 통과하므로 오류 개수를 명확하게 검증할 수 있습니다.
+         */
+        SignupRequestDto request = new SignupRequestDto(
+            "not-an-email",
+            "short",
+            " "
+        );
 
-        // when & then: 요청 값 검증에 실패하고 INVALID_INPUT_VALUE(COMMON_001)로 응답합니다.
+        // when & then: 각 필드의 검증 오류가 errors 배열에 포함됩니다.
         mockMvc.perform(post("/api/v1/auth/signup")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.success").value(false))
-            .andExpect(jsonPath("$.code").value("COMMON_001"));
+            .andExpect(jsonPath("$.code").value("COMMON_001"))
+            .andExpect(jsonPath("$.errors.length()").value(3))
+            .andExpect(jsonPath("$.errors[*].field")
+                .value(containsInAnyOrder(
+                    "email",
+                    "password",
+                    "name"
+                )))
+            .andExpect(jsonPath("$.errors[*].message")
+                .value(everyItem(
+                    not(isEmptyOrNullString())
+                )))
+            .andExpect(jsonPath(
+                "$.errors[?(@.field == 'password')].message"
+            )
+                .value(hasItem(
+                    "비밀번호는 영문과 숫자를 포함해 "
+                        + "8자 이상 64자 이하로 입력해야 합니다."
+                )));
     }
 
     @Test

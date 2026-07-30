@@ -123,11 +123,117 @@ curl http://<EC2 퍼블릭 IP>:8080/actuator/health
 - 프리티어(가입 후 12개월) 기간에는 EC2 `t3.micro` + RDS `db.t4g.micro` 조합이 대체로 무료 한도 내에서 운영 가능합니다.
 - 프리티어 종료 후에는 EC2/RDS 인스턴스 시간당 요금 + RDS 스토리지 요금이 발생합니다. 실제 리소스 생성 전에 최신 요금을 다시 확인합니다.
 
-## 9. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
+## 9. CI/CD 자동 배포
+
+`develop`에 push되면 GitHub Actions가 자동으로 테스트 → 빌드 → 배포까지 진행합니다 (`.github/workflows/cd.yml`).
+
+1. **test**: 기존 CI와 동일하게 `./gradlew test` 실행
+2. **build-and-push**: GitHub 러너에서 `docker build` 후 GHCR(`ghcr.io/imsun9/roompick-backend`)에 `latest`, 커밋 SHA 태그로 push
+3. **deploy**: GitHub Actions가 SSH로 EC2에 접속해 새 이미지를 `pull`하고 기존 컨테이너를 교체
+
+EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드된 이미지를 받기만 하므로, `t3.micro`의 메모리 부족(OOM) 문제가 재발하지 않습니다.
+
+수동으로 다시 배포하고 싶을 때는 GitHub 저장소 Actions 탭에서 `CD` 워크플로우를 `workflow_dispatch`로 직접 실행할 수 있습니다.
+
+### 필요한 GitHub Secrets
+
+| 이름 | 값 |
+| --- | --- |
+| `EC2_HOST` | EC2 퍼블릭 IP |
+| `EC2_SSH_KEY` | EC2 접속용 키페어의 개인키(`.pem`) 전체 내용 |
+| `AWS_ACCESS_KEY_ID` | 1단계에서 발급한 IAM 사용자의 Access Key ID |
+| `AWS_SECRET_ACCESS_KEY` | 1단계에서 발급한 IAM 사용자의 Secret Access Key |
+| `EC2_SG_ID` | EC2용 보안그룹 ID (`sg-`로 시작, 3-4단계에서 만든 EC2 보안그룹). AWS 콘솔 → EC2 → 보안 그룹에서 확인 |
+
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`는 CD가 배포 실행마다 GitHub Actions 러너의
+공인 IP를 `EC2_SG_ID` 보안그룹의 22번 포트에 임시로 추가·제거하는 데 사용합니다
+(`.github/workflows/cd.yml`, [docs/bug/cd-ec2-ssh-timeout-security-group.md](bug/cd-ec2-ssh-timeout-security-group.md) 참고).
+1단계에서 만든 IAM 사용자의 키를 그대로 등록하면 됩니다.
+
+`GITHUB_TOKEN`은 Actions가 자동으로 제공하므로 별도 등록이 필요 없습니다.
+
+### Flyway 마이그레이션 CI 검증
+
+`test`(H2, `flyway.enabled: false`)에서는 Flyway 마이그레이션이 실제로 실행되지 않으므로,
+`src/main/resources/db/migration`의 SQL이 실제 MySQL에서 문제없이 적용되는지는 별도로
+검증해야 합니다. 검증 방식으로 두 가지를 검토했습니다.
+
+- **A. `flywayMigrate` Gradle 태스크**: Flyway만 단독 실행해 마이그레이션 SQL 자체를 검증.
+  Flyway Gradle 플러그인 추가가 필요하지만, 앱 기동 없이 SQL만 실행하므로 빠르고 실패 시
+  원인(Flyway 에러 로그)이 명확함.
+- **B. prod 유사 프로필로 앱 실기동**: 마이그레이션 + Hibernate `ddl-auto: validate`의
+  엔티티-스키마 일치까지 한 번에 검증하고 실제 배포 경로와 가장 가깝지만, 앱 전체를
+  띄우는 만큼 느리고 실패 시 원인(Flyway vs Hibernate vs 다른 빈 초기화)을 특정하기
+  상대적으로 어려움.
+
+**A안 채택.** 마이그레이션 파일이 아직 4개뿐이라 검증 대상이 단순하고, CI를 자주 돌리는
+단계에서는 실행 속도와 실패 시 원인 파악의 명확성이 더 중요하다고 판단했습니다. 엔티티와
+스키마 일치 여부는 이미 `test` job과 실제 배포 시 `ddl-auto: validate`가 걸러주므로, 이
+검증에서 굳이 앱 전체 기동까지 중복으로 확인할 필요는 없습니다.
+
+## 10. 장애 시 재배포·롤백 절차
+
+### 10-1. 배포 실패 감지
+
+- GitHub Actions `CD` 워크플로우가 실패하면(테스트/빌드/배포 어느 단계든) `deploy` job의
+  `Deploy to EC2 over SSH` 스텝은 실행되지 않거나 중간에 실패로 끝나므로, **기존에 떠 있던
+  컨테이너는 그대로 남아 서비스가 유지됩니다.** 즉 새 이미지 pull이나 컨테이너 교체가
+  실패해도 자동으로 서비스가 끊기지는 않습니다.
+- 단, 컨테이너 교체 스텝(`docker stop` → `docker rm` → `docker run`) 도중에 실패하면
+  이전 컨테이너는 이미 내려간 상태에서 새 컨테이너 기동이 안 됐을 수 있습니다. 이 경우
+  `curl http://<EC2 퍼블릭 IP>:8080/actuator/health`가 응답하지 않는 것으로 확인합니다.
+
+### 10-2. 이전 버전으로 롤백
+
+배포는 `latest`가 아닌 커밋 SHA 태그(`${{ github.sha }}`)로 이루어지므로, GHCR에 남아있는
+과거 이미지로 즉시 롤백할 수 있습니다.
+
+1. 롤백할 커밋의 SHA 확인 (`git log --oneline`)
+2. EC2에 SSH 접속
+   ```bash
+   ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
+   ```
+3. 해당 SHA의 이미지로 컨테이너 교체
+   ```bash
+   sudo docker pull ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
+   sudo docker stop roompick-backend || true
+   sudo docker rm roompick-backend || true
+   sudo docker run -d --name roompick-backend \
+     --env-file /home/ec2-user/app/.env.prod \
+     -p 8080:8080 \
+     --restart unless-stopped \
+     ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
+   ```
+4. `curl http://<EC2 퍼블릭 IP>:8080/actuator/health`로 정상 기동 확인
+
+### 10-3. 코드 원인 수정 후 재배포
+
+일회성 롤백이 아니라 `develop` 자체를 되돌려야 하는 경우:
+
+1. 문제가 된 커밋을 `revert`하거나 원인을 수정한 새 커밋을 `develop`에 push
+2. push 시 CD가 자동으로 test → build → deploy를 다시 실행
+3. 또는 GitHub 저장소 Actions 탭 → `CD` 워크플로우 → `Run workflow`(`workflow_dispatch`)로
+   특정 시점 재배포를 수동 트리거
+
+### 10-4. DB 마이그레이션이 원인인 경우
+
+`ddl-auto: validate`이므로 Flyway가 적용한 스키마와 엔티티가 어긋나면 앱이 기동 자체를
+못 합니다. 이 경우 이미지 롤백만으로는 부족하고, 문제가 된 `V*__*.sql` 마이그레이션을
+되돌리는 새 마이그레이션(`V(n+1)__revert_xxx.sql`)을 추가해야 합니다. Flyway는 이미 적용된
+마이그레이션 파일을 수정하면 체크섬 불일치로 실패하므로, 기존 파일을 고치지 말고 항상
+새 버전을 추가합니다.
+
+## 11. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
 
 다음 항목은 이번 배포 범위에 포함하지 않았습니다. 필요 시 팀 논의 후 별도 작업으로 진행합니다.
 
-- GitHub Actions 기반 CI/CD 자동 배포
 - HTTPS 적용 (도메인 + Nginx + Let's Encrypt)
 - ECS/Fargate 등 컨테이너 오케스트레이션으로 전환
-- Flyway/Liquibase 마이그레이션 도구 도입 (도입 시 `application-prod.yml`의 `ddl-auto`를 `validate`로 전환)
+- IAM 사용자 최소 권한 전환: 현재 CD가 쓰는 IAM 사용자가 `AmazonEC2FullAccess`,
+  `AmazonRDSFullAccess`를 갖고 있으나, 실제 필요한 권한은 `EC2_SG_ID` 보안그룹의
+  `AuthorizeSecurityGroupIngress`/`RevokeSecurityGroupIngress`뿐이다. 커스텀 정책으로
+  좁히거나 CD 전용 IAM 사용자를 새로 분리한다.
+- 장기 AWS Access Key 제거: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`를 GitHub Secrets에
+  장기 보관하는 대신, GitHub OIDC + `role-to-assume` 방식으로 전환해 만료 없는 키 자체를
+  없앤다. 전환 전까지는 이 키가 노출되면 EC2/RDS 전체가 위험해지므로, 위 IAM 최소 권한
+  전환과 함께 진행하는 것이 안전하다.

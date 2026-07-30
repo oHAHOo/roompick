@@ -1,15 +1,15 @@
 # RoomPick 테이블 명세서
 
 - 프로젝트명: **RoomPick(룸픽)**
-- 문서 버전: `v0.5`
+- 문서 버전: `v0.6`
 - 작성일: 2026-07-21
-- 최종 수정일: 2026-07-24
+- 최종 수정일: 2026-07-28
 - DBMS: MySQL 8.4
 - 문자 집합: `utf8mb4`
 - 범위: RoomPick MVP 전체 도메인
-- 기준 문서: `docs/ERD.md`, `docs/ERD.dbml`
+- 기준 문서: `docs/ERD.md`, `docs/ERD.dbml`, `docs/policy/ROOM_POLICY.md`
 
-이 문서는 RoomPick MVP에서 사용하는 테이블과 컬럼, 키, 제약조건, 인덱스를 구현 가능한 수준으로 정의한다. ERD의 관계가 변경되면 이 문서와 `docs/ERD.md`를 함께 수정한다.
+이 문서는 RoomPick MVP에서 사용하는 테이블과 컬럼, 키, 제약조건, 인덱스를 구현 가능한 수준으로 정의한다. ERD의 관계가 변경되면 이 문서와 `docs/ERD.md`를 함께 수정한다. 객실 상태 의미는 `docs/policy/ROOM_POLICY.md`를 우선 기준으로 삼는다.
 
 ---
 
@@ -156,7 +156,7 @@
 | `price_per_night` | 1박 가격 | `BIGINT` | N | - | - | 현재 1박 가격, 원 단위 |
 | `standard_capacity` | 기준 인원 | `INT` | N | - | - | 객실 기본 이용 인원 |
 | `max_capacity` | 최대 인원 | `INT` | N | - | - | 객실에서 허용하는 최대 이용 인원 |
-| `status` | 객실 상태 | `VARCHAR(20)` | N | `ACTIVE` | - | `ACTIVE`, `INACTIVE` |
+| `status` | 객실 공개 상태 | `VARCHAR(20)` | N | `INACTIVE` | - | `ACTIVE`, `INACTIVE`; `SOLD_OUT`은 저장하지 않음 |
 | `created_at` | 생성 시각 | `DATETIME(6)` | N | - | - | 객실 생성 시각 |
 | `updated_at` | 수정 시각 | `DATETIME(6)` | N | - | - | 객실 최종 수정 시각 |
 
@@ -171,20 +171,33 @@
 | CHECK | `chk_rooms_standard_capacity` | `standard_capacity >= 1` | 기준 인원은 1명 이상 |
 | CHECK | `chk_rooms_max_capacity` | `max_capacity >= standard_capacity` | 최대 인원은 기준 인원 이상 |
 
-### 상태값
+### DB 저장 상태값
 
 | 값 | 설명 |
 | --- | --- |
-| `ACTIVE` | 운영 중이며 예약 가능한 객실 |
-| `INACTIVE` | 운영이 중지되어 신규 예약이 불가능한 객실 |
+| `ACTIVE` | 사용자에게 공개된 객실 |
+| `INACTIVE` | 사용자에게 공개되지 않는 객실 |
+
+### 화면 표시 상태
+
+| 값 | 설명 |
+| --- | --- |
+| `ACTIVE` | 선택한 숙박 기간에 활성 예약이 없어 예약 가능한 상태 |
+| `SOLD_OUT` | 선택한 숙박 기간에 활성 예약이 있어 예약 불가능한 상태 |
 
 ### 정책
 
-- 객실은 관리자가 존재하는 숙소에 등록하며 생성 상태는 `ACTIVE`이다.
+- 객실은 관리자가 존재하는 숙소에 등록하며 생성 상태는 `INACTIVE`이다.
+- 관리자가 공개한 `ACTIVE` 객실만 사용자용 조회에 포함한다.
+- `INACTIVE` 객실은 사용자 화면에 노출하지 않고 신규 예약도 허용하지 않는다.
+- `SOLD_OUT`은 `rooms.status`에 저장하지 않으며 사용자가 선택한 숙박 기간의 활성 예약 존재 여부로 계산한다.
+- 같은 객실이라도 선택한 날짜에 따라 `ACTIVE` 또는 `SOLD_OUT`으로 다르게 표시될 수 있다.
+- 예약 생성·취소·결제 실패·결제 대기 만료 시 객실 상태를 `SOLD_OUT` 또는 `ACTIVE`로 직접 변경하지 않는다.
 - MVP 시연에는 관리자가 등록한 실제 객실을 최소 1개 사용하되 DB에서 개수를 강제로 제한하지 않는다.
 - 객실 가격은 예약 생성 시 `reservations.price_per_night`에 복사한다.
 - 객실 가격이 변경되어도 기존 예약의 금액은 변경하지 않는다.
 - 운영 중지된 객실도 기존 예약 이력을 위해 물리 삭제하지 않는다.
+- 자세한 상태 계산 규칙은 `docs/policy/ROOM_POLICY.md`를 따른다.
 
 ---
 
@@ -247,8 +260,9 @@
 
 - 예약 생성 시 객실의 가격, 숙박 일수, 총액을 스냅샷으로 저장한다.
 - 활성 예약의 날짜 겹침 조건은 `기존 체크인 < 요청 체크아웃 AND 기존 체크아웃 > 요청 체크인`이다.
-- `CONFIRMED` 예약과 만료 전 `PENDING_PAYMENT` 예약만 객실 예약 가능 여부를 막는다.
+- `CONFIRMED` 예약과 만료 전 `PENDING_PAYMENT` 예약만 객실 예약 가능 여부를 막고 해당 기간을 `SOLD_OUT`으로 계산하게 한다.
 - `CANCELED`, `EXPIRED`, `COMPLETED` 예약은 신규 예약을 막지 않는다.
+- 예약 상태가 바뀌면 객실 DB 상태를 직접 변경하지 않고 예약 가능 여부를 다시 계산한다.
 - 예약은 거래 이력이므로 물리 삭제하지 않고 상태를 변경한다.
 
 ---
@@ -310,7 +324,7 @@
 - 결제 금액은 `reservations.total_amount`와 일치해야 한다.
 - MVP에서는 결제 실패 후 새로운 Payment 행을 생성하는 재결제 기능을 제공하지 않는다.
 - Mock 결제 성공 시 `Payment.status`를 `PAID`, 예약 상태를 `CONFIRMED`로 변경한다.
-- Mock 결제 실패 시 `Payment.status`를 `FAILED`, 예약 상태를 `CANCELED`로 변경하여 객실 예약 점유를 해제한다.
+- Mock 결제 실패 시 `Payment.status`를 `FAILED`, 예약 상태를 `CANCELED`로 변경하여 해당 기간의 예약 점유를 해제한다.
 - 후속 버전에서 여러 결제 시도 이력이 필요해지면 `uk_payments_reservation_id`를 제거하고 예약 `1` : 결제 `N` 구조로 변경한다.
 - 전액 환불은 성공한 결제의 상태를 `REFUNDED`로 변경한다.
 - 부분 환불과 여러 환불 이력이 필요해지면 별도의 `refunds` 테이블을 추가한다.
@@ -353,4 +367,4 @@
 - [ ] 예약 겹침 동시성 제어 방식을 무엇으로 할지
 - [ ] 모든 CHECK 제약조건을 Flyway 마이그레이션에 포함할지
 
-위 항목이 변경되면 `docs/ERD.md`, `docs/ERD.dbml`, 이 문서를 함께 갱신한다.
+위 항목 또는 객실 상태 정책이 변경되면 `docs/ERD.md`, `docs/ERD.dbml`, `docs/policy/ROOM_POLICY.md`, 이 문서를 함께 갱신한다.

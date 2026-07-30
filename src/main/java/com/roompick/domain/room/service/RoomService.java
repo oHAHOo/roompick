@@ -23,32 +23,22 @@ public class RoomService {
     private final RoomRepository roomRepository;
 
     /**
-     * 객실 ID로 객실과 소속 숙소를 함께 조회합니다.
+     * 객실 상세 조회에 필요한 객실만 조회합니다.
      *
-     * fetch join을 사용해 객실 상세 응답을 만들 때
-     * 숙소 조회 쿼리가 추가로 발생하지 않도록 합니다.
+     * 객실과 숙소가 모두 운영 중인 경우에만 공개합니다.
+     * 두 상태는 Repository의 단일 조회 조건으로 확인합니다.
      */
     @Transactional(readOnly = true)
-    public Room findById(Long roomId) {
-        return roomRepository.findByIdWithAccommodation(roomId)
+    public Room findActiveById(Long roomId) {
+        return roomRepository
+            .findPublicById(
+                roomId,
+                RoomStatus.ACTIVE,
+                AccommodationStatus.ACTIVE
+            )
             .orElseThrow(() ->
                 new BusinessException(ErrorCode.ROOM_NOT_FOUND)
             );
-    }
-
-    /**
-     * 특정 숙소에 소속된 객실 목록을 조회합니다.
-     *
-     * 숙소의 존재 여부는 AccommodationService에서 먼저 확인하므로
-     * 객실이 없으면 빈 목록을 반환합니다.
-     */
-    @Transactional(readOnly = true)
-    public List<Room> findAllByAccommodationId(
-        Long accommodationId
-    ) {
-        return roomRepository.findAllByAccommodationId(
-            accommodationId
-        );
     }
 
     /**
@@ -71,20 +61,17 @@ public class RoomService {
      * 예약 가능 여부 확인에 필요한 객실을 조회하고
      * 객실 상태와 요청 인원을 검증합니다.
      *
-     * 숙소 정보는 사용하지 않으므로
-     * fetch join 없이 객실만 조회합니다.
+     * 숙소 상태 검증에 추가 조회가 발생하지 않도록
+     * 객실과 숙소를 fetch join으로 함께 조회합니다.
      */
     @Transactional(readOnly = true)
     public Room findReservableRoom(
         Long roomId,
         int guestCount
     ) {
-        Room room = roomRepository.findById(roomId)
-            .orElseThrow(() ->
-                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
-            );
+        Room room = findRoomWithAccommodation(roomId);
 
-        validateRoomStatus(room);
+        validateRoomAndAccommodationStatus(room);
         validateGuestCount(room, guestCount);
 
         return room;
@@ -102,13 +89,9 @@ public class RoomService {
         Long roomId,
         int guestCount
     ) {
-        Room room = roomRepository
-            .findByIdWithAccommodation(roomId)
-            .orElseThrow(() ->
-                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
-            );
+        Room room = findRoomWithAccommodation(roomId);
 
-        validateRoomStatus(room);
+        validateRoomAndAccommodationStatus(room);
         validateGuestCount(room, guestCount);
 
         return room;
@@ -147,10 +130,92 @@ public class RoomService {
     }
 
     /**
-     * 운영 중인 객실인지 확인합니다.
+     * 지정한 숙소에 실제로 소속된 객실을 사용자에게 공개합니다.
+     *
+     * 영속 상태의 Entity를 변경하므로 별도의 save 호출은 필요하지 않습니다.
      */
-    private void validateRoomStatus(Room room) {
-        if (room.getStatus() != RoomStatus.ACTIVE) {
+    @Transactional
+    public Room activateRoom(
+        Long accommodationId,
+        Long roomId
+    ) {
+        Room room = findByIdAndAccommodationIdWithAccommodation(
+            accommodationId,
+            roomId
+        );
+
+        validateAccommodationActive(room.getAccommodation());
+        room.activate();
+
+        return room;
+    }
+
+    /**
+     * 지정한 숙소에 실제로 소속된 객실을 사용자에게 비공개합니다.
+     */
+    @Transactional
+    public Room deactivateRoom(
+        Long accommodationId,
+        Long roomId
+    ) {
+        Room room = findByIdAndAccommodationId(
+            accommodationId,
+            roomId
+        );
+
+        room.deactivate();
+
+        return room;
+    }
+
+    private Room findByIdAndAccommodationId(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository
+            .findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+            );
+    }
+
+    private Room findByIdAndAccommodationIdWithAccommodation(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository
+            .findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+            );
+    }
+
+    private Room findRoomWithAccommodation(Long roomId) {
+        return roomRepository
+            .findByIdWithAccommodation(roomId)
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+            );
+    }
+
+    /**
+     * 객실과 소속 숙소가 모두 운영 중인지 확인합니다.
+     *
+     * 호출 전에 숙소가 fetch join으로 로딩되어 있으므로
+     * 상태 확인을 위한 추가 조회가 발생하지 않습니다.
+     */
+    private void validateRoomAndAccommodationStatus(Room room) {
+        if (
+            room.getStatus() != RoomStatus.ACTIVE
+                || room.getAccommodation().getStatus()
+                    != AccommodationStatus.ACTIVE
+        ) {
             throw new BusinessException(
                 ErrorCode.ROOM_INACTIVE
             );
@@ -165,15 +230,34 @@ public class RoomService {
         Room room,
         int guestCount
     ) {
+        /*
+         * DTO 검증을 거치지 않고 Service가 직접 호출되는 경우를 대비한
+         * 방어 검증입니다.
+         */
         if (guestCount < 1) {
             throw new BusinessException(
                 ErrorCode.INVALID_GUEST_COUNT
             );
         }
 
-        if (guestCount > room.getMaxCapacity()) {
+        int maxCapacity =
+            room.getMaxCapacity();
+
+        if (guestCount > maxCapacity) {
+            /*
+             * 상단 메시지보다 구체적인 최대 허용 인원을 제공하므로
+             * guestCount 필드 상세 오류를 함께 전달합니다.
+             */
             throw new BusinessException(
-                ErrorCode.ROOM_CAPACITY_EXCEEDED
+                ErrorCode.ROOM_CAPACITY_EXCEEDED,
+                List.of(
+                    new BusinessException.BusinessFieldError(
+                        "guestCount",
+                        "선택한 객실은 최대 "
+                            + maxCapacity
+                            + "명까지 예약할 수 있습니다."
+                    )
+                )
             );
         }
     }

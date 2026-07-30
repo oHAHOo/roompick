@@ -1,5 +1,6 @@
 package com.roompick.domain.payment.controller;
 
+import com.roompick.domain.payment.dto.response.PaymentCompleteResponseDto;
 import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -112,5 +113,30 @@ public class PaymentController {
                     result
                 )
             );
+    }
+
+    /**
+     * PortOne에서 실제 결제 정보를 조회하고,
+     * 검증이 완료되면 결제와 예약을 확정합니다.
+     */
+    @PostMapping("/payments/{paymentId}/complete")
+    public ResponseEntity<
+        ApiResponseDto<PaymentCompleteResponseDto>
+        > completePortOnePayment(
+        @PathVariable Long paymentId,
+        @AuthenticationPrincipal AuthMember authMember
+    ) {
+        PaymentCompleteResponseDto result =
+            paymentFacade.completePortOnePayment(
+                paymentId,
+                authMember.memberId()
+            );
+
+        return ResponseEntity.ok(
+            ApiResponseDto.success(
+                "결제가 완료되었습니다.",
+                result
+            )
+        );
     }
 }
