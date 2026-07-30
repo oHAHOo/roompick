@@ -55,7 +55,17 @@ public enum ErrorCode {
     PAYMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "PAYMENT_ALREADY_EXISTS", "해당 예약의 결제가 이미 생성되었습니다."),
     INVALID_PAYMENT_AMOUNT(HttpStatus.BAD_REQUEST, "INVALID_PAYMENT_AMOUNT", "결제 금액이 올바르지 않습니다."),
     INVALID_PAYMENT_STATUS(HttpStatus.CONFLICT, "INVALID_PAYMENT_STATUS", "현재 결제 상태에서는 요청을 처리할 수 없습니다."),
-    PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_AMOUNT_MISMATCH", "결제 요청 금액이 저장된 결제 금액과 일치하지 않습니다.");
+    PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PAYMENT_AMOUNT_MISMATCH", "결제 요청 금액이 저장된 결제 금액과 일치하지 않습니다."),
+
+    // PortOne 연동 오류
+    PORTONE_PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PORTONE_PAYMENT_NOT_FOUND", "PortOne 결제 정보를 찾을 수 없습니다."),
+    PORTONE_AUTHENTICATION_FAILED(HttpStatus.BAD_GATEWAY, "PORTONE_AUTHENTICATION_FAILED", "PortOne 인증에 실패했습니다."),
+    PORTONE_API_ERROR(HttpStatus.BAD_GATEWAY, "PORTONE_API_ERROR", "PortOne 결제 정보를 조회하는 중 오류가 발생했습니다."),
+    PORTONE_CONNECTION_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "PORTONE_CONNECTION_FAILED", "현재 PortOne 결제 서버에 연결할 수 없습니다."),
+    PORTONE_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "PORTONE_INVALID_RESPONSE", "PortOne 결제 응답이 올바르지 않습니다."),
+    PORTONE_PAYMENT_NOT_PAID(HttpStatus.CONFLICT, "PORTONE_PAYMENT_NOT_PAID", "PortOne에서 결제가 완료되지 않았습니다."),
+    PORTONE_PAYMENT_ID_MISMATCH(HttpStatus.BAD_GATEWAY, "PORTONE_PAYMENT_ID_MISMATCH", "PortOne 결제 식별값이 일치하지 않습니다."),
+    PORTONE_PAYMENT_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "PORTONE_PAYMENT_AMOUNT_MISMATCH", "PortOne 결제 금액이 저장된 결제 금액과 일치하지 않습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

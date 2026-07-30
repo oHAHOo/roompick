@@ -46,11 +46,15 @@ class RoomServiceTest {
         Long roomId = 1L;
         Room room = createRoom();
 
-        given(roomRepository.findByIdWithAccommodation(roomId))
+        given(roomRepository.findPublicById(
+            roomId,
+            RoomStatus.ACTIVE,
+            AccommodationStatus.ACTIVE
+        ))
             .willReturn(Optional.of(room));
 
         // when: 객실 ID로 상세 조회합니다.
-        Room result = roomService.findById(roomId);
+        Room result = roomService.findActiveById(roomId);
 
         // then: Repository에서 조회한 객실이 반환됩니다.
         assertThat(result).isSameAs(room);
@@ -61,11 +65,35 @@ class RoomServiceTest {
         // given: 해당 ID의 객실이 존재하지 않습니다.
         Long roomId = 999L;
 
-        given(roomRepository.findByIdWithAccommodation(roomId))
+        given(roomRepository.findPublicById(
+            roomId,
+            RoomStatus.ACTIVE,
+            AccommodationStatus.ACTIVE
+        ))
             .willReturn(Optional.empty());
 
         // when & then: 객실 없음 공통 예외가 발생합니다.
-        assertThatThrownBy(() -> roomService.findById(roomId))
+        assertThatThrownBy(() -> roomService.findActiveById(roomId))
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    @Test
+    void 운영_중지된_숙소의_운영_중인_객실은_상세_조회할_수_없다() {
+        // given: Repository의 공개 조건에서 숙소 상태가 함께 걸러집니다.
+        Long roomId = 1L;
+
+        given(roomRepository.findPublicById(
+            roomId,
+            RoomStatus.ACTIVE,
+            AccommodationStatus.ACTIVE
+        )).willReturn(Optional.empty());
+
+        // when & then: 비공개 자원의 존재를 노출하지 않습니다.
+        assertThatThrownBy(() -> roomService.findActiveById(roomId))
             .isInstanceOf(BusinessException.class)
             .extracting(exception ->
                 ((BusinessException) exception).getErrorCode()
@@ -79,7 +107,7 @@ class RoomServiceTest {
         Long roomId = 1L;
         Room room = createRoom();
 
-        given(roomRepository.findById(roomId))
+        given(roomRepository.findByIdWithAccommodation(roomId))
             .willReturn(Optional.of(room));
 
         // when
@@ -98,7 +126,7 @@ class RoomServiceTest {
         Long roomId = 1L;
         Room room = createRoom();
 
-        given(roomRepository.findById(roomId))
+        given(roomRepository.findByIdWithAccommodation(roomId))
             .willReturn(Optional.of(room));
 
         // when & then
@@ -118,18 +146,45 @@ class RoomServiceTest {
         Long roomId = 1L;
         Room room = createRoom();
 
-        given(roomRepository.findById(roomId))
+        given(roomRepository.findByIdWithAccommodation(roomId))
             .willReturn(Optional.of(room));
 
-        // when & then
-        assertThatThrownBy(() ->
-            roomService.findReservableRoom(roomId, 3)
-        )
-            .isInstanceOf(BusinessException.class)
-            .extracting(exception ->
-                ((BusinessException) exception).getErrorCode()
-            )
-            .isEqualTo(ErrorCode.ROOM_CAPACITY_EXCEEDED);
+        // when
+        BusinessException exception =
+            assertThrows(
+                BusinessException.class,
+                () -> roomService.findReservableRoom(
+                    roomId,
+                    3
+                )
+            );
+
+        // then: 기존 비즈니스 에러 코드를 유지합니다.
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.ROOM_CAPACITY_EXCEEDED
+            );
+
+        /*
+         * 상단 에러 메시지보다 구체적인 최대 허용 인원을
+         * guestCount 필드 상세 오류로 전달하는지 확인합니다.
+         */
+        assertThat(exception.getFieldErrors())
+            .hasSize(1);
+
+        assertThat(
+            exception.getFieldErrors()
+                .get(0)
+                .field()
+        ).isEqualTo("guestCount");
+
+        assertThat(
+            exception.getFieldErrors()
+                .get(0)
+                .message()
+        ).isEqualTo(
+            "선택한 객실은 최대 2명까지 예약할 수 있습니다."
+        );
     }
 
     @Test
@@ -145,7 +200,28 @@ class RoomServiceTest {
             RoomStatus.INACTIVE
         );
 
-        given(roomRepository.findById(roomId))
+        given(roomRepository.findByIdWithAccommodation(roomId))
+            .willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.findReservableRoom(roomId, 2)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_INACTIVE);
+    }
+
+    @Test
+    void 운영_중지된_숙소의_운영_중인_객실은_예약_가능_여부를_조회할_수_없다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom();
+        deactivateAccommodation(room);
+
+        given(roomRepository.findByIdWithAccommodation(roomId))
             .willReturn(Optional.of(room));
 
         // when & then
@@ -168,7 +244,7 @@ class RoomServiceTest {
             LocalTime.of(11, 0)
         );
 
-        return Room.create(
+        Room room = Room.create(
             accommodation,
             "101",
             "디럭스 더블룸",
@@ -176,6 +252,18 @@ class RoomServiceTest {
             100000L,
             2,
             2
+        );
+
+        room.activate();
+
+        return room;
+    }
+
+    private void deactivateAccommodation(Room room) {
+        ReflectionTestUtils.setField(
+            room.getAccommodation(),
+            "status",
+            AccommodationStatus.INACTIVE
         );
     }
 
@@ -216,9 +304,7 @@ class RoomServiceTest {
         assertThat(room.getPricePerNight())
             .isZero();
         assertThat(room.getStatus())
-            .isEqualTo(
-                com.roompick.domain.room.entity.RoomStatus.ACTIVE
-            );
+            .isEqualTo(RoomStatus.INACTIVE);
 
         then(roomRepository)
             .should()
@@ -378,6 +464,32 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("운영 중지된 숙소의 운영 중인 객실은 예약 생성용으로 조회할 수 없다")
+    void 운영_중지된_숙소의_객실은_예약_생성용으로_조회할_수_없다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom();
+        deactivateAccommodation(room);
+
+        given(
+            roomRepository.findByIdWithAccommodation(roomId)
+        ).willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.findReservableRoomWithAccommodation(
+                roomId,
+                2
+            )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_INACTIVE);
+    }
+
+    @Test
     @DisplayName("최대 인원을 초과하면 예약 생성용 객실을 조회할 수 없다")
     void 최대_인원을_초과하면_예약_생성용_객실을_조회할_수_없다() {
         // given
@@ -400,5 +512,161 @@ class RoomServiceTest {
                 ((BusinessException) exception).getErrorCode()
             )
             .isEqualTo(ErrorCode.ROOM_CAPACITY_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("관리자가 같은 숙소의 객실을 공개할 수 있다")
+    void 객실을_공개할_수_있다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+
+        given(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.activateRoom(
+            accommodationId,
+            roomId
+        );
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.ACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 같은 숙소의 객실을 비공개할 수 있다")
+    void 객실을_비공개할_수_있다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.deactivateRoom(
+            accommodationId,
+            roomId
+        );
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("운영 중지된 숙소의 객실은 공개할 수 없다")
+    void 운영_중지된_숙소의_객실은_공개할_수_없다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+        deactivateAccommodation(room);
+
+        given(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.activateRoom(accommodationId, roomId)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ACCOMMODATION_INACTIVE);
+
+        assertThat(room.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("이미 공개된 객실을 다시 공개해도 성공한다")
+    void 객실_공개는_멱등하게_동작한다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+
+        given(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.activateRoom(accommodationId, roomId);
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.ACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("이미 비공개된 객실을 다시 비공개해도 성공한다")
+    void 객실_비공개는_멱등하게_동작한다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.deactivateRoom(accommodationId, roomId);
+
+        // then
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        then(roomRepository).should(never()).save(any(Room.class));
+    }
+
+    @Test
+    @DisplayName("다른 숙소에 소속된 객실의 상태 변경 요청은 404로 처리한다")
+    void 다른_숙소의_객실은_상태를_변경할_수_없다() {
+        // given
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+
+        given(
+            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+                roomId,
+                accommodationId
+            )
+        ).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() ->
+            roomService.activateRoom(accommodationId, roomId)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
     }
 }

@@ -4,21 +4,31 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
-import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import com.roompick.domain.payment.client.portone.PortOneClient;
+import com.roompick.domain.payment.client.portone.PortOnePaymentVerifier;
+import com.roompick.domain.payment.client.portone.dto.response.PortOnePaymentResponseDto;
+import com.roompick.domain.payment.client.portone.dto.response.PortOnePaymentVerificationResultDto;
 import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
+import com.roompick.domain.payment.dto.response.PaymentCompleteResponseDto;
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import com.roompick.domain.payment.dto.response.PaymentPrepareResponseDto;
 import com.roompick.domain.payment.entity.Payment;
 import com.roompick.domain.payment.service.PaymentService;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.service.ReservationService;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
+import com.roompick.global.config.portone.PortOneProperties;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * 예약과 결제 도메인의 결제 흐름을 조율합니다.
+ * 결제와 예약 Service를 조합해
+ * 결제 전체 흐름을 처리하는 Facade입니다.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,8 +40,17 @@ public class PaymentFacade {
     private final ReservationService reservationService;
     private final PaymentService paymentService;
 
+    private final PortOneClient portOneClient;
+    private final PortOnePaymentVerifier portOnePaymentVerifier;
+    private final PortOneProperties portOneProperties;
+
+    private final TransactionTemplate transactionTemplate;
+
     /**
-     * 회원의 예약을 확인하고 READY 상태의 결제를 생성합니다.
+     * 예약을 검증하고 READY 상태의 결제를 준비합니다.
+     *
+     * 클라이언트가 PortOne 결제창을 열 수 있도록
+     * storeId와 channelKey도 함께 반환합니다.
      */
     @Transactional
     public PaymentPrepareResponseDto preparePayment(
@@ -51,21 +70,14 @@ public class PaymentFacade {
             );
 
         return PaymentPrepareResponseDto.from(
-            payment
+            payment,
+            portOneProperties.storeId(),
+            portOneProperties.channelKey()
         );
     }
 
     /**
-     * Mock 결제를 승인하고 예약을 확정합니다.
-     *
-     * 결제 상태와 금액을 먼저 검증하여
-     * 이미 처리된 결제에는 INVALID_PAYMENT_STATUS를 반환합니다.
-     *
-     * 이후 예약 소유자, 예약 상태, 결제 만료 여부를 검증하고
-     * 예약을 확정합니다.
-     *
-     * 두 상태 변경은 같은 트랜잭션에서 처리되므로
-     * 예약 검증에 실패하면 먼저 변경된 결제 상태도 롤백됩니다.
+     * 기존 Mock 결제를 승인하고 예약을 확정합니다.
      */
     @Transactional
     public PaymentApproveResponseDto approvePayment(
@@ -74,21 +86,20 @@ public class PaymentFacade {
         long requestedAmount
     ) {
         Payment payment =
-            paymentService.findById(paymentId);
+            paymentService.findById(
+                paymentId
+            );
 
         Reservation reservation =
             payment.getReservation();
 
         LocalDateTime approvedAt =
-            LocalDateTime.now(SERVICE_ZONE_ID)
-                .truncatedTo(ChronoUnit.MICROS);
+            LocalDateTime
+                .now(SERVICE_ZONE_ID)
+                .truncatedTo(
+                    ChronoUnit.MICROS
+                );
 
-        /*
-         * 결제 상태와 요청 금액을 먼저 검증합니다.
-         *
-         * 이미 PAID 상태인 결제라면 예약 상태 검증보다 먼저
-         * INVALID_PAYMENT_STATUS가 발생합니다.
-         */
         Payment approvedPayment =
             paymentService.approvePayment(
                 payment,
@@ -96,10 +107,6 @@ public class PaymentFacade {
                 approvedAt
             );
 
-        /*
-         * 결제와 연결된 예약의 소유자, 상태, 만료 여부를
-         * 검증한 뒤 예약을 확정합니다.
-         */
         reservationService.confirmPayment(
             reservation,
             memberId,
@@ -112,14 +119,8 @@ public class PaymentFacade {
     }
 
     /**
-     * READY 상태의 Mock 결제를 실패 처리하고
+     * READY 상태의 기존 Mock 결제를 실패 처리하고
      * 연결된 예약을 취소합니다.
-     *
-     * 결제 상태를 먼저 검증하여 이미 처리된 결제에는
-     * INVALID_PAYMENT_STATUS를 반환합니다.
-     *
-     * 결제와 예약 상태 변경은 하나의 트랜잭션에서 처리되므로
-     * 예약 검증에 실패하면 Payment 변경도 롤백됩니다.
      */
     @Transactional
     public PaymentFailResponseDto failPayment(
@@ -127,32 +128,26 @@ public class PaymentFacade {
         Long memberId
     ) {
         Payment payment =
-            paymentService.findById(paymentId);
+            paymentService.findById(
+                paymentId
+            );
 
         Reservation reservation =
             payment.getReservation();
 
         LocalDateTime failedAt =
-            LocalDateTime.now(SERVICE_ZONE_ID)
-                .truncatedTo(ChronoUnit.MICROS);
+            LocalDateTime
+                .now(SERVICE_ZONE_ID)
+                .truncatedTo(
+                    ChronoUnit.MICROS
+                );
 
-        /*
-         * Payment가 READY 상태인지 먼저 검증한 뒤
-         * FAILED 상태로 변경합니다.
-         */
         Payment failedPayment =
             paymentService.failPayment(
                 payment,
                 failedAt
             );
 
-        /*
-         * 연결된 예약의 소유자와 상태를 검증한 뒤
-         * CANCELED 상태로 변경합니다.
-         *
-         * 결제 대기 시간이 만료된 예약도 객실 점유를
-         * 해제해야 하므로 만료 여부는 검사하지 않습니다.
-         */
         reservationService.cancelByPaymentFailure(
             reservation,
             memberId,
@@ -162,5 +157,154 @@ public class PaymentFacade {
         return PaymentFailResponseDto.from(
             failedPayment
         );
+    }
+
+    /**
+     * PortOne의 실제 결제 정보를 조회하고 검증한 뒤
+     * Payment와 Reservation을 확정합니다.
+     *
+     * 외부 API 호출 중에는 DB 트랜잭션을 유지하지 않습니다.
+     */
+    public PaymentCompleteResponseDto
+    completePortOnePayment(
+        Long paymentId,
+        Long memberId
+    ) {
+
+        /*
+         * PortOne 외부 API를 호출하기 전에
+         * 요청 회원의 결제인지, READY 상태인지 검증합니다.
+         */
+        Payment paymentSnapshot =
+            paymentService
+                .findForPortOneCompletion(
+                    paymentId,
+                    memberId
+                );
+
+        String expectedPortOnePaymentId =
+            paymentSnapshot
+                .getPortOnePaymentId();
+
+        long expectedAmount =
+            paymentSnapshot.getAmount();
+
+        /*
+         * 외부 PortOne API 호출은
+         * DB 트랜잭션 밖에서 수행합니다.
+         */
+        PortOnePaymentResponseDto portOnePayment =
+            portOneClient.getPayment(
+                expectedPortOnePaymentId
+            );
+
+        PortOnePaymentVerificationResultDto
+            verificationResult =
+            portOnePaymentVerifier.verify(
+                portOnePayment,
+                expectedPortOnePaymentId,
+                expectedAmount
+            );
+
+        /*
+         * 외부 응답 검증이 완료된 뒤
+         * 짧은 쓰기 트랜잭션을 시작합니다.
+         */
+        PaymentCompleteResponseDto result =
+            transactionTemplate.execute(
+                transactionStatus ->
+                    completePortOnePaymentInTransaction(
+                        paymentId,
+                        memberId,
+                        expectedPortOnePaymentId,
+                        verificationResult
+                    )
+            );
+
+        if (result == null) {
+            throw new BusinessException(
+                ErrorCode.INTERNAL_SERVER_ERROR
+            );
+        }
+
+        return result;
+    }
+
+    /**
+     * PortOne 응답 검증 이후 실행되는
+     * DB 상태 변경 트랜잭션입니다.
+     */
+    private PaymentCompleteResponseDto
+    completePortOnePaymentInTransaction(
+        Long paymentId,
+        Long memberId,
+        String verifiedPortOnePaymentId,
+        PortOnePaymentVerificationResultDto
+            verificationResult
+    ) {
+
+        /*
+         * 외부 API 응답을 기다리는 동안
+         * 소유자나 결제 상태가 변경됐을 수 있으므로
+         * 쓰기 트랜잭션 안에서 다시 검증합니다.
+         */
+        Payment payment =
+            paymentService
+                .findForPortOneCompletion(
+                    paymentId,
+                    memberId
+                );
+
+        validatePortOnePaymentIdUnchanged(
+            payment,
+            verifiedPortOnePaymentId
+        );
+
+        Reservation reservation =
+            payment.getReservation();
+
+        Payment approvedPayment =
+            paymentService
+                .approvePortOnePayment(
+                    payment,
+                    verificationResult
+                        .transactionId(),
+                    verificationResult.amount(),
+                    verificationResult.paidAt()
+                );
+
+        reservationService.confirmPayment(
+            reservation,
+            memberId,
+            verificationResult.paidAt()
+        );
+
+        return PaymentCompleteResponseDto.from(
+            approvedPayment
+        );
+    }
+
+    /**
+     * 외부 API 호출 전후 내부 PortOne 결제 ID가
+     * 변경되지 않았는지 확인합니다.
+     */
+    private void validatePortOnePaymentIdUnchanged(
+        Payment payment,
+        String verifiedPortOnePaymentId
+    ) {
+        String currentPortOnePaymentId =
+            payment.getPortOnePaymentId();
+
+        if (
+            currentPortOnePaymentId == null
+                || !currentPortOnePaymentId.equals(
+                verifiedPortOnePaymentId
+            )
+        ) {
+            throw new BusinessException(
+                ErrorCode
+                    .PORTONE_PAYMENT_ID_MISMATCH
+            );
+        }
     }
 }

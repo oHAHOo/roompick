@@ -24,3 +24,12 @@ jwt:
   secret: roompick-test-secret-key-roompick-test-secret-key-1234567890
   access-token-validity-seconds: 3600
   refresh-token-validity-seconds: 1209600
+
+portone:
+  api:
+    base-url: http://localhost
+    secret: test-portone-api-secret
+    connect-timeout: 1s
+    read-timeout: 1s
+  store-id: test-store-id
+  channel-key: test-channel-key

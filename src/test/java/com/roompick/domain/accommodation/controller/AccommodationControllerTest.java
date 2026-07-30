@@ -85,6 +85,8 @@ class AccommodationControllerTest {
                 .value("룸픽 서울 호텔"))
             .andExpect(jsonPath("$.data.content[0].address")
                 .value("서울특별시 강남구"))
+            .andExpect(jsonPath("$.data.content[0].imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
             .andExpect(jsonPath("$.data.pageNumber")
                 .value(0))
             .andExpect(jsonPath("$.data.pageSize")
@@ -131,6 +133,8 @@ class AccommodationControllerTest {
                 .value("15:00:00"))
             .andExpect(jsonPath("$.data.checkOutTime")
                 .value("11:00:00"))
+            .andExpect(jsonPath("$.data.imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
             .andExpect(jsonPath("$.data.status")
                 .doesNotExist())
             .andExpect(jsonPath("$.data.rooms")
@@ -165,8 +169,7 @@ class AccommodationControllerTest {
 
         // 객실 번호가 큰 객실을 먼저 저장해
         // 저장 순서가 아닌 객실 번호 순서로 조회되는지 확인합니다.
-        Room secondRoom = roomRepository.save(
-            Room.create(
+        Room secondRoom = Room.create(
                 accommodation,
                 "202",
                 "스위트룸",
@@ -174,11 +177,11 @@ class AccommodationControllerTest {
                 200000L,
                 2,
                 4
-            )
-        );
+            );
+        secondRoom.activate();
+        roomRepository.save(secondRoom);
 
-        Room firstRoom = roomRepository.save(
-            Room.create(
+        Room firstRoom = Room.create(
                 accommodation,
                 "101",
                 "디럭스 더블룸",
@@ -186,8 +189,9 @@ class AccommodationControllerTest {
                 100000L,
                 2,
                 2
-            )
-        );
+            );
+        firstRoom.activate();
+        roomRepository.save(firstRoom);
 
         // when & then:
         // 인증 헤더 없이 해당 숙소의 운영 중인 객실 목록을 조회합니다.
@@ -213,10 +217,14 @@ class AccommodationControllerTest {
                 .value(2))
             .andExpect(jsonPath("$.data[0].maxCapacity")
                 .value(2))
+            .andExpect(jsonPath("$.data[0].imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()))
             .andExpect(jsonPath("$.data[1].roomId")
                 .value(secondRoom.getId()))
             .andExpect(jsonPath("$.data[1].name")
-                .value("스위트룸"));
+                .value("스위트룸"))
+            .andExpect(jsonPath("$.data[1].imageUrl")
+                .value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
@@ -346,8 +354,7 @@ class AccommodationControllerTest {
                 createAccommodation()
             );
 
-        Room activeRoom = roomRepository.save(
-            Room.create(
+        Room activeRoom = Room.create(
                 accommodation,
                 "101",
                 "운영 중인 객실",
@@ -355,8 +362,9 @@ class AccommodationControllerTest {
                 100000L,
                 2,
                 2
-            )
-        );
+            );
+        activeRoom.activate();
+        roomRepository.save(activeRoom);
 
         Room inactiveRoom = roomRepository.save(
             Room.create(
@@ -424,7 +432,7 @@ class AccommodationControllerTest {
     }
 
     private Room createRoom(Accommodation accommodation) {
-        return Room.create(
+        Room room = Room.create(
             accommodation,
             "101",
             "디럭스 더블룸",
@@ -433,5 +441,9 @@ class AccommodationControllerTest {
             2,
             2
         );
+
+        room.activate();
+
+        return room;
     }
 }

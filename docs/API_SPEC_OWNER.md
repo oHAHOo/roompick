@@ -1,8 +1,8 @@
 # RoomPick API 명세서 — 임선구 담당
 
-- 문서 버전: `v0.3`
+- 문서 버전: `v0.4`
 - 작성일: 2026-07-21
-- 최종 수정일: 2026-07-27
+- 최종 수정일: 2026-07-29
 - 담당자: 임선구
 - 담당 도메인: 숙소, 객실, 예약
 - MVP 기준: 관리자가 등록한 숙소·객실 사용, 검색 기능 없음
@@ -114,6 +114,7 @@ HH:mm:ss
 | 번호 | Method | URL | 기능 | 인증 |
 | --- | --- | --- | --- | --- |
 | 1 | `GET` | `/api/v1/accommodations` | 전체 숙소 목록 조회 | 불필요 |
+| 1-1 | `GET` | `/api/v1/accommodations/popular` | 일간 인기 숙소 TOP N 조회 | 불필요 |
 | 2 | `GET` | `/api/v1/accommodations/{accommodationId}/rooms` | 숙소별 객실 목록 조회 | 불필요 |
 | 3 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
 | 4 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
@@ -159,7 +160,8 @@ GET /api/v1/accommodations?page=0&size=20
       {
         "accommodationId": 1,
         "name": "룸픽 호텔",
-        "address": "서울특별시 강남구 테헤란로 123"
+        "address": "서울특별시 강남구 테헤란로 123",
+        "imageUrl": null
       }
     ],
     "pageNumber": 0,
@@ -182,8 +184,75 @@ GET /api/v1/accommodations?page=0&size=20
 - `ACTIVE` 상태의 숙소만 공개 목록에 포함한다.
 - 숙소가 없으면 오류가 아닌 빈 `content`를 반환한다.
 - 숙소 ID 오름차순으로 고정 정렬한다.
-- 목록 화면에 필요한 `accommodationId`, `name`, `address`만 DTO로 직접 조회한다.
+- 목록 화면에 필요한 `accommodationId`, `name`, `address`, `imageUrl`을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 검색·필터·사용자 지정 정렬은 W3 확장 범위에서 구현한다.
+
+---
+
+## 5-1. 일간 인기 숙소 TOP N 조회
+
+오늘 발생한 숙소 상세 조회 점수를 기준으로 인기 숙소 목록을 조회한다.
+
+기본 조회 개수는 10개이며, 요청에 따라 1개 이상 20개 이하로 조정할 수 있다.
+
+### Request
+
+```http
+GET /api/v1/accommodations/popular?limit=10
+```
+
+### Query Parameter
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+| --- | --- | --- | --- | --- |
+| `limit` | `int` | X | `10` | 최종 반환할 ACTIVE 인기 숙소 수, 1 이상 20 이하 |
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "인기 숙소 목록 조회에 성공했습니다.",
+  "data": [
+    {
+      "rank": 1,
+      "accommodationId": 3,
+      "name": "룸픽 부산 호텔",
+      "address": "부산광역시 해운대구",
+      "imageUrl": null
+    },
+    {
+      "rank": 2,
+      "accommodationId": 1,
+      "name": "룸픽 서울 호텔",
+      "address": "서울특별시 중구",
+      "imageUrl": null
+    }
+  ]
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT_VALUE` | `limit`이 1 미만이거나 20을 초과한 경우 |
+
+### 구현 메모
+
+- 오늘 날짜의 Redis Sorted Set 전체를 점수 내림차순으로 한 번 조회한다.
+- 숙소 정보는 Redis에서 조회한 전체 ID 목록을 이용해 DB `IN` 쿼리 한 번으로 조회한다.
+- 상위 랭킹에 존재하지 않거나 `INACTIVE`인 숙소가 있으면, 그 아래 순위의 ACTIVE 숙소를 포함하여 가능한 범위에서 `limit`개를 채운다.
+- ACTIVE 숙소 수 자체가 `limit`보다 부족한 경우에는 존재하는 숙소만 반환한다.
+- 숙소별 반복 조회를 실행하지 않아 N+1 문제가 발생하지 않는다.
+- DB 조회 결과는 Redis 랭킹 순서에 맞게 다시 정렬한다.
+- 존재하지 않거나 `INACTIVE` 상태인 숙소는 결과에서 제외한다.
+- 제외된 숙소가 있으면 최종 응답 목록을 기준으로 `rank`를 1부터 다시 계산한다.
+- 동일 점수에서는 Redis의 역방향 사전순 정렬 결과를 따른다.
+- 랭킹 데이터가 없으면 오류가 아닌 빈 배열을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- Redis 장애 시 DB fallback 처리는 후속 캐시·장애 대응 기능에서 구현한다.
 
 ---
 
@@ -215,7 +284,8 @@ GET /api/v1/accommodations/1/rooms
       "name": "디럭스 더블룸",
       "pricePerNight": 100000,
       "standardCapacity": 2,
-      "maxCapacity": 2
+      "maxCapacity": 2,
+      "imageUrl": null
     }
   ]
 }
@@ -234,7 +304,8 @@ GET /api/v1/accommodations/1/rooms
 - `ACTIVE` 상태의 객실만 공개 목록에 포함한다.
 - 객실이 없으면 오류가 아닌 빈 배열을 반환한다.
 - 객실 번호 오름차순, 동일한 객실 번호에서는 객실 ID 오름차순으로 정렬한다.
-- 목록 화면에 필요한 `roomId`, `name`, `pricePerNight`, `standardCapacity`, `maxCapacity`만 DTO로 직접 조회한다.
+- 목록 화면에 필요한 `roomId`, `name`, `pricePerNight`, `standardCapacity`, `maxCapacity`, `imageUrl`을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 
 ---
 
@@ -268,7 +339,8 @@ GET /api/v1/accommodations/1
     "address": "서울특별시 강남구 테헤란로 123",
     "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
     "checkInTime": "15:00:00",
-    "checkOutTime": "11:00:00"
+    "checkOutTime": "11:00:00",
+    "imageUrl": null
   }
 }
 ```
@@ -283,7 +355,8 @@ GET /api/v1/accommodations/1
 ### 구현 메모
 
 - `ACTIVE` 상태의 숙소만 공개 상세 조회를 허용한다.
-- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간만 반환한다.
+- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간, `imageUrl`을 반환한다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 객실 목록은 `/api/v1/accommodations/{accommodationId}/rooms` API에서 별도로 조회한다.
 - 숙소 상세 조회에서는 불필요한 객실 조회 쿼리를 실행하지 않는다.
 - 조회 전용 트랜잭션을 사용한다.
@@ -294,7 +367,7 @@ GET /api/v1/accommodations/1
 
 ## 8. 객실 상세 조회
 
-객실과 소속 숙소의 기본 정보를 조회한다.
+객실 상세·예약 화면에 필요한 객실 기본 정보를 조회한다.
 
 ### Request
 
@@ -316,18 +389,13 @@ GET /api/v1/rooms/1
   "message": "객실 상세 조회에 성공했습니다.",
   "data": {
     "roomId": 1,
-    "accommodation": {
-      "accommodationId": 1,
-      "name": "룸픽 호텔",
-      "address": "서울특별시 강남구 테헤란로 123"
-    },
     "roomNumber": "101",
     "name": "디럭스 더블룸",
     "description": "2인이 이용할 수 있는 더블룸입니다.",
     "pricePerNight": 100000,
     "standardCapacity": 2,
     "maxCapacity": 2,
-    "status": "ACTIVE"
+    "imageUrl": null
   }
 }
 ```
@@ -336,11 +404,14 @@ GET /api/v1/rooms/1
 
 | HTTP | Error Code | 조건 |
 | --- | --- | --- |
-| `404` | `ROOM_NOT_FOUND` | 존재하지 않는 객실 ID |
+| `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않거나 객실 또는 소속 숙소가 운영 중지 상태인 경우 |
 
 ### 구현 메모
 
-- 숙소 정보를 얻기 위해 추가 쿼리가 반복되지 않도록 필요한 연관 데이터만 조회한다.
+- 객실 상세 화면에서 사용하는 객실 기본 정보만 반환한다.
+- 숙소명과 숙소 주소는 객실 상세 응답에 포함하지 않는다.
+- 객실 운영 상태는 공개 응답에 포함하지 않는다.
+- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
 - 현재 날짜의 예약 가능 여부는 객실 상세 응답에 포함하지 않는다.
 - 사용자가 선택한 날짜의 예약 가능 여부는 별도 API에서 확인한다.
 
@@ -384,6 +455,7 @@ GET /api/v1/rooms/1/availability?checkInDate=2026-08-10&checkOutDate=2026-08-12&
     "nightCount": 2,
     "pricePerNight": 100000,
     "totalAmount": 200000,
+    "status": "ACTIVE",
     "available": true,
     "unavailableReason": null
   }
@@ -406,6 +478,7 @@ GET /api/v1/rooms/1/availability?checkInDate=2026-08-10&checkOutDate=2026-08-12&
     "nightCount": 2,
     "pricePerNight": 100000,
     "totalAmount": 200000,
+    "status": "SOLD_OUT",
     "available": false,
     "unavailableReason": "선택한 날짜에 이미 예약된 객실입니다."
   }
@@ -420,7 +493,11 @@ GET /api/v1/rooms/1/availability?checkInDate=2026-08-10&checkOutDate=2026-08-12&
 | `400` | `INVALID_GUEST_COUNT` | 인원이 1명 미만 |
 | `400` | `ROOM_CAPACITY_EXCEEDED` | 객실 최대 인원을 초과함 |
 | `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않음 |
-| `409` | `ROOM_INACTIVE` | 운영 중지된 객실 |
+| `409` | `ROOM_INACTIVE` | 객실 또는 소속 숙소가 운영 중지 상태인 경우 |
+
+`status`는 화면 표시용 상태다. 예약 가능하면 `ACTIVE`, 선택한 날짜와 겹치는 활성 예약이 있으면 `SOLD_OUT`을 반환한다. 기존 `available`, `unavailableReason` 필드는 그대로 유지한다.
+
+공개 상세 조회와 예약 API의 오류 정책은 의도적으로 다르다. 상세 조회에서는 비공개 자원의 존재를 노출하지 않기 위해 객실 또는 숙소가 `INACTIVE`이면 `ROOM_NOT_FOUND`(`404`)를 반환한다. 예약 가능 여부 조회와 예약 생성에서는 예약 불가 원인을 명확히 전달하기 위해 `ROOM_INACTIVE`(`409`)를 반환한다.
 
 ### 날짜 겹침 조건
 
@@ -514,7 +591,7 @@ Content-Type: application/json
 | `400` | `ROOM_CAPACITY_EXCEEDED` | 객실 최대 인원을 초과함 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
 | `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않음 |
-| `409` | `ROOM_INACTIVE` | 운영 중지된 객실 |
+| `409` | `ROOM_INACTIVE` | 객실 또는 소속 숙소가 운영 중지 상태인 경우 |
 | `409` | `ROOM_NOT_AVAILABLE` | 동일 기간에 활성 예약이 존재함 |
 
 ### 처리 순서
