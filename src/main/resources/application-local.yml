@@ -19,3 +19,12 @@ spring:
       timeout: ${REDIS_TIMEOUT:300ms}
   flyway:
     locations: classpath:db/migration,classpath:db/dev-migration
+
+portone:
+  api:
+    base-url: ${PORTONE_API_BASE_URL:https://api.portone.io}
+    secret: ${PORTONE_API_SECRET}
+    connect-timeout: ${PORTONE_CONNECT_TIMEOUT:3s}
+    read-timeout: ${PORTONE_READ_TIMEOUT:5s}
+  store-id: ${PORTONE_STORE_ID}
+  channel-key: ${PORTONE_CHANNEL_KEY}
