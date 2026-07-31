@@ -25,11 +25,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
@@ -101,37 +101,22 @@ class PaymentPessimisticLockMySqlIntegrationTest {
         Duration.ofSeconds(3);
 
     @Container
-    static final GenericContainer<?> MYSQL_CONTAINER =
-        new GenericContainer<>(
+    @ServiceConnection
+    static final MySQLContainer<?> MYSQL_CONTAINER =
+        new MySQLContainer<>(
             DockerImageName.parse("mysql:8.4")
         )
-            .withEnv(
-                "MYSQL_DATABASE",
+            .withDatabaseName(
                 DATABASE_NAME
             )
-            .withEnv(
-                "MYSQL_USER",
+            .withUsername(
                 DATABASE_USERNAME
             )
-            .withEnv(
-                "MYSQL_PASSWORD",
+            .withPassword(
                 DATABASE_PASSWORD
             )
-            .withEnv(
-                "MYSQL_ROOT_PASSWORD",
-                "root-password"
-            )
-            .withExposedPorts(
-                MYSQL_PORT
-            )
-            .waitingFor(
-                Wait.forLogMessage(
-                        ".*ready for connections.*\\n",
-                        2
-                    )
-                    .withStartupTimeout(
-                        Duration.ofMinutes(2)
-                    )
+            .withStartupTimeout(
+                Duration.ofMinutes(2)
             );
 
     @DynamicPropertySource

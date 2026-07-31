@@ -29,8 +29,13 @@ jobs:
       - name: Run unit tests
         run: ./gradlew clean test
 
+      - name: Verify Docker environment
+        run: |
+          docker version
+          docker info
+
       - name: Run MySQL integration tests
-        run: ./gradlew integrationTest
+        run: ./gradlew integrationTest --stacktrace
 
   flyway-check:
     runs-on: ubuntu-latest
