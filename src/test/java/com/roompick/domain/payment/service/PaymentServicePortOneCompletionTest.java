@@ -23,6 +23,7 @@ import com.roompick.domain.payment.repository.PaymentRepository;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+import org.springframework.dao.PessimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServicePortOneCompletionTest {
@@ -542,5 +543,41 @@ class PaymentServicePortOneCompletionTest {
         then(payment)
             .should(never())
             .getStatus();
+    }
+
+    @Test
+    @DisplayName(
+        "Payment 락 획득에 실패하면 결제 락 타임아웃 예외로 변환한다"
+    )
+    void convertPessimisticLockFailureToBusinessException() {
+
+        // given
+        given(
+            paymentRepository.findByIdForUpdate(
+                PAYMENT_ID
+            )
+        ).willThrow(
+            new PessimisticLockingFailureException(
+                "lock timeout"
+            )
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentService
+                        .findForPaymentTransitionForUpdate(
+                            PAYMENT_ID,
+                            MEMBER_ID
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.PAYMENT_LOCK_TIMEOUT
+            );
     }
 }

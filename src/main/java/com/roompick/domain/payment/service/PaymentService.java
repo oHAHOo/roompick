@@ -3,6 +3,7 @@ package com.roompick.domain.payment.service;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -160,29 +161,29 @@ public class PaymentService {
         validatePaymentId(paymentId);
         validateMemberId(memberId);
 
-        Payment payment =
-            paymentRepository
-                .findByIdForUpdate(
-                    paymentId
-                )
-                .orElseThrow(() ->
-                    new BusinessException(
-                        ErrorCode.PAYMENT_NOT_FOUND
-                    )
-                );
+        try {
+            Payment payment =
+                paymentRepository
+                    .findByIdForUpdate(paymentId)
+                    .orElseThrow(() ->
+                        new BusinessException(
+                            ErrorCode.PAYMENT_NOT_FOUND
+                        )
+                    );
 
-        /*
-         * 락을 획득한 Payment가 요청 회원의
-         * 예약에 연결된 결제인지 확인합니다.
-         *
-         * READY 상태 검증은 여기서 수행하지 않습니다.
-         */
-        validatePaymentOwner(
-            payment,
-            memberId
-        );
+            validatePaymentOwner(
+                payment,
+                memberId
+            );
 
-        return payment;
+            return payment;
+        } catch (
+            PessimisticLockingFailureException exception
+        ) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_LOCK_TIMEOUT
+            );
+        }
     }
 
     /**

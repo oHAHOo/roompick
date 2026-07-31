@@ -2,9 +2,11 @@ package com.roompick.domain.payment.repository;
 
 import java.util.Optional;
 
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import com.roompick.domain.payment.entity.Payment;
@@ -56,6 +58,12 @@ public interface PaymentRepository
      * 현재 트랜잭션이 종료될 때까지 대기하게 됩니다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(
+        @QueryHint(
+            name = "jakarta.persistence.lock.timeout",
+            value = "3000"
+        )
+    )
     @Query("""
     select p
     from Payment p
