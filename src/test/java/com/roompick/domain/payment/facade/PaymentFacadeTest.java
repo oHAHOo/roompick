@@ -230,7 +230,11 @@ class PaymentFacadeTest {
             );
 
         given(
-            paymentService.findById(paymentId)
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
         ).willReturn(payment);
 
         given(payment.getReservation())
@@ -352,7 +356,11 @@ class PaymentFacadeTest {
         long requestedAmount = 200_000L;
 
         given(
-            paymentService.findById(paymentId)
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
         ).willReturn(payment);
 
         given(payment.getReservation())
@@ -404,7 +412,11 @@ class PaymentFacadeTest {
         long wrongAmount = 190_000L;
 
         given(
-            paymentService.findById(paymentId)
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
         ).willReturn(payment);
 
         given(payment.getReservation())
@@ -455,7 +467,11 @@ class PaymentFacadeTest {
         Long memberId = 10L;
 
         given(
-            paymentService.findById(paymentId)
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
         ).willReturn(payment);
 
         given(payment.getReservation())
@@ -577,7 +593,11 @@ class PaymentFacadeTest {
         Long memberId = 10L;
 
         given(
-            paymentService.findById(paymentId)
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
         ).willReturn(payment);
 
         given(payment.getReservation())
@@ -616,7 +636,7 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "PortOne 결제 검증에 성공하면 결제와 예약을 확정한다"
+        "PortOne 결제 검증에 성공하면 락 조회 후 결제와 예약을 확정한다"
     )
     void completePortOnePaymentSuccessfully() {
 
@@ -645,13 +665,29 @@ class PaymentFacadeTest {
             verificationResult =
             createVerificationResult();
 
+        /*
+         * 외부 PortOne API 호출 전 일반 조회입니다.
+         */
         given(
             paymentService.findForPortOneCompletion(
                 PORTONE_PAYMENT_INTERNAL_ID,
                 PORTONE_MEMBER_ID
             )
         ).willReturn(
-            paymentSnapshot,
+            paymentSnapshot
+        );
+
+        /*
+         * 외부 응답 검증 후 트랜잭션 내부에서
+         * 비관적 락과 함께 다시 조회합니다.
+         */
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    PORTONE_PAYMENT_INTERNAL_ID,
+                    PORTONE_MEMBER_ID
+                )
+        ).willReturn(
             paymentForUpdate
         );
 
@@ -793,8 +829,15 @@ class PaymentFacadeTest {
             );
 
         then(paymentService)
-            .should(times(2))
+            .should(times(1))
             .findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
+            );
+
+        then(paymentService)
+            .should(times(1))
+            .findForPaymentTransitionForUpdate(
                 PORTONE_PAYMENT_INTERNAL_ID,
                 PORTONE_MEMBER_ID
             );
@@ -833,7 +876,7 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "PortOne 결제 검증에 실패하면 DB 상태를 변경하지 않는다"
+        "PortOne 결제 검증에 실패하면 락 조회와 DB 상태 변경을 실행하지 않는다"
     )
     void doNotUpdatePaymentWhenPortOneVerificationFails() {
 
@@ -911,6 +954,13 @@ class PaymentFacadeTest {
                 PORTONE_MEMBER_ID
             );
 
+        then(paymentService)
+            .should(never())
+            .findForPaymentTransitionForUpdate(
+                anyLong(),
+                anyLong()
+            );
+
         verifyNoInteractions(
             transactionTemplate
         );
@@ -931,7 +981,7 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "다른 회원의 결제이면 PortOne 외부 API를 호출하지 않는다"
+        "다른 회원의 결제이면 PortOne 외부 API와 락 조회를 호출하지 않는다"
     )
     void doNotCallPortOneWhenPaymentOwnerIsDifferent() {
 
@@ -973,6 +1023,13 @@ class PaymentFacadeTest {
 
         then(paymentService)
             .should(never())
+            .findForPaymentTransitionForUpdate(
+                anyLong(),
+                anyLong()
+            );
+
+        then(paymentService)
+            .should(never())
             .approvePortOnePayment(
                 any(Payment.class),
                 any(String.class),
@@ -983,7 +1040,7 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "READY 상태가 아닌 결제이면 PortOne 외부 API를 호출하지 않는다"
+        "READY 상태가 아닌 결제이면 PortOne 외부 API와 락 조회를 호출하지 않는다"
     )
     void doNotCallPortOneWhenPaymentIsNotReady() {
 
@@ -1025,6 +1082,13 @@ class PaymentFacadeTest {
 
         then(paymentService)
             .should(never())
+            .findForPaymentTransitionForUpdate(
+                anyLong(),
+                anyLong()
+            );
+
+        then(paymentService)
+            .should(never())
             .approvePortOnePayment(
                 any(Payment.class),
                 any(String.class),
@@ -1035,7 +1099,7 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "PortOne 조회 전후 결제 식별값이 다르면 완료 처리를 거절한다"
+        "PortOne 조회 전후 결제 식별값이 다르면 락 획득 후 완료 처리를 거절한다"
     )
     void rejectWhenPortOnePaymentIdChanges() {
 
@@ -1065,7 +1129,16 @@ class PaymentFacadeTest {
                 PORTONE_MEMBER_ID
             )
         ).willReturn(
-            paymentSnapshot,
+            paymentSnapshot
+        );
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    PORTONE_PAYMENT_INTERNAL_ID,
+                    PORTONE_MEMBER_ID
+                )
+        ).willReturn(
             paymentForUpdate
         );
 
@@ -1123,8 +1196,15 @@ class PaymentFacadeTest {
             );
 
         then(paymentService)
-            .should(times(2))
+            .should(times(1))
             .findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
+            );
+
+        then(paymentService)
+            .should(times(1))
+            .findForPaymentTransitionForUpdate(
                 PORTONE_PAYMENT_INTERNAL_ID,
                 PORTONE_MEMBER_ID
             );
@@ -1145,9 +1225,9 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "이미 처리된 결제이면 PortOne 완료 처리로 예약을 확정하지 않는다"
+        "PortOne 검증 후 락을 획득한 결제가 이미 처리된 상태이면 예약을 확정하지 않는다"
     )
-    void doNotConfirmReservationWhenPortOnePaymentStatusIsInvalid() {
+    void doNotConfirmReservationWhenLockedPaymentIsNotReady() {
 
         // given
         stubTransactionTemplate();
@@ -1160,11 +1240,6 @@ class PaymentFacadeTest {
         Payment paymentForUpdate =
             org.mockito.Mockito.mock(
                 Payment.class
-            );
-
-        Reservation portOneReservation =
-            org.mockito.Mockito.mock(
-                Reservation.class
             );
 
         PortOnePaymentResponseDto portOneResponse =
@@ -1180,7 +1255,20 @@ class PaymentFacadeTest {
                 PORTONE_MEMBER_ID
             )
         ).willReturn(
-            paymentSnapshot,
+            paymentSnapshot
+        );
+
+        /*
+         * 공통 락 조회 메서드는 READY 상태를 검증하지 않고
+         * 최신 Payment를 반환합니다.
+         */
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    PORTONE_PAYMENT_INTERNAL_ID,
+                    PORTONE_MEMBER_ID
+                )
+        ).willReturn(
             paymentForUpdate
         );
 
@@ -1220,12 +1308,13 @@ class PaymentFacadeTest {
             PORTONE_PAYMENT_ID
         );
 
-        given(
-            paymentForUpdate.getReservation()
-        ).willReturn(
-            portOneReservation
-        );
-
+        /*
+         * 외부 API를 조회하는 사이 다른 요청이 결제를
+         * 먼저 처리한 상황을 가정합니다.
+         *
+         * 공통 락 조회가 아니라 실제 Payment 상태 전이에서
+         * INVALID_PAYMENT_STATUS가 발생해야 합니다.
+         */
         given(
             paymentService.approvePortOnePayment(
                 paymentForUpdate,
@@ -1257,7 +1346,21 @@ class PaymentFacadeTest {
             );
 
         then(paymentService)
-            .should()
+            .should(times(1))
+            .findForPortOneCompletion(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
+            );
+
+        then(paymentService)
+            .should(times(1))
+            .findForPaymentTransitionForUpdate(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
+            );
+
+        then(paymentService)
+            .should(times(1))
             .approvePortOnePayment(
                 paymentForUpdate,
                 PORTONE_TRANSACTION_ID,
@@ -1265,15 +1368,17 @@ class PaymentFacadeTest {
                 PORTONE_PAID_AT
             );
 
-        then(reservationService)
-            .should(never())
-            .confirmPayment(
-                any(Reservation.class),
-                anyLong(),
-                any(LocalDateTime.class)
-            );
+        verifyNoInteractions(
+            reservationService
+        );
     }
 
+    /**
+     * TransactionTemplate에 전달된 콜백을
+     * 단위 테스트에서 즉시 실행하도록 설정합니다.
+     *
+     * 트랜잭션 구간에 진입하는 테스트에서만 호출합니다.
+     */
     private void stubTransactionTemplate() {
         given(
             transactionTemplate.execute(

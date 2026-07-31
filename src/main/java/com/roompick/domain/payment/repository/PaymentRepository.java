@@ -3,10 +3,13 @@ package com.roompick.domain.payment.repository;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.roompick.domain.payment.entity.Payment;
+
+import jakarta.persistence.LockModeType;
 
 public interface PaymentRepository
     extends JpaRepository<Payment, Long> {
@@ -26,12 +29,11 @@ public interface PaymentRepository
     );
 
     /**
-     * PortOne 결제 완료 처리에 필요한
-     * Payment, Reservation, Member를 한 번에 조회합니다.
+     * PortOne 외부 API 호출 전에 결제 소유권과
+     * 현재 상태를 검증하기 위한 일반 조회입니다.
      *
-     * 외부 API 호출 전 소유권을 확인할 때
-     * LazyInitializationException이 발생하지 않도록
-     * Reservation과 Member를 fetch join합니다.
+     * 외부 API를 호출하는 동안 DB 락을 유지하지 않도록
+     * 이 메서드에는 비관적 락을 적용하지 않습니다.
      */
     @Query("""
         select p
@@ -44,5 +46,22 @@ public interface PaymentRepository
     findByIdWithReservationAndMember(
         @Param("paymentId")
         Long paymentId
+    );
+
+    /**
+     * 결제 상태를 변경하기 직전에 Payment를
+     * 비관적 쓰기 락과 함께 조회합니다.
+     *
+     * 같은 Payment에 대한 다른 상태 변경 요청은
+     * 현재 트랜잭션이 종료될 때까지 대기하게 됩니다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+    select p
+    from Payment p
+    where p.id = :paymentId
+    """)
+    Optional<Payment> findByIdForUpdate(
+        @Param("paymentId") Long paymentId
     );
 }

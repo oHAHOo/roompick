@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.Optional;
 
@@ -26,6 +27,12 @@ import com.roompick.global.common.ErrorCode;
 @ExtendWith(MockitoExtension.class)
 class PaymentServicePortOneCompletionTest {
 
+    private static final Long PAYMENT_ID = 100L;
+
+    private static final Long MEMBER_ID = 10L;
+
+    private static final Long OTHER_MEMBER_ID = 20L;
+
     @Mock
     private PaymentRepository paymentRepository;
 
@@ -43,19 +50,15 @@ class PaymentServicePortOneCompletionTest {
 
     @Test
     @DisplayName(
-        "PortOne 결제 완료 요청 회원이 예약 소유자가 아니면 거절한다"
+        "PortOne 외부 호출 전에는 락이 없는 일반 조회 메서드를 사용한다"
     )
-    void rejectPortOneCompletionWhenOwnerIsDifferent() {
+    void findForPortOneCompletionUsesNormalRepositoryMethod() {
 
         // given
-        Long paymentId = 100L;
-        Long requestMemberId = 10L;
-        Long ownerMemberId = 20L;
-
         given(
             paymentRepository
                 .findByIdWithReservationAndMember(
-                    paymentId
+                    PAYMENT_ID
                 )
         ).willReturn(
             Optional.of(payment)
@@ -68,7 +71,62 @@ class PaymentServicePortOneCompletionTest {
             .willReturn(member);
 
         given(member.getId())
-            .willReturn(ownerMemberId);
+            .willReturn(MEMBER_ID);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.READY);
+
+        // when
+        Payment result =
+            paymentService.findForPortOneCompletion(
+                PAYMENT_ID,
+                MEMBER_ID
+            );
+
+        // then
+        assertThat(result)
+            .isSameAs(payment);
+
+        then(paymentRepository)
+            .should()
+            .findByIdWithReservationAndMember(
+                PAYMENT_ID
+            );
+
+        then(paymentRepository)
+            .should(never())
+            .findByIdForUpdate(
+                PAYMENT_ID
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "PortOne 외부 호출 전 결제가 READY 상태가 아니면 거절한다"
+    )
+    void rejectPortOneCompletionWhenPaymentIsNotReady() {
+
+        // given
+        given(
+            paymentRepository
+                .findByIdWithReservationAndMember(
+                    PAYMENT_ID
+                )
+        ).willReturn(
+            Optional.of(payment)
+        );
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(reservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(MEMBER_ID);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.PAID);
 
         // when
         BusinessException exception =
@@ -76,8 +134,64 @@ class PaymentServicePortOneCompletionTest {
                 () ->
                     paymentService
                         .findForPortOneCompletion(
-                            paymentId,
-                            requestMemberId
+                            PAYMENT_ID,
+                            MEMBER_ID
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+
+        then(paymentRepository)
+            .should()
+            .findByIdWithReservationAndMember(
+                PAYMENT_ID
+            );
+
+        then(paymentRepository)
+            .should(never())
+            .findByIdForUpdate(
+                PAYMENT_ID
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "PortOne 외부 호출 전 요청 회원이 결제 소유자가 아니면 상태 검증 전에 거절한다"
+    )
+    void rejectPortOneCompletionWhenOwnerIsDifferent() {
+
+        // given
+        given(
+            paymentRepository
+                .findByIdWithReservationAndMember(
+                    PAYMENT_ID
+                )
+        ).willReturn(
+            Optional.of(payment)
+        );
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(reservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(OTHER_MEMBER_ID);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentService
+                        .findForPortOneCompletion(
+                            PAYMENT_ID,
+                            MEMBER_ID
                         ),
                 BusinessException.class
             );
@@ -91,22 +205,25 @@ class PaymentServicePortOneCompletionTest {
         then(payment)
             .should(never())
             .getStatus();
+
+        then(paymentRepository)
+            .should(never())
+            .findByIdForUpdate(
+                PAYMENT_ID
+            );
     }
 
     @Test
     @DisplayName(
-        "PortOne 결제 완료 시 Payment가 READY 상태가 아니면 거절한다"
+        "결제 상태 변경 전에는 공통 비관적 락 조회 메서드를 사용한다"
     )
-    void rejectPortOneCompletionWhenPaymentIsNotReady() {
+    void findForPaymentTransitionForUpdateUsesLockRepositoryMethod() {
 
         // given
-        Long paymentId = 100L;
-        Long memberId = 10L;
-
         given(
             paymentRepository
-                .findByIdWithReservationAndMember(
-                    paymentId
+                .findByIdForUpdate(
+                    PAYMENT_ID
                 )
         ).willReturn(
             Optional.of(payment)
@@ -119,67 +236,14 @@ class PaymentServicePortOneCompletionTest {
             .willReturn(member);
 
         given(member.getId())
-            .willReturn(memberId);
-
-        given(payment.getStatus())
-            .willReturn(PaymentStatus.PAID);
-
-        // when
-        BusinessException exception =
-            catchThrowableOfType(
-                () ->
-                    paymentService
-                        .findForPortOneCompletion(
-                            paymentId,
-                            memberId
-                        ),
-                BusinessException.class
-            );
-
-        // then
-        assertThat(exception.getErrorCode())
-            .isEqualTo(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            );
-    }
-
-    @Test
-    @DisplayName(
-        "예약 소유자가 요청하고 Payment가 READY이면 PortOne 완료 조회에 성공한다"
-    )
-    void findPaymentForPortOneCompletion() {
-
-        // given
-        Long paymentId = 100L;
-        Long memberId = 10L;
-
-        given(
-            paymentRepository
-                .findByIdWithReservationAndMember(
-                    paymentId
-                )
-        ).willReturn(
-            Optional.of(payment)
-        );
-
-        given(payment.getReservation())
-            .willReturn(reservation);
-
-        given(reservation.getMember())
-            .willReturn(member);
-
-        given(member.getId())
-            .willReturn(memberId);
-
-        given(payment.getStatus())
-            .willReturn(PaymentStatus.READY);
+            .willReturn(MEMBER_ID);
 
         // when
         Payment result =
             paymentService
-                .findForPortOneCompletion(
-                    paymentId,
-                    memberId
+                .findForPaymentTransitionForUpdate(
+                    PAYMENT_ID,
+                    MEMBER_ID
                 );
 
         // then
@@ -188,25 +252,129 @@ class PaymentServicePortOneCompletionTest {
 
         then(paymentRepository)
             .should()
+            .findByIdForUpdate(
+                PAYMENT_ID
+            );
+
+        then(paymentRepository)
+            .should(never())
             .findByIdWithReservationAndMember(
-                paymentId
+                PAYMENT_ID
             );
     }
 
     @Test
     @DisplayName(
-        "존재하지 않는 결제이면 PortOne 결제 완료 조회가 실패한다"
+        "공통 비관적 락 조회에서는 Payment 상태를 검증하지 않는다"
     )
-    void rejectMissingPayment() {
+    void lockedPaymentLookupDoesNotValidatePaymentStatus() {
 
         // given
-        Long paymentId = 999L;
-        Long memberId = 10L;
-
         given(
             paymentRepository
-                .findByIdWithReservationAndMember(
-                    paymentId
+                .findByIdForUpdate(
+                    PAYMENT_ID
+                )
+        ).willReturn(
+            Optional.of(payment)
+        );
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(reservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(MEMBER_ID);
+
+        // when
+        Payment result =
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    PAYMENT_ID,
+                    MEMBER_ID
+                );
+
+        // then
+        assertThat(result)
+            .isSameAs(payment);
+
+        /*
+         * 공통 락 조회는 READY, PAID, FAILED 등의
+         * 상태를 판단하지 않습니다.
+         *
+         * 실제 상태 검증은 Payment의 approve(),
+         * approveWithPortOne(), fail()에서 수행합니다.
+         */
+        then(payment)
+            .should(never())
+            .getStatus();
+    }
+
+    @Test
+    @DisplayName(
+        "공통 비관적 락 조회 후 요청 회원이 결제 소유자가 아니면 거절한다"
+    )
+    void rejectLockedPaymentWhenOwnerIsDifferent() {
+
+        // given
+        given(
+            paymentRepository
+                .findByIdForUpdate(
+                    PAYMENT_ID
+                )
+        ).willReturn(
+            Optional.of(payment)
+        );
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(reservation.getMember())
+            .willReturn(member);
+
+        given(member.getId())
+            .willReturn(OTHER_MEMBER_ID);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentService
+                        .findForPaymentTransitionForUpdate(
+                            PAYMENT_ID,
+                            MEMBER_ID
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_ACCESS_DENIED
+            );
+
+        /*
+         * 소유권 검증에 실패한 경우에도
+         * Payment 상태는 확인하지 않습니다.
+         */
+        then(payment)
+            .should(never())
+            .getStatus();
+    }
+
+    @Test
+    @DisplayName(
+        "공통 비관적 락 조회 대상 결제가 존재하지 않으면 예외가 발생한다"
+    )
+    void rejectWhenLockedPaymentDoesNotExist() {
+
+        // given
+        given(
+            paymentRepository
+                .findByIdForUpdate(
+                    PAYMENT_ID
                 )
         ).willReturn(
             Optional.empty()
@@ -217,9 +385,9 @@ class PaymentServicePortOneCompletionTest {
             catchThrowableOfType(
                 () ->
                     paymentService
-                        .findForPortOneCompletion(
-                            paymentId,
-                            memberId
+                        .findForPaymentTransitionForUpdate(
+                            PAYMENT_ID,
+                            MEMBER_ID
                         ),
                 BusinessException.class
             );
@@ -233,17 +401,46 @@ class PaymentServicePortOneCompletionTest {
 
     @Test
     @DisplayName(
-        "회원 ID가 없으면 PortOne 결제 완료 조회가 거절된다"
+        "공통 비관적 락 조회 시 결제 ID가 없으면 Repository를 호출하지 않는다"
     )
-    void rejectPortOneCompletionWhenMemberIdIsNull() {
+    void rejectLockedLookupWhenPaymentIdIsNull() {
 
         // when
         BusinessException exception =
             catchThrowableOfType(
                 () ->
                     paymentService
-                        .findForPortOneCompletion(
-                            100L,
+                        .findForPaymentTransitionForUpdate(
+                            null,
+                            MEMBER_ID
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+
+        verifyNoInteractions(
+            paymentRepository
+        );
+    }
+
+    @Test
+    @DisplayName(
+        "공통 비관적 락 조회 시 회원 ID가 없으면 Repository를 호출하지 않는다"
+    )
+    void rejectLockedLookupWhenMemberIdIsNull() {
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentService
+                        .findForPaymentTransitionForUpdate(
+                            PAYMENT_ID,
                             null
                         ),
                 BusinessException.class
@@ -255,7 +452,95 @@ class PaymentServicePortOneCompletionTest {
                 ErrorCode.UNAUTHORIZED
             );
 
-        then(paymentRepository)
-            .shouldHaveNoInteractions();
+        verifyNoInteractions(
+            paymentRepository
+        );
+    }
+
+    @Test
+    @DisplayName(
+        "공통 비관적 락 조회 후 예약 정보가 없으면 예외가 발생한다"
+    )
+    void rejectLockedPaymentWhenReservationIsMissing() {
+
+        // given
+        given(
+            paymentRepository
+                .findByIdForUpdate(
+                    PAYMENT_ID
+                )
+        ).willReturn(
+            Optional.of(payment)
+        );
+
+        given(payment.getReservation())
+            .willReturn(null);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentService
+                        .findForPaymentTransitionForUpdate(
+                            PAYMENT_ID,
+                            MEMBER_ID
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_NOT_FOUND
+            );
+
+        then(payment)
+            .should(never())
+            .getStatus();
+    }
+
+    @Test
+    @DisplayName(
+        "공통 비관적 락 조회 후 예약 회원 정보가 없으면 예외가 발생한다"
+    )
+    void rejectLockedPaymentWhenReservationMemberIsMissing() {
+
+        // given
+        given(
+            paymentRepository
+                .findByIdForUpdate(
+                    PAYMENT_ID
+                )
+        ).willReturn(
+            Optional.of(payment)
+        );
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(reservation.getMember())
+            .willReturn(null);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    paymentService
+                        .findForPaymentTransitionForUpdate(
+                            PAYMENT_ID,
+                            MEMBER_ID
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_NOT_FOUND
+            );
+
+        then(payment)
+            .should(never())
+            .getStatus();
     }
 }
