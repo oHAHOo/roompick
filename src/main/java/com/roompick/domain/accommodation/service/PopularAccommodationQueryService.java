@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 
 import lombok.RequiredArgsConstructor;
 
@@ -35,19 +36,20 @@ public class PopularAccommodationQueryService {
     private final AccommodationService accommodationService;
 
     /**
-     * 오늘 날짜의 인기 숙소 목록을 조회합니다.
+     * 요청 기간의 인기 숙소 목록을 조회합니다.
      *
-     * 캐시 키에는 일간 랭킹 날짜와 요청 limit을 모두 포함합니다.
+     * 캐시 키에는 조회 기간, 기간별 기준 날짜와 요청 limit을 모두 포함합니다.
      * Redis 랭킹 조회에 실패해 예외가 발생하면 결과가 캐시에 저장되지 않으며,
      * DB fallback은 Facade에서 별도로 처리합니다.
      */
     @Cacheable(
         cacheNames = "popularAccommodations",
-        key = "@popularAccommodationKeyGenerator.generateTodayKey()"
-            + " + ':' + #root.args[0]"
+        key = "@popularAccommodationKeyGenerator.generateCurrentKey("
+            + "#root.args[0]) + ':' + #root.args[1]"
     )
     public List<PopularAccommodationResponseDto>
     getPopularAccommodations(
+        PopularAccommodationPeriod period,
         int limit
     ) {
         List<PopularAccommodationResponseDto> result =
@@ -65,6 +67,7 @@ public class PopularAccommodationQueryService {
             List<Long> rankedAccommodationIds =
                 popularAccommodationRankingService
                     .findRankedAccommodationIds(
+                        period,
                         limit,
                         start,
                         end

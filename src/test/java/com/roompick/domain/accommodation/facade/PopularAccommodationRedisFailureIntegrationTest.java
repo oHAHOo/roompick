@@ -17,6 +17,7 @@ import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 
 import jakarta.persistence.EntityManager;
 
@@ -133,6 +134,7 @@ class PopularAccommodationRedisFailureIntegrationTest {
         // when: Redis가 연결되지 않는 상태에서 인기 숙소를 조회합니다.
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
