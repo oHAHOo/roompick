@@ -11,9 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.time.LocalDateTime;
 import java.util.List;
 
-import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
-import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
-import com.roompick.domain.reservation.entity.ReservationStatus;
+import com.roompick.domain.payment.dto.response.PaymentCompleteResponseDto;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,9 +26,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.roompick.domain.member.entity.MemberRole;
+import com.roompick.domain.payment.dto.response.PaymentApproveResponseDto;
+import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import com.roompick.domain.payment.dto.response.PaymentPrepareResponseDto;
 import com.roompick.domain.payment.entity.PaymentStatus;
 import com.roompick.domain.payment.facade.PaymentFacade;
+import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.security.AuthMember;
@@ -54,10 +55,12 @@ class PaymentControllerTest {
         // given
         Long reservationId = 1L;
         Long memberId = 10L;
+        String portOnePaymentId = "roompick-payment-test-001";
 
         PaymentPrepareResponseDto result =
             new PaymentPrepareResponseDto(
                 100L,
+                portOnePaymentId,
                 reservationId,
                 200000L,
                 PaymentStatus.READY
@@ -76,7 +79,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isCreated())
             .andExpect(
@@ -90,6 +97,10 @@ class PaymentControllerTest {
             .andExpect(
                 jsonPath("$.data.paymentId")
                     .value(100L)
+            )
+            .andExpect(
+                jsonPath("$.data.portOnePaymentId")
+                    .value(portOnePaymentId)
             )
             .andExpect(
                 jsonPath("$.data.reservationId")
@@ -155,7 +166,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isForbidden())
             .andExpect(
@@ -204,7 +219,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isNotFound())
             .andExpect(
@@ -242,7 +261,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -280,7 +303,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -318,7 +345,11 @@ class PaymentControllerTest {
                     "/api/v1/reservations/{reservationId}/payments",
                     reservationId
                 )
-                    .with(authentication(userAuthentication(memberId)))
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -328,26 +359,6 @@ class PaymentControllerTest {
                             .getCode()
                     )
             );
-    }
-
-    private Authentication userAuthentication(
-        Long memberId
-    ) {
-        AuthMember authMember =
-            new AuthMember(
-                memberId,
-                MemberRole.USER
-            );
-
-        return new UsernamePasswordAuthenticationToken(
-            authMember,
-            null,
-            List.of(
-                new SimpleGrantedAuthority(
-                    "ROLE_USER"
-                )
-            )
-        );
     }
 
     @Test
@@ -1011,5 +1022,268 @@ class PaymentControllerTest {
             .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(paymentFacade);
+    }
+
+    private Authentication userAuthentication(
+        Long memberId
+    ) {
+        AuthMember authMember =
+            new AuthMember(
+                memberId,
+                MemberRole.USER
+            );
+
+        return new UsernamePasswordAuthenticationToken(
+            authMember,
+            null,
+            List.of(
+                new SimpleGrantedAuthority(
+                    "ROLE_USER"
+                )
+            )
+        );
+    }
+
+    @Test
+    @DisplayName("인증된 회원은 PortOne 결제를 완료 처리할 수 있다")
+    void authenticatedMemberCanCompletePortOnePayment()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long reservationId = 1L;
+        Long memberId = 10L;
+
+        String portOnePaymentId =
+            "roompick-payment-test-001";
+
+        String portOneTransactionId =
+            "transaction-test-001";
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                29,
+                17,
+                0
+            );
+
+        PaymentCompleteResponseDto result =
+            new PaymentCompleteResponseDto(
+                paymentId,
+                portOnePaymentId,
+                portOneTransactionId,
+                reservationId,
+                200_000L,
+                PaymentStatus.PAID,
+                ReservationStatus.CONFIRMED,
+                approvedAt
+            );
+
+        given(
+            paymentFacade.completePortOnePayment(
+                paymentId,
+                memberId
+            )
+        ).willReturn(result);
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/complete",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(true)
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value("결제가 완료되었습니다.")
+            )
+            .andExpect(
+                jsonPath("$.data.paymentId")
+                    .value(paymentId)
+            )
+            .andExpect(
+                jsonPath("$.data.portOnePaymentId")
+                    .value(portOnePaymentId)
+            )
+            .andExpect(
+                jsonPath("$.data.portOneTransactionId")
+                    .value(portOneTransactionId)
+            )
+            .andExpect(
+                jsonPath("$.data.reservationId")
+                    .value(reservationId)
+            )
+            .andExpect(
+                jsonPath("$.data.amount")
+                    .value(200_000L)
+            )
+            .andExpect(
+                jsonPath("$.data.paymentStatus")
+                    .value("PAID")
+            )
+            .andExpect(
+                jsonPath("$.data.reservationStatus")
+                    .value("CONFIRMED")
+            )
+            .andExpect(
+                jsonPath("$.data.approvedAt")
+                    .exists()
+            );
+
+        then(paymentFacade)
+            .should()
+            .completePortOnePayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 PortOne 결제를 완료 처리할 수 없다")
+    void unauthenticatedMemberCannotCompletePortOnePayment()
+        throws Exception {
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/complete",
+                    100L
+                )
+            )
+            .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(paymentFacade);
+    }
+
+    @Test
+    @DisplayName("PortOne 결제 상태가 PAID가 아니면 완료 처리가 거절된다")
+    void rejectCompletionWhenPortOnePaymentIsNotPaid()
+        throws Exception {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.completePortOnePayment(
+                paymentId,
+                memberId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.PORTONE_PAYMENT_NOT_PAID
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/complete",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.PORTONE_PAYMENT_NOT_PAID
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.PORTONE_PAYMENT_NOT_PAID
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .completePortOnePayment(
+                paymentId,
+                memberId
+            );
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 결제는 PortOne 완료 처리할 수 없다")
+    void rejectCompletionForMissingPayment()
+        throws Exception {
+
+        // given
+        Long paymentId = 999L;
+        Long memberId = 10L;
+
+        given(
+            paymentFacade.completePortOnePayment(
+                paymentId,
+                memberId
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.PAYMENT_NOT_FOUND
+            )
+        );
+
+        // when & then
+        mockMvc.perform(
+                post(
+                    "/api/v1/payments/{paymentId}/complete",
+                    paymentId
+                )
+                    .with(
+                        authentication(
+                            userAuthentication(memberId)
+                        )
+                    )
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.PAYMENT_NOT_FOUND
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.PAYMENT_NOT_FOUND
+                            .getMessage()
+                    )
+            );
+
+        then(paymentFacade)
+            .should()
+            .completePortOnePayment(
+                paymentId,
+                memberId
+            );
     }
 }
