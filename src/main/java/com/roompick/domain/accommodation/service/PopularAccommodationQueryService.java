@@ -2,8 +2,10 @@ package com.roompick.domain.accommodation.service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -25,8 +27,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PopularAccommodationQueryService {
 
-    private final PopularAccommodationService
-        popularAccommodationService;
+    private static final int RANKING_BATCH_MULTIPLIER = 5;
+
+    private final PopularAccommodationRankingService
+        popularAccommodationRankingService;
 
     private final AccommodationService accommodationService;
 
@@ -46,10 +50,62 @@ public class PopularAccommodationQueryService {
     getPopularAccommodations(
         int limit
     ) {
-        List<Long> rankedAccommodationIds =
-            popularAccommodationService.findRankedAccommodationIds(
+        List<PopularAccommodationResponseDto> result =
+            new ArrayList<>();
+
+        Set<Long> processedAccommodationIds =
+            new HashSet<>();
+
+        long batchSize = (long) limit * RANKING_BATCH_MULTIPLIER;
+        long start = 0L;
+
+        while (result.size() < limit) {
+            long end = start + batchSize - 1L;
+
+            List<Long> rankedAccommodationIds =
+                popularAccommodationRankingService
+                    .findRankedAccommodationIds(
+                        limit,
+                        start,
+                        end
+                    );
+
+            if (rankedAccommodationIds.isEmpty()) {
+                break;
+            }
+
+            List<Long> unprocessedAccommodationIds =
+                rankedAccommodationIds.stream()
+                    .filter(processedAccommodationIds::add)
+                    .toList();
+
+            appendActiveAccommodations(
+                unprocessedAccommodationIds,
+                result,
                 limit
             );
+
+            if (
+                result.size() == limit
+                    || rankedAccommodationIds.size() < batchSize
+            ) {
+                break;
+            }
+
+            start += batchSize;
+        }
+
+        return result;
+    }
+
+    private void appendActiveAccommodations(
+        List<Long> rankedAccommodationIds,
+        List<PopularAccommodationResponseDto> result,
+        int limit
+    ) {
+        if (rankedAccommodationIds.isEmpty()) {
+            return;
+        }
 
         List<AccommodationListResponseDto> activeAccommodations =
             accommodationService.findAllActiveSummaryByIds(
@@ -69,33 +125,24 @@ public class PopularAccommodationQueryService {
             );
         }
 
-        List<PopularAccommodationResponseDto> result =
-            new ArrayList<>();
-
         for (Long accommodationId : rankedAccommodationIds) {
             AccommodationListResponseDto accommodation =
-                accommodationById.get(
-                    accommodationId
-                );
+                accommodationById.get(accommodationId);
 
             if (accommodation == null) {
                 continue;
             }
 
-            int rank = result.size() + 1;
-
             result.add(
                 PopularAccommodationResponseDto.from(
-                    rank,
+                    result.size() + 1,
                     accommodation
                 )
             );
 
             if (result.size() == limit) {
-                break;
+                return;
             }
         }
-
-        return result;
     }
 }

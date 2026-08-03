@@ -62,9 +62,11 @@ popularAccommodations::roompick:popular:accommodations:daily:2026-08-03:10
 → 캐시 HIT
     → 저장된 인기 숙소 응답 DTO 목록 반환
 → 캐시 MISS
-    → Redis 인기 랭킹 조회
-    → ACTIVE 숙소 공개 정보 DB 조회
+    → Redis 인기 랭킹 첫 구간 조회
+    → 해당 구간의 ACTIVE 숙소 공개 정보 DB 조회
     → Redis 인기 순서대로 응답 조합
+    → limit이 부족하면 다음 Redis 구간 조회
+    → limit 충족 또는 Redis 랭킹 끝에서 종료
     → Redis 캐시에 응답 DTO 목록 저장
     → 응답 반환
 ```
@@ -108,10 +110,26 @@ Redis Key는 문자열 형식으로 직렬화합니다.
 
 ## 6. Redis 인기 순서 조합
 
-Redis Sorted Set에서 조회한 숙소 ID 순서를
+Redis Sorted Set 전체를 한 번에 조회하지 않고
+`limit × 5` 크기의 구간으로 나누어 조회합니다.
+
+`limit`의 최대값은 20이므로 한 번의 Redis 조회에서
+가져오는 후보는 최대 100개입니다.
+
+Redis `reverseRange`의 종료 인덱스는 inclusive이므로
+각 구간은 다음과 같이 계산합니다.
+
+```text
+batchSize = limit × 5
+
+첫 구간: start=0, end=batchSize-1
+다음 구간: start=batchSize, end=(batchSize×2)-1
+```
+
+각 구간에서 조회한 숙소 ID 순서를
 최종 인기 숙소 응답 순서로 사용합니다.
 
-DB에서는 Redis에서 조회한 숙소 ID 중
+DB에서는 현재 Redis 구간에서 조회한 숙소 ID 중
 현재 `ACTIVE` 상태인 숙소의 공개 정보만 조회합니다.
 
 DB 반환 순서와 Redis 인기 순서가 다를 수 있으므로
@@ -148,6 +166,26 @@ Redis 순위
 
 상위 랭킹에 비공개 숙소가 포함되어 있어도
 하위 ACTIVE 숙소를 사용해 요청한 `limit`까지 결과를 채웁니다.
+
+현재 구간에서 ACTIVE 숙소가 부족하면 다음 Redis 구간을 조회합니다.
+최종 결과가 `limit`을 채우면 이후 Redis와 DB 조회를 즉시 생략하고,
+Redis 랭킹 끝에 도달하면 존재하는 ACTIVE 숙소만 반환합니다.
+
+이미 처리한 숙소 ID는 다음 구간에 다시 나타나더라도
+DB 조회와 결과 조합에서 제외합니다.
+
+역할은 다음과 같이 분리합니다.
+
+```text
+PopularAccommodationRankingRepository
+→ Redis Sorted Set의 지정 범위 ID 조회
+
+PopularAccommodationRankingService
+→ limit 검증, 일간 랭킹 Key 생성, Redis 범위 조회 위임
+
+PopularAccommodationQueryService
+→ batch 반복, ACTIVE 숙소 조합, 순서 복원, rank와 limit 처리
+```
 
 ---
 
@@ -204,7 +242,7 @@ popularAccommodations::...:20
 캐시 삭제는 다음 전용 Service가 담당합니다.
 
 ```text
-PopularAccommodationCacheService.evictAll()
+PopularAccommodationCacheEvictionService.evictAll()
 ```
 
 ---

@@ -23,7 +23,8 @@ import lombok.RequiredArgsConstructor;
 public class AccommodationService {
 
     private final AccommodationRepository accommodationRepository;
-    private final PopularAccommodationCacheService popularAccommodationCacheService;
+    private final PopularAccommodationCacheEvictionService
+        popularAccommodationCacheEvictionService;
 
     @Transactional(readOnly = true)
     public Accommodation findById(Long accommodationId) {
@@ -155,7 +156,7 @@ public class AccommodationService {
             checkOutTime
         );
 
-        popularAccommodationCacheService.evictAll();
+        popularAccommodationCacheEvictionService.evictAll();
 
         return accommodation;
     }
@@ -175,7 +176,7 @@ public class AccommodationService {
 
         accommodation.inactivate();
 
-        popularAccommodationCacheService.evictAll();
+        popularAccommodationCacheEvictionService.evictAll();
     }
 
     @Transactional

@@ -35,7 +35,7 @@ import com.roompick.domain.accommodation.repository.AccommodationRepository;
 @Testcontainers
 @SpringBootTest
 @ActiveProfiles("test")
-class PopularAccommodationCacheTransactionIntegrationTest {
+class PopularAccommodationCacheEvictionTransactionIntegrationTest {
 
     private static final String CACHE_NAME =
         "popularAccommodations";

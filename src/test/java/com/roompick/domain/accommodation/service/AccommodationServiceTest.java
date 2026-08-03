@@ -33,7 +33,8 @@ class AccommodationServiceTest {
     private AccommodationRepository accommodationRepository;
 
     @Mock
-    private PopularAccommodationCacheService popularAccommodationCacheService;
+    private PopularAccommodationCacheEvictionService
+        popularAccommodationCacheEvictionService;
 
     @InjectMocks
     private AccommodationService accommodationService;
@@ -113,7 +114,7 @@ class AccommodationServiceTest {
         assertThat(result.getCheckOutTime())
             .isEqualTo(updatedCheckOutTime);
 
-        then(popularAccommodationCacheService)
+        then(popularAccommodationCacheEvictionService)
             .should()
             .evictAll();
     }
@@ -139,7 +140,7 @@ class AccommodationServiceTest {
                     .AccommodationStatus.INACTIVE
             );
 
-        then(popularAccommodationCacheService)
+        then(popularAccommodationCacheEvictionService)
             .should()
             .evictAll();
     }

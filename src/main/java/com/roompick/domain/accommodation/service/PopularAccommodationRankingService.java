@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PopularAccommodationService {
+public class PopularAccommodationRankingService {
 
     /**
      * 인기 숙소 조회 개수의 허용 범위입니다.
@@ -60,16 +60,15 @@ public class PopularAccommodationService {
     }
 
     /**
-     * 오늘 날짜의 인기 숙소 ID 전체를 점수 내림차순으로 조회합니다.
+     * 오늘 날짜의 인기 숙소 ID를 지정한 Redis 범위에서 조회합니다.
      *
-     * limit은 최종 ACTIVE 숙소 개수 검증에 사용하며,
-     * 실제 개수 제한은 비공개·삭제 숙소를 제외한 뒤 Facade에서 적용합니다.
-     *
-     * Redis Sorted Set은 한 번만 조회합니다.
-     * Redis 장애에 대한 DB fallback은 후속 캐시·장애 대응 기능에서 처리합니다.
+     * limit은 API 허용 범위를 검증하는 데 사용하고,
+     * 범위 반복과 ACTIVE 숙소 조합은 QueryService가 담당합니다.
      */
     public List<Long> findRankedAccommodationIds(
-        int limit
+        int limit,
+        long start,
+        long end
     ) {
         validateLimit(
             limit
@@ -79,8 +78,10 @@ public class PopularAccommodationService {
             popularAccommodationKeyGenerator.generateTodayKey();
 
         return popularAccommodationRankingRepository
-            .findAllRankedAccommodationIds(
-                key
+            .findRankedAccommodationIds(
+                key,
+                start,
+                end
             );
     }
 

@@ -14,7 +14,7 @@ import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
-import com.roompick.domain.accommodation.service.PopularAccommodationService;
+import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
 
@@ -28,7 +28,8 @@ public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
     private final RoomService roomService;
-    private final PopularAccommodationService popularAccommodationService;
+    private final PopularAccommodationRankingService
+        popularAccommodationRankingService;
     private final PopularAccommodationQueryService popularAccommodationQueryService;
 
     /**
@@ -108,7 +109,7 @@ public class AccommodationFacade {
                 accommodation
             );
 
-        popularAccommodationService.recordView(
+        popularAccommodationRankingService.recordView(
             accommodationId
         );
 

@@ -117,8 +117,8 @@ class PopularAccommodationQueryCacheIntegrationTest {
      * 호출 횟수를 검증할 Mock Bean입니다.
      */
     @MockitoBean
-    private PopularAccommodationService
-        popularAccommodationService;
+    private PopularAccommodationRankingService
+        popularAccommodationRankingService;
 
     /**
      * 실제 DB 조회 대신
@@ -188,8 +188,8 @@ class PopularAccommodationQueryCacheIntegrationTest {
             );
 
         given(
-            popularAccommodationService
-                .findRankedAccommodationIds(limit)
+            popularAccommodationRankingService
+                .findRankedAccommodationIds(limit, 0L, 9L)
         ).willReturn(
             rankedAccommodationIds
         );
@@ -236,9 +236,9 @@ class PopularAccommodationQueryCacheIntegrationTest {
          * Redis 랭킹 조회는 캐시 MISS였던
          * 첫 번째 요청에서만 실행되어야 합니다.
          */
-        then(popularAccommodationService)
+        then(popularAccommodationRankingService)
             .should(times(1))
-            .findRankedAccommodationIds(limit);
+            .findRankedAccommodationIds(limit, 0L, 9L);
 
         /*
          * DB 조회 역할의 Service도 캐시 MISS였던
@@ -273,8 +273,8 @@ class PopularAccommodationQueryCacheIntegrationTest {
             );
 
         given(
-            popularAccommodationService
-                .findRankedAccommodationIds(limit)
+            popularAccommodationRankingService
+                .findRankedAccommodationIds(limit, 0L, 4L)
         ).willReturn(
             rankedAccommodationIds
         );
@@ -349,9 +349,9 @@ class PopularAccommodationQueryCacheIntegrationTest {
          * 첫 요청과 TTL 만료 후 요청에서 각각 한 번씩,
          * Redis 랭킹 조회가 총 두 번 실행되어야 합니다.
          */
-        then(popularAccommodationService)
+        then(popularAccommodationRankingService)
             .should(times(2))
-            .findRankedAccommodationIds(limit);
+            .findRankedAccommodationIds(limit, 0L, 4L);
 
         /*
          * DB 조회 역할의 Service도 첫 요청과

@@ -22,7 +22,7 @@ import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
-import com.roompick.domain.accommodation.service.PopularAccommodationService;
+import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.room.service.RoomService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
@@ -41,8 +41,8 @@ class AccommodationFacadeTest {
     private RoomService roomService;
 
     @Mock
-    private PopularAccommodationService
-        popularAccommodationService;
+    private PopularAccommodationRankingService
+        popularAccommodationRankingService;
 
     @Mock
     private PopularAccommodationQueryService
@@ -123,7 +123,7 @@ class AccommodationFacadeTest {
                 accommodationId
             );
 
-        then(popularAccommodationService)
+        then(popularAccommodationRankingService)
             .should()
             .recordView(
                 accommodationId
@@ -167,7 +167,7 @@ class AccommodationFacadeTest {
          * 숙소 조회와 DTO 생성이 완료되지 않았으므로
          * Redis 인기 점수는 기록하지 않습니다.
          */
-        then(popularAccommodationService)
+        then(popularAccommodationRankingService)
             .shouldHaveNoInteractions();
     }
 

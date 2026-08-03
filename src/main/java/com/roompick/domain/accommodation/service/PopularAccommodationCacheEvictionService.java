@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
  * 기존 인기 숙소 응답이 노출되지 않도록 전체 캐시를 삭제합니다.
  */
 @Service
-public class PopularAccommodationCacheService {
+public class PopularAccommodationCacheEvictionService {
 
     /**
      * 날짜와 조회 개수별로 생성된 인기 숙소 캐시를 모두 삭제합니다.
