@@ -15,6 +15,7 @@ import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUn
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
 
@@ -61,11 +62,13 @@ public class AccommodationFacade {
      */
     public List<PopularAccommodationResponseDto>
     getPopularAccommodations(
+        PopularAccommodationPeriod period,
         int limit
     ) {
         try {
             return popularAccommodationQueryService
                 .getPopularAccommodations(
+                    period,
                     limit
                 );
         } catch (
@@ -73,7 +76,8 @@ public class AccommodationFacade {
                 exception
         ) {
             log.warn(
-                "Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. limit={}",
+                "Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. period={}, limit={}",
+                period,
                 limit,
                 exception
             );
@@ -88,6 +92,16 @@ public class AccommodationFacade {
                 latestActiveAccommodations
             );
         }
+    }
+
+    public List<PopularAccommodationResponseDto>
+    getPopularAccommodations(
+        int limit
+    ) {
+        return getPopularAccommodations(
+            PopularAccommodationPeriod.DAILY,
+            limit
+        );
     }
 
     /**

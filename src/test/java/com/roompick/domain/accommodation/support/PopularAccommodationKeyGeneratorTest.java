@@ -1,50 +1,154 @@
 package com.roompick.domain.accommodation.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.Test;
 
-/**
- * PopularAccommodationKeyGenerator의
- * 일간 인기 숙소 Redis 키 생성 규칙을 검증합니다.
- */
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+
 class PopularAccommodationKeyGeneratorTest {
 
-    private final PopularAccommodationKeyGenerator keyGenerator =
-        new PopularAccommodationKeyGenerator();
-
     @Test
-    void 날짜를_전달하면_일간_인기_숙소_키를_생성한다() {
-        // given
-        LocalDate date = LocalDate.of(
-            2026,
-            7,
-            29
+    void DAILY는_서울_현재_날짜를_기준으로_키를_생성한다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-02T15:30:00Z"
         );
 
-        // when
-        String key = keyGenerator.generateDailyKey(
-            date
-        );
-
-        // then
-        assertThat(key).isEqualTo(
-            "roompick:popular:accommodations:daily:2026-07-29"
+        assertThat(
+            keyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.DAILY
+            )
+        ).isEqualTo(
+            "roompick:popular:accommodations:daily:2026-08-03"
         );
     }
 
     @Test
-    void 날짜가_null이면_예외가_발생한다() {
-        // when & then
-        assertThatThrownBy(
-            () -> keyGenerator.generateDailyKey(null)
-        )
-            .isInstanceOf(NullPointerException.class)
-            .hasMessage(
-                "인기 숙소 랭킹의 기준 날짜는 null일 수 없습니다."
-            );
+    void 일요일의_WEEKLY_기준일은_직전_월요일이다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-02T03:00:00Z"
+        );
+
+        assertThat(
+            keyGenerator.getCurrentBaseDate(
+                PopularAccommodationPeriod.WEEKLY
+            )
+        ).isEqualTo(LocalDate.of(2026, 7, 27));
+        assertThat(
+            keyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.WEEKLY
+            )
+        ).isEqualTo(
+            "roompick:popular:accommodations:weekly:2026-07-27"
+        );
+    }
+
+    @Test
+    void 월요일의_WEEKLY_기준일은_당일이다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-03T03:00:00Z"
+        );
+
+        assertThat(
+            keyGenerator.getCurrentBaseDate(
+                PopularAccommodationPeriod.WEEKLY
+            )
+        ).isEqualTo(LocalDate.of(2026, 8, 3));
+    }
+
+    @Test
+    void 일요일에서_월요일로_넘어가면_WEEKLY_키가_변경된다() {
+        String sundayKey = keyGeneratorAt(
+            "2026-08-02T14:59:59Z"
+        ).generateCurrentKey(PopularAccommodationPeriod.WEEKLY);
+        String mondayKey = keyGeneratorAt(
+            "2026-08-02T15:00:00Z"
+        ).generateCurrentKey(PopularAccommodationPeriod.WEEKLY);
+
+        assertThat(sundayKey).endsWith("2026-07-27");
+        assertThat(mondayKey).endsWith("2026-08-03");
+    }
+
+    @Test
+    void 기간별_키는_서로_분리된다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-03T03:00:00Z"
+        );
+
+        assertThat(
+            keyGenerator.generateKey(
+                PopularAccommodationPeriod.DAILY,
+                LocalDate.of(2026, 8, 3)
+            )
+        ).isNotEqualTo(
+            keyGenerator.generateKey(
+                PopularAccommodationPeriod.WEEKLY,
+                LocalDate.of(2026, 8, 3)
+            )
+        );
+    }
+
+    @Test
+    void generateKey의_WEEKLY_일요일은_직전_월요일로_보정한다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-02T03:00:00Z"
+        );
+
+        assertThat(
+            keyGenerator.generateKey(
+                PopularAccommodationPeriod.WEEKLY,
+                LocalDate.of(2026, 8, 2)
+            )
+        ).isEqualTo(
+            "roompick:popular:accommodations:weekly:2026-07-27"
+        );
+    }
+
+    @Test
+    void generateKey의_WEEKLY_월요일은_당일을_유지한다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-03T03:00:00Z"
+        );
+
+        assertThat(
+            keyGenerator.generateKey(
+                PopularAccommodationPeriod.WEEKLY,
+                LocalDate.of(2026, 8, 3)
+            )
+        ).isEqualTo(
+            "roompick:popular:accommodations:weekly:2026-08-03"
+        );
+    }
+
+    @Test
+    void generateKey의_DAILY는_전달된_날짜를_유지한다() {
+        PopularAccommodationKeyGenerator keyGenerator = keyGeneratorAt(
+            "2026-08-03T03:00:00Z"
+        );
+
+        assertThat(
+            keyGenerator.generateKey(
+                PopularAccommodationPeriod.DAILY,
+                LocalDate.of(2026, 8, 2)
+            )
+        ).isEqualTo(
+            "roompick:popular:accommodations:daily:2026-08-02"
+        );
+    }
+
+    private PopularAccommodationKeyGenerator keyGeneratorAt(
+        String instant
+    ) {
+        return new PopularAccommodationKeyGenerator(
+            Clock.fixed(
+                Instant.parse(instant),
+                ZoneOffset.UTC
+            )
+        );
     }
 }

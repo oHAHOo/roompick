@@ -18,6 +18,8 @@
 - 저장 대상: 인기 숙소 조회 응답 DTO 목록
 - 저장하지 않는 대상: JPA Entity
 - null 결과: 캐시하지 않음
+- 지원 기간: `DAILY`, `WEEKLY`
+- `period` 생략 시 기본값: `DAILY`
 
 캐시 TTL은 다음 설정으로 변경할 수 있습니다.
 
@@ -38,16 +40,26 @@ roompick:
 
 캐시 Key에는 다음 값이 포함됩니다.
 
-- 인기 랭킹 기준 날짜
+- 기간과 인기 랭킹 기준 날짜
 - 요청한 조회 개수 `limit`
 
 예시:
 
 ```text
 popularAccommodations::roompick:popular:accommodations:daily:2026-08-03:10
+popularAccommodations::roompick:popular:accommodations:weekly:2026-08-03:10
 ```
 
-날짜 또는 `limit`이 다르면 서로 다른 캐시 데이터로 관리됩니다.
+기간, 날짜 또는 `limit`이 다르면 서로 다른 캐시 데이터로 관리됩니다.
+
+`DAILY`는 Asia/Seoul의 현재 날짜를 사용합니다. `WEEKLY`는 최근 7일
+이동 구간이 아니라 월요일 00:00부터 다음 월요일 직전까지의 캘린더 주이며,
+해당 주 월요일 날짜를 기준 날짜로 사용합니다.
+
+```text
+roompick:popular:accommodations:daily:2026-08-03
+roompick:popular:accommodations:weekly:2026-08-03
+```
 
 이를 통해 다른 날짜의 인기 숙소 결과나
 서로 다른 조회 개수의 결과가 섞이지 않도록 합니다.
@@ -181,7 +193,7 @@ PopularAccommodationRankingRepository
 → Redis Sorted Set의 지정 범위 ID 조회
 
 PopularAccommodationRankingService
-→ limit 검증, 일간 랭킹 Key 생성, Redis 범위 조회 위임
+→ limit 검증, 기간별 랭킹 Key 생성, Redis 범위 조회 위임
 
 PopularAccommodationQueryService
 → batch 반복, ACTIVE 숙소 조합, 순서 복원, rank와 limit 처리
@@ -192,7 +204,9 @@ PopularAccommodationQueryService
 ## 7. 조회 점수 증가와 캐시 최신성
 
 숙소 상세 조회가 정상적으로 완료되면
-해당 숙소의 Redis 인기 점수를 증가시킵니다.
+해당 숙소의 DAILY와 WEEKLY Redis 인기 점수를 각각 한 번 증가시킵니다.
+한 기간의 Redis 기록 실패는 다른 기간의 기록 시도를 막지 않으며,
+두 기록 모두 상세 조회 응답과 분리된 best-effort 방식으로 처리합니다.
 
 ```text
 숙소 상세 DB 조회
@@ -226,8 +240,10 @@ PopularAccommodationQueryService
 - 숙소 공개 정보 수정
 - 숙소 상태를 `INACTIVE`로 변경
 
-날짜와 `limit`별로 여러 캐시 Key가 생성될 수 있으므로
+기간, 날짜와 `limit`별로 여러 캐시 Key가 생성될 수 있으므로
 `popularAccommodations` 캐시의 전체 항목을 삭제합니다.
+
+따라서 전체 삭제 한 번으로 DAILY와 WEEKLY 응답 캐시가 모두 제거됩니다.
 
 ```text
 popularAccommodations::...:1

@@ -114,7 +114,7 @@ HH:mm:ss
 | 번호 | Method | URL | 기능 | 인증 |
 | --- | --- | --- | --- | --- |
 | 1 | `GET` | `/api/v1/accommodations` | 전체 숙소 목록 조회 | 불필요 |
-| 1-1 | `GET` | `/api/v1/accommodations/popular` | 일간 인기 숙소 TOP N 조회 | 불필요 |
+| 1-1 | `GET` | `/api/v1/accommodations/popular` | 일간·주간 인기 숙소 TOP N 조회 | 불필요 |
 | 2 | `GET` | `/api/v1/accommodations/{accommodationId}/rooms` | 숙소별 객실 목록 조회 | 불필요 |
 | 3 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
 | 4 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
@@ -190,22 +190,25 @@ GET /api/v1/accommodations?page=0&size=20
 
 ---
 
-## 5-1. 일간 인기 숙소 TOP N 조회
+## 5-1. 일간·주간 인기 숙소 TOP N 조회
 
-오늘 발생한 숙소 상세 조회 점수를 기준으로 인기 숙소 목록을 조회한다.
+요청한 기간에 발생한 숙소 상세 조회 점수를 기준으로 인기 숙소 목록을 조회한다.
+`DAILY`는 Asia/Seoul 현재 날짜, `WEEKLY`는 해당 캘린더 주의 월요일을
+기준으로 하며 최근 7일 이동 구간이 아니다.
 
 기본 조회 개수는 10개이며, 요청에 따라 1개 이상 20개 이하로 조정할 수 있다.
 
 ### Request
 
 ```http
-GET /api/v1/accommodations/popular?limit=10
+GET /api/v1/accommodations/popular?period=WEEKLY&limit=10
 ```
 
 ### Query Parameter
 
 | 이름 | 타입 | 필수 | 기본값 | 설명 |
 | --- | --- | --- | --- | --- |
+| `period` | Enum | X | `DAILY` | `DAILY` 또는 `WEEKLY`, 잘못된 값은 400 |
 | `limit` | `int` | X | `10` | 최종 반환할 ACTIVE 인기 숙소 수, 1 이상 20 이하 |
 
 ### Response — 200 OK
@@ -252,7 +255,7 @@ GET /api/v1/accommodations/popular?limit=10
 - 동일 점수에서는 Redis의 역방향 사전순 정렬 결과를 따른다.
 - 랭킹 데이터가 없으면 오류가 아닌 빈 배열을 반환한다.
 - 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
-- Redis 장애 시 DB fallback 처리는 후속 캐시·장애 대응 기능에서 구현한다.
+- Redis 랭킹 장애 시 기간과 무관하게 최신 ACTIVE 숙소를 임시 fallback으로 반환한다. 이 결과는 실제 기간별 인기 순위가 아니다.
 
 ---
 

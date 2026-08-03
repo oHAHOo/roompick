@@ -30,6 +30,7 @@ import org.testcontainers.utility.DockerImageName;
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 
 /**
  * 인기 숙소 조회 결과의 Redis 캐시 동작을
@@ -53,6 +54,9 @@ import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerato
 )
 @ActiveProfiles("test")
 class PopularAccommodationQueryCacheIntegrationTest {
+
+    private static final PopularAccommodationPeriod DAILY =
+        PopularAccommodationPeriod.DAILY;
 
     private static final String CACHE_NAME =
         "popularAccommodations";
@@ -189,7 +193,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 9L)
+                .findRankedAccommodationIds(DAILY, limit, 0L, 9L)
         ).willReturn(
             rankedAccommodationIds
         );
@@ -209,7 +213,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
         // when: 첫 요청은 캐시 MISS로 내부 조회를 실행합니다.
         List<PopularAccommodationResponseDto> firstResult =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(DAILY, limit);
 
         /*
          * 동일한 날짜와 limit으로 다시 요청합니다.
@@ -219,7 +223,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
          */
         List<PopularAccommodationResponseDto> secondResult =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(DAILY, limit);
 
         // then: 첫 요청에서 인기 숙소 두 건이 반환됩니다.
         assertThat(firstResult)
@@ -238,7 +242,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
          */
         then(popularAccommodationRankingService)
             .should(times(1))
-            .findRankedAccommodationIds(limit, 0L, 9L);
+            .findRankedAccommodationIds(DAILY, limit, 0L, 9L);
 
         /*
          * DB 조회 역할의 Service도 캐시 MISS였던
@@ -248,6 +252,61 @@ class PopularAccommodationQueryCacheIntegrationTest {
             .should(times(1))
             .findAllActiveSummaryByIds(
                 rankedAccommodationIds
+            );
+    }
+
+    @Test
+    void DAILY_WEEKLY와_limit별로_캐시를_분리한다() {
+        given(
+            popularAccommodationRankingService.findRankedAccommodationIds(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong()
+            )
+        ).willReturn(List.of());
+
+        popularAccommodationQueryService.getPopularAccommodations(
+            PopularAccommodationPeriod.DAILY,
+            1
+        );
+        popularAccommodationQueryService.getPopularAccommodations(
+            PopularAccommodationPeriod.DAILY,
+            1
+        );
+        popularAccommodationQueryService.getPopularAccommodations(
+            PopularAccommodationPeriod.WEEKLY,
+            1
+        );
+        popularAccommodationQueryService.getPopularAccommodations(
+            PopularAccommodationPeriod.WEEKLY,
+            1
+        );
+        popularAccommodationQueryService.getPopularAccommodations(
+            PopularAccommodationPeriod.DAILY,
+            2
+        );
+
+        then(popularAccommodationRankingService).should(times(1))
+            .findRankedAccommodationIds(
+                PopularAccommodationPeriod.DAILY,
+                1,
+                0L,
+                4L
+            );
+        then(popularAccommodationRankingService).should(times(1))
+            .findRankedAccommodationIds(
+                PopularAccommodationPeriod.WEEKLY,
+                1,
+                0L,
+                4L
+            );
+        then(popularAccommodationRankingService).should(times(1))
+            .findRankedAccommodationIds(
+                PopularAccommodationPeriod.DAILY,
+                2,
+                0L,
+                9L
             );
     }
 
@@ -274,7 +333,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 4L)
+                .findRankedAccommodationIds(DAILY, limit, 0L, 4L)
         ).willReturn(
             rankedAccommodationIds
         );
@@ -297,14 +356,14 @@ class PopularAccommodationQueryCacheIntegrationTest {
          */
         String cacheKey =
             popularAccommodationKeyGenerator
-                .generateTodayKey()
+                .generateCurrentKey(DAILY)
                 + ":"
                 + limit;
 
         // when: 첫 요청으로 인기 숙소 캐시를 생성합니다.
         List<PopularAccommodationResponseDto> firstResult =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(DAILY, limit);
 
         // then: 첫 번째 요청 결과가 정상적으로 반환됩니다.
         assertThat(firstResult)
@@ -339,7 +398,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
          */
         List<PopularAccommodationResponseDto> secondResult =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(DAILY, limit);
 
         // then: 재조회 후에도 응답 내용은 동일해야 합니다.
         assertThat(secondResult)
@@ -351,7 +410,7 @@ class PopularAccommodationQueryCacheIntegrationTest {
          */
         then(popularAccommodationRankingService)
             .should(times(2))
-            .findRankedAccommodationIds(limit, 0L, 4L);
+            .findRankedAccommodationIds(DAILY, limit, 0L, 4L);
 
         /*
          * DB 조회 역할의 Service도 첫 요청과

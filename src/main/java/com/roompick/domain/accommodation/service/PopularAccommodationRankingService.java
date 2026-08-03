@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -38,13 +39,29 @@ public class PopularAccommodationRankingService {
         popularAccommodationKeyGenerator;
 
     /**
-     * 오늘 날짜의 인기 숙소 랭킹에서 해당 숙소의 조회 점수를 증가시킵니다.
+     * 일간과 주간 인기 숙소 랭킹에 조회 점수를 각각 기록합니다.
+     * 한 기간의 Redis 기록 실패가 다른 기간의 기록을 막지 않습니다.
      */
     public void recordView(
         Long accommodationId
     ) {
+        for (PopularAccommodationPeriod period
+            : PopularAccommodationPeriod.values()) {
+            recordView(
+                accommodationId,
+                period
+            );
+        }
+    }
+
+    private void recordView(
+        Long accommodationId,
+        PopularAccommodationPeriod period
+    ) {
         String key =
-            popularAccommodationKeyGenerator.generateTodayKey();
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                period
+            );
 
         try {
             popularAccommodationRankingRepository.incrementScore(
@@ -53,20 +70,22 @@ public class PopularAccommodationRankingService {
             );
         } catch (DataAccessException exception) {
             log.warn(
-                "인기 숙소 조회 점수 기록에 실패했습니다. accommodationId={}",
+                "인기 숙소 조회 점수 기록에 실패했습니다. accommodationId={}, period={}",
                 accommodationId,
+                period,
                 exception
             );
         }
     }
 
     /**
-     * 오늘 날짜의 인기 숙소 ID를 지정한 Redis 범위에서 조회합니다.
+     * 요청 기간의 인기 숙소 ID를 지정한 Redis 범위에서 조회합니다.
      *
      * limit은 API 허용 범위를 검증하는 데 사용하고,
      * 범위 반복과 ACTIVE 숙소 조합은 QueryService가 담당합니다.
      */
     public List<Long> findRankedAccommodationIds(
+        PopularAccommodationPeriod period,
         int limit,
         long start,
         long end
@@ -76,7 +95,9 @@ public class PopularAccommodationRankingService {
         );
 
         String key =
-            popularAccommodationKeyGenerator.generateTodayKey();
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                period
+            );
 
         try {
             return popularAccommodationRankingRepository
@@ -90,6 +111,19 @@ public class PopularAccommodationRankingService {
                 exception
             );
         }
+    }
+
+    public List<Long> findRankedAccommodationIds(
+        int limit,
+        long start,
+        long end
+    ) {
+        return findRankedAccommodationIds(
+            PopularAccommodationPeriod.DAILY,
+            limit,
+            start,
+            end
+        );
     }
 
     /**
