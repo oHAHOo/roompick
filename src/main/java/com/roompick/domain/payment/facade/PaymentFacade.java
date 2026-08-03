@@ -27,7 +27,7 @@ import com.roompick.global.config.portone.PortOneProperties;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 결제와 예약 Service를 조합해
+ * 결제와 예약 Service를 조합하여
  * 결제 전체 흐름을 처리하는 Facade입니다.
  */
 @Component
@@ -49,7 +49,7 @@ public class PaymentFacade {
     /**
      * 예약을 검증하고 READY 상태의 결제를 준비합니다.
      *
-     * 클라이언트가 PortOne 결제창을 열 수 있도록
+     * 클라이언트가 PortOne 결제창을 호출할 수 있도록
      * storeId와 channelKey도 함께 반환합니다.
      */
     @Transactional
@@ -77,7 +77,11 @@ public class PaymentFacade {
     }
 
     /**
-     * 기존 Mock 결제를 승인하고 예약을 확정합니다.
+     * 기존 Mock 결제를 승인하고
+     * 연결된 예약을 확정합니다.
+     *
+     * Payment를 비관적 쓰기 락으로 조회하여
+     * 동일 결제의 중복 상태 변경을 방지합니다.
      */
     @Transactional
     public PaymentApproveResponseDto approvePayment(
@@ -86,9 +90,11 @@ public class PaymentFacade {
         long requestedAmount
     ) {
         Payment payment =
-            paymentService.findById(
-                paymentId
-            );
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                );
 
         Reservation reservation =
             payment.getReservation();
@@ -121,6 +127,9 @@ public class PaymentFacade {
     /**
      * READY 상태의 기존 Mock 결제를 실패 처리하고
      * 연결된 예약을 취소합니다.
+     *
+     * Payment를 비관적 쓰기 락으로 조회하여
+     * 동일 결제의 중복 상태 변경을 방지합니다.
      */
     @Transactional
     public PaymentFailResponseDto failPayment(
@@ -128,9 +137,11 @@ public class PaymentFacade {
         Long memberId
     ) {
         Payment payment =
-            paymentService.findById(
-                paymentId
-            );
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                );
 
         Reservation reservation =
             payment.getReservation();
@@ -163,7 +174,8 @@ public class PaymentFacade {
      * PortOne의 실제 결제 정보를 조회하고 검증한 뒤
      * Payment와 Reservation을 확정합니다.
      *
-     * 외부 API 호출 중에는 DB 트랜잭션을 유지하지 않습니다.
+     * 외부 PortOne API를 호출하는 동안에는
+     * DB 트랜잭션과 비관적 락을 유지하지 않습니다.
      */
     public PaymentCompleteResponseDto
     completePortOnePayment(
@@ -172,8 +184,13 @@ public class PaymentFacade {
     ) {
 
         /*
-         * PortOne 외부 API를 호출하기 전에
-         * 요청 회원의 결제인지, READY 상태인지 검증합니다.
+         * PortOne 외부 API 호출 전 일반 조회입니다.
+         *
+         * 요청 회원의 결제인지 확인하고
+         * Payment가 READY 상태인지 검증합니다.
+         *
+         * 외부 API를 호출하는 동안 DB 락을
+         * 유지하지 않기 위해 일반 조회를 사용합니다.
          */
         Payment paymentSnapshot =
             paymentService
@@ -198,6 +215,10 @@ public class PaymentFacade {
                 expectedPortOnePaymentId
             );
 
+        /*
+         * PortOne 응답의 결제 ID, 상태, 금액,
+         * 거래 식별값과 완료 시각을 검증합니다.
+         */
         PortOnePaymentVerificationResultDto
             verificationResult =
             portOnePaymentVerifier.verify(
@@ -207,8 +228,8 @@ public class PaymentFacade {
             );
 
         /*
-         * 외부 응답 검증이 완료된 뒤
-         * 짧은 쓰기 트랜잭션을 시작합니다.
+         * 외부 API 응답 검증이 완료된 뒤에만
+         * 짧은 DB 쓰기 트랜잭션을 시작합니다.
          */
         PaymentCompleteResponseDto result =
             transactionTemplate.execute(
@@ -216,7 +237,6 @@ public class PaymentFacade {
                     completePortOnePaymentInTransaction(
                         paymentId,
                         memberId,
-                        expectedPortOnePaymentId,
                         verificationResult
                     )
             );
@@ -232,33 +252,35 @@ public class PaymentFacade {
 
     /**
      * PortOne 응답 검증 이후 실행되는
-     * DB 상태 변경 트랜잭션입니다.
+     * 결제 및 예약 상태 변경 트랜잭션입니다.
+     *
+     * Payment를 비관적 쓰기 락으로 조회하여
+     * 동일 결제의 동시 상태 변경을 방지합니다.
      */
     private PaymentCompleteResponseDto
     completePortOnePaymentInTransaction(
         Long paymentId,
         Long memberId,
-        String verifiedPortOnePaymentId,
         PortOnePaymentVerificationResultDto
             verificationResult
     ) {
 
         /*
-         * 외부 API 응답을 기다리는 동안
-         * 소유자나 결제 상태가 변경됐을 수 있으므로
-         * 쓰기 트랜잭션 안에서 다시 검증합니다.
+         * Mock 승인, Mock 실패, PortOne 완료 처리가
+         * 모두 동일한 공통 비관적 락 조회를 사용합니다.
+         *
+         * 공통 락 조회에서는 최신 Payment를 조회하고
+         * 결제 소유권을 검증합니다.
+         *
+         * READY 상태 검증은 실제 상태 전이 메서드인
+         * approvePortOnePayment()에서 처리합니다.
          */
         Payment payment =
             paymentService
-                .findForPortOneCompletion(
+                .findForPaymentTransitionForUpdate(
                     paymentId,
                     memberId
                 );
-
-        validatePortOnePaymentIdUnchanged(
-            payment,
-            verifiedPortOnePaymentId
-        );
 
         Reservation reservation =
             payment.getReservation();
@@ -282,29 +304,5 @@ public class PaymentFacade {
         return PaymentCompleteResponseDto.from(
             approvedPayment
         );
-    }
-
-    /**
-     * 외부 API 호출 전후 내부 PortOne 결제 ID가
-     * 변경되지 않았는지 확인합니다.
-     */
-    private void validatePortOnePaymentIdUnchanged(
-        Payment payment,
-        String verifiedPortOnePaymentId
-    ) {
-        String currentPortOnePaymentId =
-            payment.getPortOnePaymentId();
-
-        if (
-            currentPortOnePaymentId == null
-                || !currentPortOnePaymentId.equals(
-                verifiedPortOnePaymentId
-            )
-        ) {
-            throw new BusinessException(
-                ErrorCode
-                    .PORTONE_PAYMENT_ID_MISMATCH
-            );
-        }
     }
 }

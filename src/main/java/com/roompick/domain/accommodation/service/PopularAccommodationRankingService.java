@@ -5,8 +5,10 @@ import java.util.List;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -22,7 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PopularAccommodationService {
+public class PopularAccommodationRankingService {
 
     /**
      * 인기 숙소 조회 개수의 허용 범위입니다.
@@ -37,13 +39,29 @@ public class PopularAccommodationService {
         popularAccommodationKeyGenerator;
 
     /**
-     * 오늘 날짜의 인기 숙소 랭킹에서 해당 숙소의 조회 점수를 증가시킵니다.
+     * 일간과 주간 인기 숙소 랭킹에 조회 점수를 각각 기록합니다.
+     * 한 기간의 Redis 기록 실패가 다른 기간의 기록을 막지 않습니다.
      */
     public void recordView(
         Long accommodationId
     ) {
+        for (PopularAccommodationPeriod period
+            : PopularAccommodationPeriod.values()) {
+            recordView(
+                accommodationId,
+                period
+            );
+        }
+    }
+
+    private void recordView(
+        Long accommodationId,
+        PopularAccommodationPeriod period
+    ) {
         String key =
-            popularAccommodationKeyGenerator.generateTodayKey();
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                period
+            );
 
         try {
             popularAccommodationRankingRepository.incrementScore(
@@ -52,36 +70,47 @@ public class PopularAccommodationService {
             );
         } catch (DataAccessException exception) {
             log.warn(
-                "인기 숙소 조회 점수 기록에 실패했습니다. accommodationId={}",
+                "인기 숙소 조회 점수 기록에 실패했습니다. accommodationId={}, period={}",
                 accommodationId,
+                period,
                 exception
             );
         }
     }
 
     /**
-     * 오늘 날짜의 인기 숙소 ID 전체를 점수 내림차순으로 조회합니다.
+     * 요청 기간의 인기 숙소 ID를 지정한 Redis 범위에서 조회합니다.
      *
-     * limit은 최종 ACTIVE 숙소 개수 검증에 사용하며,
-     * 실제 개수 제한은 비공개·삭제 숙소를 제외한 뒤 Facade에서 적용합니다.
-     *
-     * Redis Sorted Set은 한 번만 조회합니다.
-     * Redis 장애에 대한 DB fallback은 후속 캐시·장애 대응 기능에서 처리합니다.
+     * limit은 API 허용 범위를 검증하는 데 사용하고,
+     * 범위 반복과 ACTIVE 숙소 조합은 QueryService가 담당합니다.
      */
     public List<Long> findRankedAccommodationIds(
-        int limit
+        PopularAccommodationPeriod period,
+        int limit,
+        long start,
+        long end
     ) {
         validateLimit(
             limit
         );
 
         String key =
-            popularAccommodationKeyGenerator.generateTodayKey();
-
-        return popularAccommodationRankingRepository
-            .findAllRankedAccommodationIds(
-                key
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                period
             );
+
+        try {
+            return popularAccommodationRankingRepository
+                .findRankedAccommodationIds(
+                    key,
+                    start,
+                    end
+                );
+        } catch (DataAccessException exception) {
+            throw new PopularAccommodationRankingUnavailableException(
+                exception
+            );
+        }
     }
 
     /**
