@@ -16,9 +16,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 
 @ExtendWith(MockitoExtension.class)
 class PopularAccommodationQueryServiceTest {
+
+    private static final PopularAccommodationPeriod PERIOD =
+        PopularAccommodationPeriod.DAILY;
 
     @Mock
     private PopularAccommodationRankingService
@@ -40,7 +44,7 @@ class PopularAccommodationQueryServiceTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 9L)
+                .findRankedAccommodationIds(PERIOD, limit, 0L, 9L)
         ).willReturn(firstBatch);
 
         given(
@@ -56,7 +60,7 @@ class PopularAccommodationQueryServiceTest {
         // when
         List<PopularAccommodationResponseDto> result =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(PERIOD, limit);
 
         // then
         assertThat(result)
@@ -68,7 +72,7 @@ class PopularAccommodationQueryServiceTest {
 
         then(popularAccommodationRankingService)
             .should(never())
-            .findRankedAccommodationIds(limit, 10L, 19L);
+            .findRankedAccommodationIds(PERIOD, limit, 10L, 19L);
     }
 
     @Test
@@ -82,14 +86,14 @@ class PopularAccommodationQueryServiceTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 9L)
+                .findRankedAccommodationIds(PERIOD, limit, 0L, 9L)
         ).willReturn(firstBatch);
         given(
             accommodationService.findAllActiveSummaryByIds(firstBatch)
         ).willReturn(List.of(accommodation(8L)));
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 10L, 19L)
+                .findRankedAccommodationIds(PERIOD, limit, 10L, 19L)
         ).willReturn(secondBatch);
         given(
             accommodationService.findAllActiveSummaryByIds(secondBatch)
@@ -98,7 +102,7 @@ class PopularAccommodationQueryServiceTest {
         // when
         List<PopularAccommodationResponseDto> result =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(PERIOD, limit);
 
         // then
         assertThat(result)
@@ -110,7 +114,7 @@ class PopularAccommodationQueryServiceTest {
 
         then(popularAccommodationRankingService)
             .should()
-            .findRankedAccommodationIds(limit, 10L, 19L);
+            .findRankedAccommodationIds(PERIOD, limit, 10L, 19L);
     }
 
     @Test
@@ -124,14 +128,14 @@ class PopularAccommodationQueryServiceTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 9L)
+                .findRankedAccommodationIds(PERIOD, limit, 0L, 9L)
         ).willReturn(firstBatch);
         given(
             accommodationService.findAllActiveSummaryByIds(firstBatch)
         ).willReturn(List.of());
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 10L, 19L)
+                .findRankedAccommodationIds(PERIOD, limit, 10L, 19L)
         ).willReturn(lastBatch);
         given(
             accommodationService.findAllActiveSummaryByIds(lastBatch)
@@ -140,7 +144,7 @@ class PopularAccommodationQueryServiceTest {
         // when
         List<PopularAccommodationResponseDto> result =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(PERIOD, limit);
 
         // then
         assertThat(result)
@@ -150,7 +154,7 @@ class PopularAccommodationQueryServiceTest {
 
         then(popularAccommodationRankingService)
             .should(never())
-            .findRankedAccommodationIds(limit, 20L, 29L);
+            .findRankedAccommodationIds(PERIOD, limit, 20L, 29L);
     }
 
     @Test
@@ -164,14 +168,14 @@ class PopularAccommodationQueryServiceTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 9L)
+                .findRankedAccommodationIds(PERIOD, limit, 0L, 9L)
         ).willReturn(firstBatch);
         given(
             accommodationService.findAllActiveSummaryByIds(firstBatch)
         ).willReturn(List.of(accommodation(9L)));
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 10L, 19L)
+                .findRankedAccommodationIds(PERIOD, limit, 10L, 19L)
         ).willReturn(secondBatch);
         given(
             accommodationService.findAllActiveSummaryByIds(List.of(11L))
@@ -180,7 +184,7 @@ class PopularAccommodationQueryServiceTest {
         // when
         List<PopularAccommodationResponseDto> result =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(PERIOD, limit);
 
         // then
         assertThat(result)
@@ -199,17 +203,46 @@ class PopularAccommodationQueryServiceTest {
 
         given(
             popularAccommodationRankingService
-                .findRankedAccommodationIds(limit, 0L, 49L)
+                .findRankedAccommodationIds(PERIOD, limit, 0L, 49L)
         ).willReturn(List.of());
 
         // when
         List<PopularAccommodationResponseDto> result =
             popularAccommodationQueryService
-                .getPopularAccommodations(limit);
+                .getPopularAccommodations(PERIOD, limit);
 
         // then
         assertThat(result).isEmpty();
         then(accommodationService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void WEEKLY_기간을_RankingService에_그대로_전달한다() {
+        int limit = 10;
+        given(
+            popularAccommodationRankingService
+                .findRankedAccommodationIds(
+                    PopularAccommodationPeriod.WEEKLY,
+                    limit,
+                    0L,
+                    49L
+                )
+        ).willReturn(List.of());
+
+        List<PopularAccommodationResponseDto> result =
+            popularAccommodationQueryService.getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                limit
+            );
+
+        assertThat(result).isEmpty();
+        then(popularAccommodationRankingService).should()
+            .findRankedAccommodationIds(
+                PopularAccommodationPeriod.WEEKLY,
+                limit,
+                0L,
+                49L
+            );
     }
 
     private AccommodationListResponseDto accommodation(Long id) {

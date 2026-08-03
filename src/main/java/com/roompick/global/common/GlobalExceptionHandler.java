@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
@@ -117,6 +118,29 @@ public class GlobalExceptionHandler {
                 .body(body);
 
         return response;
+    }
+
+    /**
+     * Query Parameter나 Path Variable의 타입 변환 오류를 처리합니다.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponseDto> handleTypeMismatchException(
+        MethodArgumentTypeMismatchException exception
+    ) {
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT_VALUE;
+        ErrorResponseDto body = ErrorResponseDto.of(
+            errorCode,
+            List.of(
+                new ValidationErrorDto(
+                    exception.getName(),
+                    "요청 값의 형식이 올바르지 않습니다."
+                )
+            )
+        );
+
+        return ResponseEntity
+            .status(errorCode.getHttpStatus())
+            .body(body);
     }
 
     /**

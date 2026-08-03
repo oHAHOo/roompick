@@ -14,6 +14,7 @@ import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.facade.AccommodationFacade;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.global.common.ApiResponseDto;
 
@@ -64,7 +65,7 @@ public class AccommodationController {
     }
 
     /**
-     * 오늘 날짜의 인기 숙소 목록을 조회합니다.
+     * 요청한 일간 또는 주간 인기 숙소 목록을 조회합니다.
      *
      * 조회 개수의 기본값은 10이며,
      * 1개 이상 20개 이하만 요청할 수 있습니다.
@@ -74,12 +75,17 @@ public class AccommodationController {
         ApiResponseDto<List<PopularAccommodationResponseDto>>
         > getPopularAccommodations(
         @RequestParam(
+            name = "period",
+            defaultValue = "DAILY"
+        ) PopularAccommodationPeriod period,
+        @RequestParam(
             name = "limit",
             defaultValue = "10"
         ) int limit
     ) {
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
+                period,
                 limit
             );
 
