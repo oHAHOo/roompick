@@ -45,7 +45,7 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 | 항목 | 값 | 비고 |
 | --- | --- | --- |
 | 리전 | `ap-northeast-2` | 서울 |
-| EC2 인스턴스 | `t3.micro` | 프리티어 대상 (12개월) |
+| EC2 인스턴스 | `t3.small` | 앱 + Prometheus + Grafana 함께 운영 (2vCPU/2GB) |
 | EC2 AMI | Amazon Linux 2023 | Docker를 user-data로 설치 |
 | RDS 인스턴스 | `db.t4g.micro` | 프리티어 대상 (12개월) |
 | RDS 스토리지 | gp3 20GB, 단일 AZ | 멀티 AZ 미사용 (비용 절감) |
@@ -58,6 +58,8 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 - **EC2 보안그룹**
   - `22` (SSH): 내 IP만 허용
   - `8080` (앱): `0.0.0.0/0` 허용
+  - `3000` (Grafana): `0.0.0.0/0` 허용 — Grafana 자체 로그인으로 보호
+  - `9090` (Prometheus): 내 IP만 허용 — Prometheus는 자체 인증이 없어 공개 노출 금지
 - **RDS 보안그룹**
   - `3306`: EC2 보안그룹에서 들어오는 트래픽만 허용 (퍼블릭 미노출)
 
@@ -98,11 +100,16 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 4. 컨테이너 실행
    ```bash
    docker run -d --name roompick-backend \
+     --network roompick-net \
      --env-file .env.prod \
      -p 8080:8080 \
      --restart unless-stopped \
      roompick-backend
    ```
+
+   `roompick-net`은 Redis 컨테이너가 붙어있는 Docker 네트워크입니다. 이 옵션이 빠지면
+   앱이 기본 `bridge` 네트워크에 떠서 `redis` 호스트명을 찾지 못해 헬스체크가 `DOWN`이
+   됩니다([docs/bug](bug/) 참고).
 
 ## 6. 비밀 관리
 
@@ -199,6 +206,7 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
    sudo docker stop roompick-backend || true
    sudo docker rm roompick-backend || true
    sudo docker run -d --name roompick-backend \
+     --network roompick-net \
      --env-file /home/ec2-user/app/.env.prod \
      -p 8080:8080 \
      --restart unless-stopped \
@@ -223,7 +231,40 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 마이그레이션 파일을 수정하면 체크섬 불일치로 실패하므로, 기존 파일을 고치지 말고 항상
 새 버전을 추가합니다.
 
-## 11. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
+## 11. 모니터링 (Prometheus + Grafana)
+
+앱과 같은 EC2(`t3.small`)에서 `monitoring/docker-compose.yml`로 Prometheus와 Grafana를
+별도 컨테이너로 구동합니다. 앱은 기존과 동일하게 `docker run`으로 실행되며, Prometheus는
+`host-gateway`를 통해 호스트의 `8080` 포트(`/actuator/prometheus`)를 스크레이핑합니다.
+
+### 11-1. 최초 구동
+
+```bash
+ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
+cd roompick-backend/monitoring
+docker compose up -d
+```
+
+### 11-2. 확인
+
+```bash
+curl http://localhost:9090/api/v1/targets   # roompick-backend job이 up인지 확인
+```
+
+- Grafana: `http://<EC2 퍼블릭 IP>:3000` (최초 로그인 `admin`/`admin`, 즉시 비밀번호 변경)
+- Grafana Data source로 Prometheus 추가 시 URL은 컨테이너 간 통신이므로 `http://prometheus:9090`
+
+### 11-3. 알려진 제약
+
+- Prometheus(`9090`)는 자체 인증이 없어 보안그룹에서 내 IP로만 허용합니다(2절 참고).
+- `/actuator/metrics`, `/actuator/prometheus`는 `SecurityConfig`의 `PERMIT_ALL_PATHS`에
+  포함되어 있어 인증 없이 `8080`으로 직접 접근 가능합니다. 현재는 앱 자체 인증으로 막지 않고
+  있으므로, JVM 상세 지표가 외부에 노출된다는 점을 인지하고 있어야 합니다. 필요 시 별도
+  네트워크 레벨 제한(예: 8080의 `/actuator/**` 경로만 막는 리버스 프록시)을 향후 검토합니다.
+- Prometheus/Grafana 데이터는 Docker named volume(`prometheus-data`, `grafana-data`)에
+  저장되므로 컨테이너를 재생성해도 유지되지만, EC2 인스턴스 자체가 삭제되면 함께 사라집니다.
+
+## 12. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
 
 다음 항목은 이번 배포 범위에 포함하지 않았습니다. 필요 시 팀 논의 후 별도 작업으로 진행합니다.
 
