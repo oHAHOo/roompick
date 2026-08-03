@@ -24,6 +24,7 @@ import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUn
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.service.RoomService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
@@ -204,6 +205,7 @@ class AccommodationFacadeTest {
         given(
             popularAccommodationQueryService
                 .getPopularAccommodations(
+                    PopularAccommodationPeriod.DAILY,
                     limit
                 )
         ).willReturn(
@@ -213,6 +215,7 @@ class AccommodationFacadeTest {
         // when: 인기 숙소 목록을 조회합니다.
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
@@ -223,6 +226,7 @@ class AccommodationFacadeTest {
         then(popularAccommodationQueryService)
             .should()
             .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
@@ -232,6 +236,62 @@ class AccommodationFacadeTest {
          */
         then(accommodationService)
             .shouldHaveNoInteractions();
+    }
+
+    @Test
+    void WEEKLY_Redis_랭킹_장애도_최신_ACTIVE_숙소로_fallback한다() {
+        int limit = 1;
+        PopularAccommodationRankingUnavailableException exception =
+            new PopularAccommodationRankingUnavailableException(
+                new DataAccessResourceFailureException("Redis 연결 실패")
+            );
+        AccommodationListResponseDto accommodation =
+            new AccommodationListResponseDto(
+                10L,
+                "최근 숙소",
+                "서울특별시"
+            );
+
+        given(
+            popularAccommodationQueryService.getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                limit
+            )
+        ).willThrow(exception);
+        given(accommodationService.findLatestActive(limit))
+            .willReturn(List.of(accommodation));
+
+        List<PopularAccommodationResponseDto> result =
+            accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                limit
+            );
+
+        assertThat(result).extracting(
+            PopularAccommodationResponseDto::rank
+        ).containsExactly(1);
+        then(accommodationService).should().findLatestActive(limit);
+    }
+
+    @Test
+    void WEEKLY_DB_조회_장애는_fallback하지_않는다() {
+        int limit = 1;
+        DataAccessResourceFailureException databaseException =
+            new DataAccessResourceFailureException("DB 연결 실패");
+        given(
+            popularAccommodationQueryService.getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                limit
+            )
+        ).willThrow(databaseException);
+
+        assertThatThrownBy(
+            () -> accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                limit
+            )
+        ).isSameAs(databaseException);
+        then(accommodationService).shouldHaveNoInteractions();
     }
 
     @Test
@@ -257,6 +317,7 @@ class AccommodationFacadeTest {
         given(
             popularAccommodationQueryService
                 .getPopularAccommodations(
+                    PopularAccommodationPeriod.DAILY,
                     limit
                 )
         ).willThrow(
@@ -293,6 +354,7 @@ class AccommodationFacadeTest {
         // when: 인기 숙소 목록을 조회합니다.
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
@@ -339,6 +401,7 @@ class AccommodationFacadeTest {
         then(popularAccommodationQueryService)
             .should()
             .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
@@ -364,17 +427,26 @@ class AccommodationFacadeTest {
 
         given(
             popularAccommodationQueryService
-                .getPopularAccommodations(limit)
+                .getPopularAccommodations(
+                    PopularAccommodationPeriod.DAILY,
+                    limit
+                )
         ).willThrow(databaseException);
 
         // when & then
         assertThatThrownBy(() ->
-            accommodationFacade.getPopularAccommodations(limit)
+            accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
+                limit
+            )
         ).isSameAs(databaseException);
 
         then(popularAccommodationQueryService)
             .should()
-            .getPopularAccommodations(limit);
+            .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
+                limit
+            );
         then(accommodationService).shouldHaveNoInteractions();
     }
 
@@ -395,6 +467,7 @@ class AccommodationFacadeTest {
         given(
             popularAccommodationQueryService
                 .getPopularAccommodations(
+                    PopularAccommodationPeriod.DAILY,
                     invalidLimit
                 )
         ).willThrow(
@@ -406,6 +479,7 @@ class AccommodationFacadeTest {
             () ->
                 accommodationFacade
                     .getPopularAccommodations(
+                        PopularAccommodationPeriod.DAILY,
                         invalidLimit
                     )
         ).isSameAs(
@@ -415,6 +489,7 @@ class AccommodationFacadeTest {
         then(popularAccommodationQueryService)
             .should()
             .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 invalidLimit
             );
 

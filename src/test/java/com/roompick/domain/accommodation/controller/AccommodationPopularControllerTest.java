@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.facade.AccommodationFacade;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.common.GlobalExceptionHandler;
@@ -68,6 +69,7 @@ class AccommodationPopularControllerTest {
 
         given(
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 10
             )
         ).willReturn(
@@ -127,6 +129,7 @@ class AccommodationPopularControllerTest {
         then(accommodationFacade)
             .should()
             .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 10
             );
     }
@@ -141,6 +144,7 @@ class AccommodationPopularControllerTest {
 
         given(
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 invalidLimit
             )
         ).willThrow(
@@ -184,6 +188,7 @@ class AccommodationPopularControllerTest {
         then(accommodationFacade)
             .should()
             .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 invalidLimit
             );
     }
@@ -198,6 +203,7 @@ class AccommodationPopularControllerTest {
 
         given(
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             )
         ).willReturn(
@@ -229,7 +235,53 @@ class AccommodationPopularControllerTest {
         then(accommodationFacade)
             .should()
             .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
+    }
+
+    @Test
+    void DAILY와_WEEKLY_period를_Facade로_전달한다()
+        throws Exception {
+        given(
+            accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
+                10
+            )
+        ).willReturn(List.of());
+        given(
+            accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                10
+            )
+        ).willReturn(List.of());
+
+        mockMvc.perform(
+            get("/api/v1/accommodations/popular")
+                .param("period", "DAILY")
+        ).andExpect(status().isOk());
+        mockMvc.perform(
+            get("/api/v1/accommodations/popular")
+                .param("period", "WEEKLY")
+        ).andExpect(status().isOk());
+
+        then(accommodationFacade).should()
+            .getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
+                10
+            );
+        then(accommodationFacade).should()
+            .getPopularAccommodations(
+                PopularAccommodationPeriod.WEEKLY,
+                10
+            );
+    }
+
+    @Test
+    void 잘못된_period는_400을_반환한다() throws Exception {
+        mockMvc.perform(
+            get("/api/v1/accommodations/popular")
+                .param("period", "MONTHLY")
+        ).andExpect(status().isBadRequest());
     }
 }

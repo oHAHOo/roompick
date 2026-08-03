@@ -106,15 +106,13 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
         Accommodation accommodation =
             saveAccommodation();
 
-        String cacheKey = "commit-test-key";
+        String dailyCacheKey = "daily:commit-test-key";
+        String weeklyCacheKey = "weekly:commit-test-key";
 
-        popularAccommodationCache.put(
-            cacheKey,
-            "cached-value"
-        );
+        putPeriodCaches(dailyCacheKey, weeklyCacheKey);
 
         assertThat(
-            popularAccommodationCache.get(cacheKey)
+            popularAccommodationCache.get(dailyCacheKey)
         ).isNotNull();
 
         // when
@@ -129,8 +127,10 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
 
         // then
         assertThat(
-            popularAccommodationCache.get(cacheKey)
+            popularAccommodationCache.get(dailyCacheKey)
         ).isNull();
+        assertThat(popularAccommodationCache.get(weeklyCacheKey))
+            .isNull();
     }
 
     @Test
@@ -143,12 +143,10 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
         Accommodation accommodation =
             saveAccommodation();
 
-        String cacheKey = "rollback-test-key";
+        String dailyCacheKey = "daily:rollback-test-key";
+        String weeklyCacheKey = "weekly:rollback-test-key";
 
-        popularAccommodationCache.put(
-            cacheKey,
-            "cached-value"
-        );
+        putPeriodCaches(dailyCacheKey, weeklyCacheKey);
 
         TransactionTemplate transactionTemplate =
             new TransactionTemplate(
@@ -174,8 +172,10 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
 
         // then
         assertThat(
-            popularAccommodationCache.get(cacheKey)
+            popularAccommodationCache.get(dailyCacheKey)
         ).isNotNull();
+        assertThat(popularAccommodationCache.get(weeklyCacheKey))
+            .isNotNull();
 
         Accommodation savedAccommodation =
             accommodationRepository
@@ -196,15 +196,13 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
         Accommodation accommodation =
             saveAccommodation();
 
-        String cacheKey = "inactivation-commit-test-key";
+        String dailyCacheKey = "daily:inactivation-commit-test-key";
+        String weeklyCacheKey = "weekly:inactivation-commit-test-key";
 
-        popularAccommodationCache.put(
-            cacheKey,
-            "cached-value"
-        );
+        putPeriodCaches(dailyCacheKey, weeklyCacheKey);
 
         assertThat(
-            popularAccommodationCache.get(cacheKey)
+            popularAccommodationCache.get(dailyCacheKey)
         ).isNotNull();
 
         // when
@@ -214,8 +212,18 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
 
         // then
         assertThat(
-            popularAccommodationCache.get(cacheKey)
+            popularAccommodationCache.get(dailyCacheKey)
         ).isNull();
+        assertThat(popularAccommodationCache.get(weeklyCacheKey))
+            .isNull();
+    }
+
+    private void putPeriodCaches(
+        String dailyCacheKey,
+        String weeklyCacheKey
+    ) {
+        popularAccommodationCache.put(dailyCacheKey, "daily-value");
+        popularAccommodationCache.put(weeklyCacheKey, "weekly-value");
     }
 
     /**

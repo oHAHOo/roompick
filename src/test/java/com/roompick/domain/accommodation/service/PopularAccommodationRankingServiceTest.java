@@ -22,6 +22,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
+import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -33,6 +34,9 @@ class PopularAccommodationRankingServiceTest {
 
     private static final String DAILY_KEY =
         "roompick:popular:accommodations:daily:2026-07-29";
+
+    private static final String WEEKLY_KEY =
+        "roompick:popular:accommodations:weekly:2026-07-27";
 
     @Mock
     private PopularAccommodationRankingRepository
@@ -52,10 +56,17 @@ class PopularAccommodationRankingServiceTest {
         Long accommodationId = 1L;
 
         when(
-            popularAccommodationKeyGenerator.generateTodayKey()
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.DAILY
+            )
         ).thenReturn(
             DAILY_KEY
         );
+        when(
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.WEEKLY
+            )
+        ).thenReturn(WEEKLY_KEY);
 
         // when
         popularAccommodationRankingService.recordView(
@@ -69,6 +80,12 @@ class PopularAccommodationRankingServiceTest {
             DAILY_KEY,
             accommodationId
         );
+        verify(
+            popularAccommodationRankingRepository
+        ).incrementScore(
+            WEEKLY_KEY,
+            accommodationId
+        );
     }
 
     @Test
@@ -77,10 +94,17 @@ class PopularAccommodationRankingServiceTest {
         Long accommodationId = 1L;
 
         when(
-            popularAccommodationKeyGenerator.generateTodayKey()
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.DAILY
+            )
         ).thenReturn(
             DAILY_KEY
         );
+        when(
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.WEEKLY
+            )
+        ).thenReturn(WEEKLY_KEY);
 
         doThrow(
             new DataAccessResourceFailureException(
@@ -99,6 +123,13 @@ class PopularAccommodationRankingServiceTest {
                 accommodationId
             )
         ).doesNotThrowAnyException();
+
+        verify(
+            popularAccommodationRankingRepository
+        ).incrementScore(
+            WEEKLY_KEY,
+            accommodationId
+        );
     }
 
     @Test
@@ -114,7 +145,9 @@ class PopularAccommodationRankingServiceTest {
             );
 
         when(
-            popularAccommodationKeyGenerator.generateTodayKey()
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.DAILY
+            )
         ).thenReturn(
             DAILY_KEY
         );
@@ -134,6 +167,7 @@ class PopularAccommodationRankingServiceTest {
         List<Long> result =
             popularAccommodationRankingService
                 .findRankedAccommodationIds(
+                    PopularAccommodationPeriod.DAILY,
                     limit,
                     0L,
                     49L
@@ -165,7 +199,9 @@ class PopularAccommodationRankingServiceTest {
             );
 
         when(
-            popularAccommodationKeyGenerator.generateTodayKey()
+            popularAccommodationKeyGenerator.generateCurrentKey(
+                PopularAccommodationPeriod.WEEKLY
+            )
         ).thenReturn(DAILY_KEY);
 
         when(
@@ -181,6 +217,7 @@ class PopularAccommodationRankingServiceTest {
         assertThatThrownBy(() ->
             popularAccommodationRankingService
                 .findRankedAccommodationIds(
+                    PopularAccommodationPeriod.WEEKLY,
                     limit,
                     0L,
                     49L
@@ -201,6 +238,7 @@ class PopularAccommodationRankingServiceTest {
         assertThatThrownBy(
             () -> popularAccommodationRankingService
                 .findRankedAccommodationIds(
+                    PopularAccommodationPeriod.DAILY,
                     invalidLimit,
                     0L,
                     99L
