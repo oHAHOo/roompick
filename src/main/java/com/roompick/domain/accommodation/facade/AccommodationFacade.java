@@ -3,7 +3,6 @@ package com.roompick.domain.accommodation.facade;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +11,7 @@ import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
@@ -68,7 +68,10 @@ public class AccommodationFacade {
                 .getPopularAccommodations(
                     limit
                 );
-        } catch (DataAccessException exception) {
+        } catch (
+            PopularAccommodationRankingUnavailableException
+                exception
+        ) {
             log.warn(
                 "Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. limit={}",
                 limit,

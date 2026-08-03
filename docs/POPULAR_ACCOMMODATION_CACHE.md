@@ -221,7 +221,7 @@ PopularAccommodationQueryService
 ## 8. 숙소 정보 변경 시 캐시 무효화
 
 다음 변경이 정상적으로 완료되면
-인기 숙소 캐시를 모두 삭제합니다.
+인기 숙소 캐시 전체 삭제를 요청합니다.
 
 - 숙소 공개 정보 수정
 - 숙소 상태를 `INACTIVE`로 변경
@@ -257,6 +257,9 @@ RedisCacheManager.transactionAware()
 
 숙소 정보 변경 트랜잭션 안에서 캐시 삭제를 요청하더라도
 실제 캐시 삭제는 트랜잭션 완료 시점에 처리합니다.
+
+DB 커밋 전에 캐시를 먼저 삭제하면 다른 요청이 아직 커밋되지 않은
+이전 DB 데이터로 캐시를 다시 생성할 수 있으므로 커밋 이후에 삭제합니다.
 
 ### 트랜잭션 커밋
 
@@ -321,6 +324,36 @@ Redis 캐시 저장 실패
 캐시는 성능 최적화 수단이므로
 캐시 장애가 사용자 API 전체 장애로 이어지지 않도록 합니다.
 
+### 정상 상황의 캐시 무효화
+
+Redis가 정상이면 숙소 공개 정보 수정 또는 `INACTIVE` 전환의
+DB 트랜잭션이 커밋된 직후 인기 숙소 캐시 전체가 삭제됩니다.
+다음 인기 숙소 요청은 최신 ACTIVE 숙소를 기준으로 캐시를 재생성합니다.
+
+### 캐시 무효화 실패와 stale 허용 범위
+
+Redis 장애로 커밋 이후 캐시 전체 삭제가 실패해도
+CacheErrorHandler는 경고 로그를 남기고 DB 트랜잭션 결과를 되돌리지 않습니다.
+
+이 경우 Redis 연결이 복구된 뒤 기존 캐시가 아직 만료되지 않았다면
+변경 전 응답 DTO가 일시적으로 반환될 수 있습니다. 현재 MVP에서는 이를
+기존 캐시에 남아 있던 TTL 범위에서 허용합니다.
+
+- stale 응답 허용 범위는 해당 캐시 Key에 남아 있는 TTL까지입니다.
+- 운영 설정의 기본 TTL은 60초이며, TTL 설정을 변경하면 최대 stale 허용 범위도 함께 변경됩니다.
+- 숙소 변경 시점부터 새로운 TTL이 부여되는 것이 아니라 기존 Key의 남은 TTL만 적용됩니다.
+- 캐시 HIT마다 ACTIVE 상태를 DB에서 다시 검증하지 않습니다.
+
+캐시 HIT마다 DB를 조회하면 HIT에서도 Redis 랭킹과 DB 조회를 생략한다는
+Cache-Aside 목적이 훼손되므로, 장애 중 짧은 stale 허용을 선택합니다.
+
+이번 MVP에서는 캐시 삭제 재시도나 Redis 복구 감지 기능을 구현하지 않습니다.
+운영의 즉시 제거 요구가 강화되면 다음 방식을 검토합니다.
+
+- 캐시 전체 삭제 재시도
+- Redis 복구 감지 후 인기 숙소 캐시 전체 삭제
+- 이벤트 또는 메시지 기반 보상 처리
+
 ---
 
 ## 11. 숙소 상세 조회 중 Redis 장애
@@ -351,7 +384,8 @@ Redis 점수 기록 실패 시
 
 ## 12. 인기 숙소 조회 중 Redis 장애
 
-Redis 캐시 또는 인기 랭킹 조회에 실패하면
+Redis 캐시 조회에 실패하면 실제 인기 숙소 조회 로직을 계속 실행합니다.
+이후 Redis 인기 랭킹 조회까지 실패한 경우에만
 DB에서 최신 ACTIVE 숙소를 조회하여 임시 응답을 반환합니다.
 
 ```text
@@ -382,6 +416,15 @@ Redis 장애 시 다음 형식의 경고 로그를 남깁니다.
 ```text
 Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. limit={limit}
 ```
+
+Redis Ranking Repository의 `DataAccessException`은
+`PopularAccommodationRankingService`에서
+`PopularAccommodationRankingUnavailableException`으로 변환합니다.
+Facade는 이 전용 예외만 catch하여 DB fallback을 실행합니다.
+
+ACTIVE 숙소 공개 정보 DB 조회에서 발생한 `DataAccessException`은
+Redis 장애로 처리하지 않고 상위로 그대로 전달합니다. 장애가 발생한 DB를
+fallback 명목으로 다시 조회하지 않습니다.
 
 ---
 
@@ -490,13 +533,17 @@ Redis 장애가 복구된 뒤 다음 요청에서는
 - 트랜잭션 커밋 후 실제 Redis 캐시 삭제
 - 트랜잭션 롤백 시 Redis 캐시 유지
 - 롤백 시 숙소 DB 변경사항도 유지되지 않음
+- 캐시 전체 삭제 실패를 CacheErrorHandler가 외부로 전달하지 않음
+- TTL 만료 후 최신 조회 결과로 캐시 재생성
 
 ### Redis 장애
 
+- Redis Ranking Repository 예외를 전용 예외로 변환
 - Redis 인기 랭킹 조회 실패 시 DB fallback
 - Redis 장애 시 인기 숙소 API 정상 응답
 - Redis 인기 점수 기록 실패 시 상세 조회 정상 응답
 - fallback 결과를 인기 숙소 캐시에 저장하지 않음
+- 숙소 DB `DataAccessException`은 fallback하지 않고 그대로 전달
 
 ### DB fallback
 

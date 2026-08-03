@@ -20,6 +20,7 @@ import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
@@ -247,13 +248,19 @@ class AccommodationFacadeTest {
                 "Redis 연결 실패"
             );
 
+        PopularAccommodationRankingUnavailableException
+            rankingUnavailableException =
+            new PopularAccommodationRankingUnavailableException(
+                redisException
+            );
+
         given(
             popularAccommodationQueryService
                 .getPopularAccommodations(
                     limit
                 )
         ).willThrow(
-            redisException
+            rankingUnavailableException
         );
 
         /*
@@ -340,6 +347,35 @@ class AccommodationFacadeTest {
             .findLatestActive(
                 limit
             );
+    }
+
+    @Test
+    @DisplayName(
+        "숙소 DB 조회가 실패하면 예외를 그대로 전달하고 "
+            + "fallback DB를 다시 조회하지 않는다"
+    )
+    void DB_조회_실패는_fallback_대상이_아니다() {
+        // given
+        int limit = 2;
+        DataAccessResourceFailureException databaseException =
+            new DataAccessResourceFailureException(
+                "Accommodation DB connection failed"
+            );
+
+        given(
+            popularAccommodationQueryService
+                .getPopularAccommodations(limit)
+        ).willThrow(databaseException);
+
+        // when & then
+        assertThatThrownBy(() ->
+            accommodationFacade.getPopularAccommodations(limit)
+        ).isSameAs(databaseException);
+
+        then(popularAccommodationQueryService)
+            .should()
+            .getPopularAccommodations(limit);
+        then(accommodationService).shouldHaveNoInteractions();
     }
 
     @Test

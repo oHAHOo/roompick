@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.global.common.BusinessException;
@@ -152,6 +153,43 @@ class PopularAccommodationRankingServiceTest {
             0L,
             49L
         );
+    }
+
+    @Test
+    void Redis_랭킹_조회_장애를_전용_예외로_변환하고_cause를_보존한다() {
+        // given
+        int limit = 10;
+        DataAccessResourceFailureException redisException =
+            new DataAccessResourceFailureException(
+                "Redis connection failed"
+            );
+
+        when(
+            popularAccommodationKeyGenerator.generateTodayKey()
+        ).thenReturn(DAILY_KEY);
+
+        when(
+            popularAccommodationRankingRepository
+                .findRankedAccommodationIds(
+                    DAILY_KEY,
+                    0L,
+                    49L
+                )
+        ).thenThrow(redisException);
+
+        // when & then
+        assertThatThrownBy(() ->
+            popularAccommodationRankingService
+                .findRankedAccommodationIds(
+                    limit,
+                    0L,
+                    49L
+                )
+        )
+            .isInstanceOf(
+                PopularAccommodationRankingUnavailableException.class
+            )
+            .hasCause(redisException);
     }
 
     @ParameterizedTest

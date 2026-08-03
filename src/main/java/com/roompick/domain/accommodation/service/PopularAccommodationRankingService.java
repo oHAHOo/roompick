@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.global.common.BusinessException;
@@ -77,12 +78,18 @@ public class PopularAccommodationRankingService {
         String key =
             popularAccommodationKeyGenerator.generateTodayKey();
 
-        return popularAccommodationRankingRepository
-            .findRankedAccommodationIds(
-                key,
-                start,
-                end
+        try {
+            return popularAccommodationRankingRepository
+                .findRankedAccommodationIds(
+                    key,
+                    start,
+                    end
+                );
+        } catch (DataAccessException exception) {
+            throw new PopularAccommodationRankingUnavailableException(
+                exception
             );
+        }
     }
 
     /**
