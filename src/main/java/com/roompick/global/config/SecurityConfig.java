@@ -31,7 +31,7 @@ public class SecurityConfig {
         "/api/v1/auth/refresh",
         "/actuator/health",
         "/actuator/info",
-        "/actuator/metrics",
+        "/actuator/metrics/**",
         "/actuator/prometheus"
     };
 
