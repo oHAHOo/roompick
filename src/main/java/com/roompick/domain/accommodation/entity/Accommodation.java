@@ -96,6 +96,43 @@ public class Accommodation extends BaseTimeEntity {
         this.status = status;
     }
 
+    /**
+     * 숙소의 공개 정보를 수정합니다.
+     *
+     * 수정 전 필수값을 검증하고,
+     * 검증에 성공한 경우에만 Entity 상태를 변경합니다.
+     */
+    public void updatePublicInformation(
+        String name,
+        String address,
+        String description,
+        LocalTime checkInTime,
+        LocalTime checkOutTime
+    ) {
+        validateName(name);
+        validateAddress(address);
+        validateTimes(
+            checkInTime,
+            checkOutTime
+        );
+
+        this.name = name;
+        this.address = address;
+        this.description = description;
+        this.checkInTime = checkInTime;
+        this.checkOutTime = checkOutTime;
+    }
+
+    /**
+     * 숙소를 운영 중단 상태로 변경합니다.
+     *
+     * 비공개 전환된 숙소는 공개 목록과 인기 숙소 목록에서
+     * 더 이상 노출되지 않아야 합니다.
+     */
+    public void inactivate() {
+        this.status = AccommodationStatus.INACTIVE;
+    }
+
     private static void validateName(String name) {
         if (name == null || name.isBlank()) {
             throw new BusinessException(ErrorCode.ACCOMMODATION_NAME_REQUIRED);
