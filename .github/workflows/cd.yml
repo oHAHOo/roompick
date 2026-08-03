@@ -101,12 +101,17 @@ jobs:
           script: |
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             sudo docker pull ${{ env.IMAGE }}:${{ github.sha }}
+            if ! sudo docker network inspect roompick-net > /dev/null 2>&1; then
+              echo "roompick-net Docker network not found on EC2 host — aborting deploy, existing container left untouched" >&2
+              exit 1
+            fi
             sudo docker stop roompick-backend || true
             sudo docker rm roompick-backend || true
             sudo docker run -d --name roompick-backend \
               --network roompick-net \
               --env-file /home/ec2-user/app/.env.prod \
               -p 8080:8080 \
+              -p 127.0.0.1:8081:8081 \
               --restart unless-stopped \
               ${{ env.IMAGE }}:${{ github.sha }}
             sudo docker image prune -af

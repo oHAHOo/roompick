@@ -4,7 +4,7 @@
 
 ## 구성
 
-- **EC2 단일 인스턴스**: 애플리케이션 컨테이너만 실행
+- **EC2 단일 인스턴스**: 애플리케이션 컨테이너 + Prometheus/Grafana 모니터링 컨테이너 실행
 - **RDS MySQL**: EC2와 분리된 관리형 데이터베이스
 - **리전**: `ap-northeast-2` (서울)
 
@@ -58,8 +58,10 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 - **EC2 보안그룹**
   - `22` (SSH): 내 IP만 허용
   - `8080` (앱): `0.0.0.0/0` 허용
-  - `3000` (Grafana): `0.0.0.0/0` 허용 — Grafana 자체 로그인으로 보호
+  - `3000` (Grafana): 팀 고정 IP만 허용 — 로그인 자체 보호에 더해 네트워크 레벨로도 제한
   - `9090` (Prometheus): 내 IP만 허용 — Prometheus는 자체 인증이 없어 공개 노출 금지
+  - `8081` (Actuator management 포트): 보안그룹에 규칙을 추가하지 않음 — `127.0.0.1`에만
+    바인딩되고 `roompick-net` 내부 컨테이너 간 통신으로만 접근 가능하므로 공개 노출되지 않음
 - **RDS 보안그룹**
   - `3306`: EC2 보안그룹에서 들어오는 트래픽만 허용 (퍼블릭 미노출)
 
@@ -69,7 +71,7 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 2. RDS용 보안그룹 생성 → 3306 인바운드를 EC2 보안그룹으로 제한
 3. RDS MySQL 인스턴스 생성 (`db.t4g.micro`, 단일 AZ, 퍼블릭 액세스 비활성화)
 4. EC2용 보안그룹 생성 → 22(내 IP), 8080(전체) 허용
-5. EC2 인스턴스 생성 (`t3.micro`, Amazon Linux 2023, user-data로 Docker 설치)
+5. EC2 인스턴스 생성 (`t3.small`, Amazon Linux 2023, user-data로 Docker 설치)
 6. EC2 보안그룹을 RDS 보안그룹의 인바운드 허용 대상으로 지정
 
 실제 리소스 생성(과금 발생) 전에는 위 사양과 예상 비용을 다시 한번 확인한 뒤 진행합니다.
@@ -103,9 +105,15 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
      --network roompick-net \
      --env-file .env.prod \
      -p 8080:8080 \
+     -p 127.0.0.1:8081:8081 \
      --restart unless-stopped \
      roompick-backend
    ```
+
+   `8081`은 Actuator management 포트(`management.server.port`, prod 프로필 전용)입니다.
+   `127.0.0.1`에만 바인딩하므로 EC2 로컬(SSH 세션)에서만 `curl`로 접근 가능하고, 외부에는
+   전혀 노출되지 않습니다. Prometheus는 이 포트를 호스트 바인딩이 아니라 `roompick-net`
+   내부에서 컨테이너 이름(`roompick-backend:8081`)으로 직접 접근합니다.
 
    `roompick-net`은 Redis 컨테이너가 붙어있는 Docker 네트워크입니다. 이 옵션이 빠지면
    앱이 기본 `bridge` 네트워크에 떠서 `redis` 호스트명을 찾지 못해 헬스체크가 `DOWN`이
@@ -120,7 +128,15 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 ## 7. 배포 확인
 
 ```bash
-curl http://<EC2 퍼블릭 IP>:8080/actuator/health
+curl http://<EC2 퍼블릭 IP>:8080/api/v1/accommodations
+```
+
+정상 응답(200)을 확인합니다. Actuator `health`는 `8081`(loopback 전용)에 있으므로
+공개 IP로는 확인할 수 없고, EC2에 SSH 접속한 뒤 확인합니다.
+
+```bash
+ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
+curl http://127.0.0.1:8081/actuator/health
 ```
 
 `{"status":"UP"}` 응답을 확인합니다.
@@ -188,7 +204,8 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
   실패해도 자동으로 서비스가 끊기지는 않습니다.
 - 단, 컨테이너 교체 스텝(`docker stop` → `docker rm` → `docker run`) 도중에 실패하면
   이전 컨테이너는 이미 내려간 상태에서 새 컨테이너 기동이 안 됐을 수 있습니다. 이 경우
-  `curl http://<EC2 퍼블릭 IP>:8080/actuator/health`가 응답하지 않는 것으로 확인합니다.
+  `curl http://<EC2 퍼블릭 IP>:8080/api/v1/accommodations`가 응답하지 않는 것으로 확인합니다
+  (Actuator `health`는 `8081`(loopback 전용)이라 EC2 로컬에서만 확인 가능합니다).
 
 ### 10-2. 이전 버전으로 롤백
 
@@ -209,10 +226,11 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
      --network roompick-net \
      --env-file /home/ec2-user/app/.env.prod \
      -p 8080:8080 \
+     -p 127.0.0.1:8081:8081 \
      --restart unless-stopped \
      ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
    ```
-4. `curl http://<EC2 퍼블릭 IP>:8080/actuator/health`로 정상 기동 확인
+4. `curl http://127.0.0.1:8081/actuator/health`(EC2 로컬)로 정상 기동 확인
 
 ### 10-3. 코드 원인 수정 후 재배포
 
@@ -234,16 +252,23 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 ## 11. 모니터링 (Prometheus + Grafana)
 
 앱과 같은 EC2(`t3.small`)에서 `monitoring/docker-compose.yml`로 Prometheus와 Grafana를
-별도 컨테이너로 구동합니다. 앱은 기존과 동일하게 `docker run`으로 실행되며, Prometheus는
-`host-gateway`를 통해 호스트의 `8080` 포트(`/actuator/prometheus`)를 스크레이핑합니다.
+별도 컨테이너로 구동합니다. 앱은 기존과 동일하게 `docker run`으로 실행되며, Actuator는
+prod 프로필에서 `management.server.port=8081`로 분리되어 있습니다. Prometheus는
+호스트를 거치지 않고 `roompick-net` 내부에서 컨테이너 이름(`roompick-backend:8081`)으로
+직접 스크레이핑합니다.
 
 ### 11-1. 최초 구동
 
 ```bash
 ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
+docker network inspect roompick-net > /dev/null 2>&1 || docker network create roompick-net
 cd roompick-backend/monitoring
+echo "GF_SECURITY_ADMIN_PASSWORD=<운영용 Grafana 비밀번호>" > .env   # 기본 admin/admin 기동 방지, git에 포함하지 않음
 docker compose up -d
 ```
+
+`roompick-net`은 앱 컨테이너가 이미 사용 중인 네트워크와 동일합니다(5절). 앱 컨테이너가
+먼저 떠 있어야 Prometheus가 `roompick-backend:8081`을 이름으로 찾을 수 있습니다.
 
 ### 11-2. 확인
 
@@ -251,16 +276,17 @@ docker compose up -d
 curl http://localhost:9090/api/v1/targets   # roompick-backend job이 up인지 확인
 ```
 
-- Grafana: `http://<EC2 퍼블릭 IP>:3000` (최초 로그인 `admin`/`admin`, 즉시 비밀번호 변경)
+- Grafana: `http://<EC2 퍼블릭 IP>:3000` (`GF_SECURITY_ADMIN_PASSWORD`로 지정한 비밀번호로 로그인,
+  기본 `admin`/`admin` 계정으로는 기동되지 않습니다)
 - Grafana Data source로 Prometheus 추가 시 URL은 컨테이너 간 통신이므로 `http://prometheus:9090`
 
 ### 11-3. 알려진 제약
 
 - Prometheus(`9090`)는 자체 인증이 없어 보안그룹에서 내 IP로만 허용합니다(2절 참고).
-- `/actuator/metrics`, `/actuator/prometheus`는 `SecurityConfig`의 `PERMIT_ALL_PATHS`에
-  포함되어 있어 인증 없이 `8080`으로 직접 접근 가능합니다. 현재는 앱 자체 인증으로 막지 않고
-  있으므로, JVM 상세 지표가 외부에 노출된다는 점을 인지하고 있어야 합니다. 필요 시 별도
-  네트워크 레벨 제한(예: 8080의 `/actuator/**` 경로만 막는 리버스 프록시)을 향후 검토합니다.
+- Grafana(`3000`)는 보안그룹에서 팀 고정 IP로만 허용합니다(2절 참고). `GF_SECURITY_ADMIN_PASSWORD`를
+  설정하지 않으면 `docker compose up`이 즉시 실패합니다.
+- Actuator 상세 지표(`/actuator/metrics/**`, `/actuator/prometheus`)는 `8081`(loopback +
+  `roompick-net` 내부 전용)에만 있어 `8080` 공개 포트로는 접근할 수 없습니다.
 - Prometheus/Grafana 데이터는 Docker named volume(`prometheus-data`, `grafana-data`)에
   저장되므로 컨테이너를 재생성해도 유지되지만, EC2 인스턴스 자체가 삭제되면 함께 사라집니다.
 
