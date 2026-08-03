@@ -68,7 +68,7 @@ public enum ErrorCode {
     PORTONE_PAYMENT_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "PORTONE_PAYMENT_AMOUNT_MISMATCH", "PortOne 결제 금액이 저장된 결제 금액과 일치하지 않습니다."),
     PAYMENT_LOCK_TIMEOUT(HttpStatus.CONFLICT,"PAYMENT_LOCK_TIMEOUT","결제 처리 요청이 많습니다. 잠시 후 다시 시도해주세요."),
     PAYMENT_IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT, "PAYMENT_IDEMPOTENCY_CONFLICT", "이미 처리된 결제와 요청 정보가 일치하지 않습니다."),
-    PAYMENT_STATE_INCONSISTENCY(HttpStatus.CONFLICT,"PAYMENT_STATE_INCONSISTENCY","결제 상태와 예약 상태가 일치하지 않습니다."),
+    PAYMENT_STATE_INCONSISTENCY(HttpStatus.INTERNAL_SERVER_ERROR, "PAYMENT_STATE_INCONSISTENCY", "결제 상태와 예약 상태가 일치하지 않습니다."),
     PAYMENT_CONFLICT(HttpStatus.CONFLICT,"PAYMENT_CONFLICT","이미 완료된 결제와 다른 처리 요청이 충돌합니다.");
 
     private final HttpStatus httpStatus;

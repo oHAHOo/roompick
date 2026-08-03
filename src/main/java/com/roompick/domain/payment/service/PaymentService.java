@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.payment.entity.Payment;
-import com.roompick.domain.payment.entity.PaymentStatus;
 import com.roompick.domain.payment.repository.PaymentRepository;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.global.common.BusinessException;
@@ -94,13 +93,13 @@ public class PaymentService {
 
     /**
      * PortOne 외부 API를 호출하기 전에
-     * 결제 소유권과 현재 상태를 검증합니다.
+     * 결제 소유권을 검증합니다.
      *
      * 외부 API 호출 중에는 DB 락을 유지하지 않기 위해
      * 일반 조회 메서드를 사용합니다.
      *
-     * 이 단계에서는 READY 상태만 결제 완료 처리를
-     * 진행할 수 있도록 검증합니다.
+     * 결제 상태에 따른 멱등성 및 처리 가능 여부는
+     * PaymentFacade에서 판단합니다.
      */
     @Transactional(readOnly = true)
     public Payment findForPortOneCompletion(
@@ -252,25 +251,6 @@ public class PaymentService {
     }
 
     /**
-     * PortOne 외부 API 호출 전에
-     * 결제 완료 처리가 가능한지 검증합니다.
-     *
-     * 외부 API를 불필요하게 호출하지 않도록
-     * 소유권과 READY 상태를 함께 확인합니다.
-     */
-    private void validatePortOneCompletion(
-        Payment payment,
-        Long memberId
-    ) {
-        validatePaymentOwner(
-            payment,
-            memberId
-        );
-
-        validateReadyStatus(payment);
-    }
-
-    /**
      * 결제에 연결된 예약이
      * 요청 회원의 예약인지 검증합니다.
      */
@@ -306,31 +286,6 @@ public class PaymentService {
         )) {
             throw new BusinessException(
                 ErrorCode.RESERVATION_ACCESS_DENIED
-            );
-        }
-    }
-
-    /**
-     * 결제가 상태 변경 가능한
-     * READY 상태인지 검증합니다.
-     *
-     * PortOne 외부 API 호출 전 사전 검증에서만
-     * 사용합니다.
-     *
-     * 공통 비관적 락 조회 메서드에서는
-     * 이 검증을 호출하지 않습니다.
-     */
-    private void validateReadyStatus(
-        Payment payment
-    ) {
-        validatePayment(payment);
-
-        if (
-            payment.getStatus()
-                != PaymentStatus.READY
-        ) {
-            throw new BusinessException(
-                ErrorCode.INVALID_PAYMENT_STATUS
             );
         }
     }
