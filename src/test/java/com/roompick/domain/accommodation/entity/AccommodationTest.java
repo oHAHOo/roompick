@@ -101,4 +101,72 @@ class AccommodationTest {
         assertThat(exception.getErrorCode())
             .isEqualTo(ErrorCode.ACCOMMODATION_TIME_REQUIRED);
     }
+
+    @Test
+    @DisplayName("숙소의 공개 정보를 수정할 수 있다")
+    void updatePublicInformation() {
+        // given
+        Accommodation accommodation = Accommodation.create(
+            "룸픽 호텔",
+            "서울특별시 강남구",
+            "기존 숙소 설명",
+            LocalTime.of(15, 0),
+            LocalTime.of(11, 0)
+        );
+
+        String updatedName = "수정된 룸픽 호텔";
+        String updatedAddress = "서울특별시 송파구";
+        String updatedDescription = "수정된 숙소 설명";
+        LocalTime updatedCheckInTime =
+            LocalTime.of(16, 0);
+        LocalTime updatedCheckOutTime =
+            LocalTime.of(10, 0);
+
+        // when
+        accommodation.updatePublicInformation(
+            updatedName,
+            updatedAddress,
+            updatedDescription,
+            updatedCheckInTime,
+            updatedCheckOutTime
+        );
+
+        // then
+        assertThat(accommodation.getName())
+            .isEqualTo(updatedName);
+
+        assertThat(accommodation.getAddress())
+            .isEqualTo(updatedAddress);
+
+        assertThat(accommodation.getDescription())
+            .isEqualTo(updatedDescription);
+
+        assertThat(accommodation.getCheckInTime())
+            .isEqualTo(updatedCheckInTime);
+
+        assertThat(accommodation.getCheckOutTime())
+            .isEqualTo(updatedCheckOutTime);
+    }
+
+    @Test
+    @DisplayName("숙소를 운영 중단 상태로 변경할 수 있다")
+    void inactivateAccommodation() {
+        // given
+        Accommodation accommodation = Accommodation.create(
+            "룸픽 호텔",
+            "서울특별시 강남구",
+            "숙소 설명",
+            LocalTime.of(15, 0),
+            LocalTime.of(11, 0)
+        );
+
+        // when
+        accommodation.inactivate();
+
+        // then
+        assertThat(accommodation.getStatus())
+            .isEqualTo(
+                AccommodationStatus.INACTIVE
+            );
+    }
 }

@@ -14,17 +14,23 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.accommodation.service.PopularAccommodationService;
+import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
+import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 /**
- * 사용자 숙소 조회 흐름과 인기 숙소 점수 기록 여부를 검증합니다.
+ * 사용자 숙소 조회 흐름과
+ * 인기 숙소 장애 대응 흐름을 검증합니다.
  */
 @ExtendWith(MockitoExtension.class)
 class AccommodationFacadeTest {
@@ -36,26 +42,36 @@ class AccommodationFacadeTest {
     private RoomService roomService;
 
     @Mock
-    private PopularAccommodationService popularAccommodationService;
+    private PopularAccommodationRankingService
+        popularAccommodationRankingService;
+
+    @Mock
+    private PopularAccommodationQueryService
+        popularAccommodationQueryService;
 
     @InjectMocks
     private AccommodationFacade accommodationFacade;
 
     @Test
-    @DisplayName("운영 중인 숙소 상세 조회에 성공하면 인기 점수를 기록한다")
+    @DisplayName(
+        "운영 중인 숙소 상세 조회에 성공하면 "
+            + "인기 점수를 기록한다"
+    )
     void 운영_중인_숙소_상세_조회에_성공하면_인기_점수를_기록한다() {
-        // given
+        // given: 운영 중인 숙소를 준비합니다.
         Long accommodationId = 1L;
 
-        LocalTime checkInTime = LocalTime.of(
-            15,
-            0
-        );
+        LocalTime checkInTime =
+            LocalTime.of(
+                15,
+                0
+            );
 
-        LocalTime checkOutTime = LocalTime.of(
-            11,
-            0
-        );
+        LocalTime checkOutTime =
+            LocalTime.of(
+                11,
+                0
+            );
 
         Accommodation accommodation =
             Accommodation.create(
@@ -74,13 +90,13 @@ class AccommodationFacadeTest {
             accommodation
         );
 
-        // when
+        // when: 숙소 상세 정보를 조회합니다.
         AccommodationDetailResponseDto response =
             accommodationFacade.getAccommodationDetail(
                 accommodationId
             );
 
-        // then
+        // then: 숙소 공개 정보가 응답에 포함됩니다.
         assertThat(response.name())
             .isEqualTo("룸픽 호텔");
 
@@ -88,7 +104,9 @@ class AccommodationFacadeTest {
             .isEqualTo("서울특별시 중구");
 
         assertThat(response.description())
-            .isEqualTo("인기 숙소 랭킹 테스트용 숙소");
+            .isEqualTo(
+                "인기 숙소 랭킹 테스트용 숙소"
+            );
 
         assertThat(response.checkInTime())
             .isEqualTo(checkInTime);
@@ -96,13 +114,17 @@ class AccommodationFacadeTest {
         assertThat(response.checkOutTime())
             .isEqualTo(checkOutTime);
 
+        /*
+         * 정상적으로 상세 응답이 생성된 경우에만
+         * Redis 인기 점수 기록을 요청합니다.
+         */
         then(accommodationService)
             .should()
             .findActiveById(
                 accommodationId
             );
 
-        then(popularAccommodationService)
+        then(popularAccommodationRankingService)
             .should()
             .recordView(
                 accommodationId
@@ -110,9 +132,12 @@ class AccommodationFacadeTest {
     }
 
     @Test
-    @DisplayName("숙소 상세 조회에 실패하면 인기 점수를 기록하지 않는다")
+    @DisplayName(
+        "숙소 상세 조회에 실패하면 "
+            + "인기 점수를 기록하지 않는다"
+    )
     void 숙소_상세_조회에_실패하면_인기_점수를_기록하지_않는다() {
-        // given
+        // given: 숙소 DB 조회에서 예외가 발생합니다.
         Long accommodationId = 999L;
 
         RuntimeException exception =
@@ -128,282 +153,276 @@ class AccommodationFacadeTest {
             exception
         );
 
-        // when & then
+        // when & then: 조회 예외가 그대로 전달됩니다.
         assertThatThrownBy(
-            () -> accommodationFacade.getAccommodationDetail(
-                accommodationId
-            )
+            () ->
+                accommodationFacade
+                    .getAccommodationDetail(
+                        accommodationId
+                    )
         ).isSameAs(
             exception
         );
 
-        then(popularAccommodationService)
+        /*
+         * 숙소 조회와 DTO 생성이 완료되지 않았으므로
+         * Redis 인기 점수는 기록하지 않습니다.
+         */
+        then(popularAccommodationRankingService)
             .shouldHaveNoInteractions();
     }
 
     @Test
-    @DisplayName("인기 숙소를 Redis 순서로 정렬하고 제외된 숙소 이후 순위를 다시 계산한다")
-    void 인기_숙소를_Redis_순서로_정렬하고_순위를_다시_계산한다() {
-        // given
-        int limit = 10;
-
-        /*
-         * Redis 인기 순위는 3번 → 2번 → 1번 숙소입니다.
-         */
-        List<Long> rankedAccommodationIds =
-            List.of(
-                3L,
-                2L,
-                1L
-            );
-
-        /*
-         * DB에서는 ACTIVE 숙소만 반환합니다.
-         *
-         * 2번 숙소는 삭제됐거나 INACTIVE 상태라고 가정하여
-         * DB 조회 결과에 포함하지 않습니다.
-         *
-         * 또한 DB 반환 순서를 1번 → 3번으로 구성해
-         * Facade가 Redis 순서로 다시 정렬하는지 확인합니다.
-         */
-        List<AccommodationListResponseDto> activeAccommodations =
-            List.of(
-                new AccommodationListResponseDto(
-                    1L,
-                    "룸픽 서울 호텔",
-                    "서울특별시 중구"
-                ),
-                new AccommodationListResponseDto(
-                    3L,
-                    "룸픽 부산 호텔",
-                    "부산광역시 해운대구"
-                )
-            );
-
-        given(
-            popularAccommodationService.findRankedAccommodationIds(
-                limit
-            )
-        ).willReturn(
-            rankedAccommodationIds
-        );
-
-        given(
-            accommodationService.findAllActiveSummaryByIds(
-                rankedAccommodationIds
-            )
-        ).willReturn(
-            activeAccommodations
-        );
-
-        // when
-        List<PopularAccommodationResponseDto> result =
-            accommodationFacade.getPopularAccommodations(
-                limit
-            );
-
-        // then
-        assertThat(result).hasSize(
-            2
-        );
-
-        /*
-         * Redis 1위였던 3번 숙소가 최종 1위로 유지됩니다.
-         */
-        assertThat(result.get(0).rank())
-            .isEqualTo(1);
-
-        assertThat(result.get(0).accommodationId())
-            .isEqualTo(3L);
-
-        assertThat(result.get(0).name())
-            .isEqualTo("룸픽 부산 호텔");
-
-        /*
-         * Redis 2위였던 2번 숙소가 제외됐으므로
-         * 기존 3위였던 1번 숙소가 최종 2위가 됩니다.
-         */
-        assertThat(result.get(1).rank())
-            .isEqualTo(2);
-
-        assertThat(result.get(1).accommodationId())
-            .isEqualTo(1L);
-
-        assertThat(result.get(1).name())
-            .isEqualTo("룸픽 서울 호텔");
-
-        then(popularAccommodationService)
-            .should()
-            .findRankedAccommodationIds(
-                limit
-            );
-
-        then(accommodationService)
-            .should()
-            .findAllActiveSummaryByIds(
-                rankedAccommodationIds
-            );
-    }
-
-    @Test
-    @DisplayName("상위 랭킹에 비공개 숙소가 있어도 하위 ACTIVE 숙소로 limit을 채운다")
-    void 상위_랭킹에_비공개_숙소가_있어도_하위_ACTIVE_숙소로_limit을_채운다() {
-        // given
+    @DisplayName(
+        "Redis 인기 숙소 조회가 성공하면 "
+            + "조회 Service의 결과를 그대로 반환한다"
+    )
+    void Redis_인기_숙소_조회가_성공하면_결과를_그대로_반환한다() {
+        // given: 캐시 또는 Redis 랭킹 기반 조회 결과를 준비합니다.
         int limit = 2;
 
-        /*
-         * Redis 인기 순위는 4번 → 3번 → 2번 → 1번입니다.
-         *
-         * 상위 2개 중 3번 숙소는 삭제됐거나 INACTIVE 상태이며,
-         * 그 아래 순위인 2번 숙소가 ACTIVE 상태라고 가정합니다.
-         */
-        List<Long> rankedAccommodationIds =
+        List<PopularAccommodationResponseDto> expected =
             List.of(
-                4L,
-                3L,
-                2L,
-                1L
-            );
-
-        /*
-         * DB는 ACTIVE 숙소만 반환합니다.
-         * 반환 순서는 Redis 순서와 다르게 구성합니다.
-         */
-        List<AccommodationListResponseDto> activeAccommodations =
-            List.of(
-                new AccommodationListResponseDto(
-                    1L,
-                    "룸픽 제주 호텔",
-                    "제주특별자치도 제주시"
+                PopularAccommodationResponseDto.from(
+                    1,
+                    new AccommodationListResponseDto(
+                        3L,
+                        "룸픽 부산 호텔",
+                        "부산광역시 해운대구"
+                    )
                 ),
-                new AccommodationListResponseDto(
-                    2L,
-                    "룸픽 서울 호텔",
-                    "서울특별시 중구"
-                ),
-                new AccommodationListResponseDto(
-                    4L,
-                    "룸픽 부산 호텔",
-                    "부산광역시 해운대구"
+                PopularAccommodationResponseDto.from(
+                    2,
+                    new AccommodationListResponseDto(
+                        1L,
+                        "룸픽 서울 호텔",
+                        "서울특별시 중구"
+                    )
                 )
             );
 
         given(
-            popularAccommodationService.findRankedAccommodationIds(
-                limit
-            )
+            popularAccommodationQueryService
+                .getPopularAccommodations(
+                    limit
+                )
         ).willReturn(
-            rankedAccommodationIds
+            expected
         );
 
-        given(
-            accommodationService.findAllActiveSummaryByIds(
-                rankedAccommodationIds
-            )
-        ).willReturn(
-            activeAccommodations
-        );
-
-        // when
+        // when: 인기 숙소 목록을 조회합니다.
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
                 limit
             );
 
-        // then
-        assertThat(result).hasSize(
-            limit
+        // then: QueryService의 결과를 그대로 반환합니다.
+        assertThat(result)
+            .isSameAs(expected);
+
+        then(popularAccommodationQueryService)
+            .should()
+            .getPopularAccommodations(
+                limit
+            );
+
+        /*
+         * Redis 조회가 정상 처리됐으므로
+         * DB fallback 조회는 실행하지 않습니다.
+         */
+        then(accommodationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "Redis 인기 숙소 조회에 실패하면 "
+            + "최신 ACTIVE 숙소를 임시 fallback으로 반환한다"
+    )
+    void Redis_인기_숙소_조회에_실패하면_DB_fallback을_반환한다() {
+        // given: Redis 조회 과정에서 연결 장애가 발생합니다.
+        int limit = 2;
+
+        DataAccessResourceFailureException redisException =
+            new DataAccessResourceFailureException(
+                "Redis 연결 실패"
+            );
+
+        PopularAccommodationRankingUnavailableException
+            rankingUnavailableException =
+            new PopularAccommodationRankingUnavailableException(
+                redisException
+            );
+
+        given(
+            popularAccommodationQueryService
+                .getPopularAccommodations(
+                    limit
+                )
+        ).willThrow(
+            rankingUnavailableException
         );
 
         /*
-         * Redis 1위인 4번 숙소는 최종 1위입니다.
+         * fallback은 실제 인기 순위가 아니라
+         * 최신 등록 순서로 조회한 ACTIVE 숙소 목록입니다.
+         */
+        List<AccommodationListResponseDto>
+            latestActiveAccommodations =
+            List.of(
+                new AccommodationListResponseDto(
+                    10L,
+                    "최근 등록된 룸픽 호텔",
+                    "서울특별시 강남구"
+                ),
+                new AccommodationListResponseDto(
+                    8L,
+                    "두 번째 최신 룸픽 호텔",
+                    "서울특별시 종로구"
+                )
+            );
+
+        given(
+            accommodationService.findLatestActive(
+                limit
+            )
+        ).willReturn(
+            latestActiveAccommodations
+        );
+
+        // when: 인기 숙소 목록을 조회합니다.
+        List<PopularAccommodationResponseDto> result =
+            accommodationFacade.getPopularAccommodations(
+                limit
+            );
+
+        // then: API 응답 형식을 유지한 임시 목록을 반환합니다.
+        assertThat(result)
+            .hasSize(2);
+
+        /*
+         * fallback의 rank는 실제 인기 순위가 아니라
+         * 응답 형식을 유지하기 위한 임시 순번입니다.
          */
         assertThat(result.get(0).rank())
             .isEqualTo(1);
 
         assertThat(result.get(0).accommodationId())
-            .isEqualTo(4L);
+            .isEqualTo(10L);
 
-        /*
-         * Redis 2위인 3번 숙소가 제외되므로
-         * Redis 3위인 2번 숙소가 최종 2위를 채웁니다.
-         */
+        assertThat(result.get(0).name())
+            .isEqualTo(
+                "최근 등록된 룸픽 호텔"
+            );
+
+        assertThat(result.get(0).address())
+            .isEqualTo(
+                "서울특별시 강남구"
+            );
+
         assertThat(result.get(1).rank())
             .isEqualTo(2);
 
         assertThat(result.get(1).accommodationId())
-            .isEqualTo(2L);
+            .isEqualTo(8L);
 
-        /*
-         * limit이 채워진 뒤에는 더 낮은 순위의
-         * 1번 ACTIVE 숙소를 결과에 포함하지 않습니다.
-         */
-        assertThat(result)
-            .extracting(
-                PopularAccommodationResponseDto::accommodationId
-            )
-            .containsExactly(
-                4L,
-                2L
+        assertThat(result.get(1).name())
+            .isEqualTo(
+                "두 번째 최신 룸픽 호텔"
             );
 
-        then(popularAccommodationService)
+        assertThat(result.get(1).address())
+            .isEqualTo(
+                "서울특별시 종로구"
+            );
+
+        then(popularAccommodationQueryService)
             .should()
-            .findRankedAccommodationIds(
+            .getPopularAccommodations(
                 limit
             );
 
         then(accommodationService)
             .should()
-            .findAllActiveSummaryByIds(
-                rankedAccommodationIds
+            .findLatestActive(
+                limit
             );
     }
 
     @Test
-    @DisplayName("인기 숙소 랭킹이 없으면 빈 목록을 반환한다")
-    void 인기_숙소_랭킹이_없으면_빈_목록을_반환한다() {
+    @DisplayName(
+        "숙소 DB 조회가 실패하면 예외를 그대로 전달하고 "
+            + "fallback DB를 다시 조회하지 않는다"
+    )
+    void DB_조회_실패는_fallback_대상이_아니다() {
         // given
-        int limit = 10;
-
-        List<Long> rankedAccommodationIds =
-            List.of();
-
-        given(
-            popularAccommodationService.findRankedAccommodationIds(
-                limit
-            )
-        ).willReturn(
-            rankedAccommodationIds
-        );
-
-        given(
-            accommodationService.findAllActiveSummaryByIds(
-                rankedAccommodationIds
-            )
-        ).willReturn(
-            List.of()
-        );
-
-        // when
-        List<PopularAccommodationResponseDto> result =
-            accommodationFacade.getPopularAccommodations(
-                limit
+        int limit = 2;
+        DataAccessResourceFailureException databaseException =
+            new DataAccessResourceFailureException(
+                "Accommodation DB connection failed"
             );
 
-        // then
-        assertThat(result).isEmpty();
+        given(
+            popularAccommodationQueryService
+                .getPopularAccommodations(limit)
+        ).willThrow(databaseException);
 
-        then(popularAccommodationService)
+        // when & then
+        assertThatThrownBy(() ->
+            accommodationFacade.getPopularAccommodations(limit)
+        ).isSameAs(databaseException);
+
+        then(popularAccommodationQueryService)
             .should()
-            .findRankedAccommodationIds(
-                limit
+            .getPopularAccommodations(limit);
+        then(accommodationService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "Redis 장애가 아닌 비즈니스 예외가 발생하면 "
+            + "DB fallback을 실행하지 않는다"
+    )
+    void 비즈니스_예외가_발생하면_DB_fallback을_실행하지_않는다() {
+        // given: 잘못된 limit 등의 비즈니스 예외를 준비합니다.
+        int invalidLimit = 0;
+
+        BusinessException exception =
+            new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
             );
 
+        given(
+            popularAccommodationQueryService
+                .getPopularAccommodations(
+                    invalidLimit
+                )
+        ).willThrow(
+            exception
+        );
+
+        // when & then: 입력 오류를 fallback으로 숨기지 않습니다.
+        assertThatThrownBy(
+            () ->
+                accommodationFacade
+                    .getPopularAccommodations(
+                        invalidLimit
+                    )
+        ).isSameAs(
+            exception
+        );
+
+        then(popularAccommodationQueryService)
+            .should()
+            .getPopularAccommodations(
+                invalidLimit
+            );
+
+        /*
+         * Redis 장애가 아니므로
+         * 최신 숙소 fallback 조회를 수행하지 않습니다.
+         */
         then(accommodationService)
-            .should()
-            .findAllActiveSummaryByIds(
-                rankedAccommodationIds
-            );
+            .shouldHaveNoInteractions();
     }
 }

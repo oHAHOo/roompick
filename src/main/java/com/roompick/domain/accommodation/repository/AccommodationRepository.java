@@ -74,4 +74,29 @@ public interface AccommodationRepository
     List<AccommodationListResponseDto> findAllActiveSummaryByIdIn(
         @Param("accommodationIds") List<Long> accommodationIds
     );
+
+    /**
+     * Redis 인기 랭킹을 사용할 수 없을 때
+     * 임시 fallback으로 제공할 최신 운영 숙소를 조회합니다.
+     *
+     * 이 결과는 실제 인기 순위가 아니며,
+     * 장애 중 API 응답을 유지하기 위한 임시 목록입니다.
+     */
+    @Query(
+        """
+        SELECT new com.roompick.domain.accommodation.dto.AccommodationListResponseDto(
+            accommodation.id,
+            accommodation.name,
+            accommodation.address
+        )
+        FROM Accommodation accommodation
+        WHERE accommodation.status =
+            com.roompick.domain.accommodation.entity.AccommodationStatus.ACTIVE
+        ORDER BY accommodation.createdAt DESC,
+            accommodation.id DESC
+        """
+    )
+    List<AccommodationListResponseDto> findLatestActive(
+        Pageable pageable
+    );
 }

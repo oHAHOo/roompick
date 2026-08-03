@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 
+import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.global.common.BusinessException;
@@ -28,7 +29,7 @@ import com.roompick.global.common.ErrorCode;
  * 인기 숙소 점수 기록과 랭킹 조회 흐름을 검증합니다.
  */
 @ExtendWith(MockitoExtension.class)
-class PopularAccommodationServiceTest {
+class PopularAccommodationRankingServiceTest {
 
     private static final String DAILY_KEY =
         "roompick:popular:accommodations:daily:2026-07-29";
@@ -42,8 +43,8 @@ class PopularAccommodationServiceTest {
         popularAccommodationKeyGenerator;
 
     @InjectMocks
-    private PopularAccommodationService
-        popularAccommodationService;
+    private PopularAccommodationRankingService
+        popularAccommodationRankingService;
 
     @Test
     void 숙소_조회_점수를_정상적으로_기록한다() {
@@ -57,7 +58,7 @@ class PopularAccommodationServiceTest {
         );
 
         // when
-        popularAccommodationService.recordView(
+        popularAccommodationRankingService.recordView(
             accommodationId
         );
 
@@ -94,14 +95,14 @@ class PopularAccommodationServiceTest {
 
         // when & then
         assertThatCode(
-            () -> popularAccommodationService.recordView(
+            () -> popularAccommodationRankingService.recordView(
                 accommodationId
             )
         ).doesNotThrowAnyException();
     }
 
     @Test
-    void 인기_숙소_ID_전체를_점수_순서대로_조회한다() {
+    void 인기_숙소_ID를_지정_범위에서_점수_순서대로_조회한다() {
         // given
         int limit = 10;
 
@@ -120,8 +121,10 @@ class PopularAccommodationServiceTest {
 
         when(
             popularAccommodationRankingRepository
-                .findAllRankedAccommodationIds(
-                    DAILY_KEY
+                .findRankedAccommodationIds(
+                    DAILY_KEY,
+                    0L,
+                    49L
                 )
         ).thenReturn(
             rankedAccommodationIds
@@ -129,9 +132,11 @@ class PopularAccommodationServiceTest {
 
         // when
         List<Long> result =
-            popularAccommodationService
+            popularAccommodationRankingService
                 .findRankedAccommodationIds(
-                    limit
+                    limit,
+                    0L,
+                    49L
                 );
 
         // then
@@ -143,9 +148,48 @@ class PopularAccommodationServiceTest {
 
         verify(
             popularAccommodationRankingRepository
-        ).findAllRankedAccommodationIds(
-            DAILY_KEY
+        ).findRankedAccommodationIds(
+            DAILY_KEY,
+            0L,
+            49L
         );
+    }
+
+    @Test
+    void Redis_랭킹_조회_장애를_전용_예외로_변환하고_cause를_보존한다() {
+        // given
+        int limit = 10;
+        DataAccessResourceFailureException redisException =
+            new DataAccessResourceFailureException(
+                "Redis connection failed"
+            );
+
+        when(
+            popularAccommodationKeyGenerator.generateTodayKey()
+        ).thenReturn(DAILY_KEY);
+
+        when(
+            popularAccommodationRankingRepository
+                .findRankedAccommodationIds(
+                    DAILY_KEY,
+                    0L,
+                    49L
+                )
+        ).thenThrow(redisException);
+
+        // when & then
+        assertThatThrownBy(() ->
+            popularAccommodationRankingService
+                .findRankedAccommodationIds(
+                    limit,
+                    0L,
+                    49L
+                )
+        )
+            .isInstanceOf(
+                PopularAccommodationRankingUnavailableException.class
+            )
+            .hasCause(redisException);
     }
 
     @ParameterizedTest
@@ -155,9 +199,11 @@ class PopularAccommodationServiceTest {
     ) {
         // when & then
         assertThatThrownBy(
-            () -> popularAccommodationService
+            () -> popularAccommodationRankingService
                 .findRankedAccommodationIds(
-                    invalidLimit
+                    invalidLimit,
+                    0L,
+                    99L
                 )
         )
             .isInstanceOf(BusinessException.class)

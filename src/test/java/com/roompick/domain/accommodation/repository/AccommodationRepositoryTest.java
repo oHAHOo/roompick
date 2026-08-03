@@ -2,6 +2,7 @@ package com.roompick.domain.accommodation.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -10,12 +11,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
-import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.global.config.JpaConfig;
 
 import jakarta.persistence.EntityManager;
@@ -35,9 +35,12 @@ class AccommodationRepositoryTest {
     private EntityManager entityManager;
 
     @Test
-    @DisplayName("숙소 ID 목록 중 ACTIVE 숙소의 공개 요약 정보만 조회한다")
+    @DisplayName(
+        "숙소 ID 목록 중 ACTIVE 숙소의 "
+            + "공개 요약 정보만 조회한다"
+    )
     void findAllActiveSummaryByIdIn() {
-        // given
+        // given: 운영 중인 숙소를 저장합니다.
         Accommodation activeAccommodation =
             accommodationRepository.save(
                 Accommodation.create(
@@ -49,6 +52,12 @@ class AccommodationRepositoryTest {
                 )
             );
 
+        /*
+         * 운영 중단된 숙소도 함께 저장합니다.
+         *
+         * Repository 쿼리가 ACTIVE 상태만 반환하는지
+         * 확인하기 위한 테스트 데이터입니다.
+         */
         Accommodation inactiveAccommodation =
             Accommodation.create(
                 "룸픽 비공개 호텔",
@@ -58,20 +67,16 @@ class AccommodationRepositoryTest {
                 LocalTime.of(11, 0)
             );
 
-        /*
-         * 현재 숙소 Entity에는 비활성화 메서드가 없으므로
-         * Repository 조회 조건 테스트를 위해 상태만 변경합니다.
-         */
-        ReflectionTestUtils.setField(
-            inactiveAccommodation,
-            "status",
-            AccommodationStatus.INACTIVE
-        );
+        inactiveAccommodation.inactivate();
 
         accommodationRepository.save(
             inactiveAccommodation
         );
 
+        /*
+         * 저장 내용을 DB에 반영한 후 영속성 컨텍스트를 비워
+         * Repository 쿼리 결과를 실제 DB 기준으로 검증합니다.
+         */
         entityManager.flush();
         entityManager.clear();
 
@@ -81,17 +86,16 @@ class AccommodationRepositoryTest {
                 inactiveAccommodation.getId()
             );
 
-        // when
+        // when: 전달한 ID에 해당하는 ACTIVE 숙소를 조회합니다.
         List<AccommodationListResponseDto> result =
             accommodationRepository
                 .findAllActiveSummaryByIdIn(
                     accommodationIds
                 );
 
-        // then
-        assertThat(result).hasSize(
-            1
-        );
+        // then: 운영 중인 숙소 한 건만 반환됩니다.
+        assertThat(result)
+            .hasSize(1);
 
         assertThat(result.get(0).accommodationId())
             .isEqualTo(
@@ -107,5 +111,208 @@ class AccommodationRepositoryTest {
             .isEqualTo(
                 "서울특별시 중구"
             );
+    }
+
+    @Test
+    @DisplayName(
+        "Redis 장애 fallback은 최신 ACTIVE 숙소를 "
+            + "생성일과 ID 내림차순으로 limit만큼 조회한다"
+    )
+    void findLatestActive() {
+        // given: 가장 오래된 운영 숙소를 저장합니다.
+        Accommodation oldestActiveAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "오래된 룸픽 호텔",
+                    "서울특별시 중구",
+                    "가장 오래된 운영 숙소입니다.",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        /*
+         * 생성 시각이 같은 두 운영 숙소를 저장합니다.
+         *
+         * 생성 시각이 같을 경우 ID가 큰 숙소가
+         * 먼저 반환되는지 확인합니다.
+         */
+        Accommodation sameTimeLowerIdAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "동일 시각 첫 번째 호텔",
+                    "서울특별시 종로구",
+                    "동일 생성 시각의 첫 번째 숙소입니다.",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        Accommodation sameTimeHigherIdAccommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "동일 시각 두 번째 호텔",
+                    "서울특별시 송파구",
+                    "동일 생성 시각의 두 번째 숙소입니다.",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        /*
+         * 가장 최근에 등록된 숙소지만 INACTIVE 상태로 저장합니다.
+         *
+         * 생성 시각이 가장 최신이어도 fallback 결과에서는
+         * 제외되어야 합니다.
+         */
+        Accommodation newestInactiveAccommodation =
+            Accommodation.create(
+                "최신 비공개 호텔",
+                "서울특별시 강남구",
+                "가장 최근이지만 운영 중단된 숙소입니다.",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0)
+            );
+
+        newestInactiveAccommodation.inactivate();
+
+        newestInactiveAccommodation =
+            accommodationRepository.save(
+                newestInactiveAccommodation
+            );
+
+        entityManager.flush();
+
+        /*
+         * JPA Auditing이 자동 생성한 시각 대신
+         * 테스트에서 의도한 생성 시각을 DB에 직접 설정합니다.
+         *
+         * 이렇게 하면 테스트 실행 속도에 의존하지 않고
+         * 정렬 조건을 안정적으로 검증할 수 있습니다.
+         */
+        updateCreatedAt(
+            oldestActiveAccommodation.getId(),
+            LocalDateTime.of(
+                2026,
+                7,
+                28,
+                10,
+                0
+            )
+        );
+
+        LocalDateTime sameCreatedAt =
+            LocalDateTime.of(
+                2026,
+                7,
+                29,
+                10,
+                0
+            );
+
+        updateCreatedAt(
+            sameTimeLowerIdAccommodation.getId(),
+            sameCreatedAt
+        );
+
+        updateCreatedAt(
+            sameTimeHigherIdAccommodation.getId(),
+            sameCreatedAt
+        );
+
+        updateCreatedAt(
+            newestInactiveAccommodation.getId(),
+            LocalDateTime.of(
+                2026,
+                7,
+                30,
+                10,
+                0
+            )
+        );
+
+        /*
+         * Native Query로 변경한 생성 시각을 기준으로
+         * 다시 조회하도록 영속성 컨텍스트를 초기화합니다.
+         */
+        entityManager.clear();
+
+        int limit = 2;
+
+        // when: Redis 장애 시 사용할 최신 ACTIVE 숙소를 조회합니다.
+        List<AccommodationListResponseDto> result =
+            accommodationRepository.findLatestActive(
+                PageRequest.of(
+                    0,
+                    limit
+                )
+            );
+
+        // then: 요청한 limit만큼만 반환됩니다.
+        assertThat(result)
+            .hasSize(limit);
+
+        /*
+         * 가장 최신인 INACTIVE 숙소는 제외됩니다.
+         *
+         * 남은 ACTIVE 숙소 중 생성 시각이 같은 경우에는
+         * ID가 큰 숙소가 먼저 반환됩니다.
+         */
+        assertThat(result)
+            .extracting(
+                AccommodationListResponseDto::accommodationId
+            )
+            .containsExactly(
+                sameTimeHigherIdAccommodation.getId(),
+                sameTimeLowerIdAccommodation.getId()
+            );
+
+        assertThat(result)
+            .extracting(
+                AccommodationListResponseDto::name
+            )
+            .containsExactly(
+                "동일 시각 두 번째 호텔",
+                "동일 시각 첫 번째 호텔"
+            );
+
+        /*
+         * 오래된 ACTIVE 숙소는 limit 때문에 제외되고,
+         * 최신 INACTIVE 숙소는 상태 조건 때문에 제외됩니다.
+         */
+        assertThat(result)
+            .extracting(
+                AccommodationListResponseDto::accommodationId
+            )
+            .doesNotContain(
+                oldestActiveAccommodation.getId(),
+                newestInactiveAccommodation.getId()
+            );
+    }
+
+    /**
+     * fallback 정렬 테스트에서 사용할 생성 시각을
+     * DB에 직접 설정합니다.
+     */
+    private void updateCreatedAt(
+        Long accommodationId,
+        LocalDateTime createdAt
+    ) {
+        entityManager.createNativeQuery(
+                """
+                UPDATE accommodations
+                SET created_at = :createdAt
+                WHERE accommodation_id = :accommodationId
+                """
+            )
+            .setParameter(
+                "createdAt",
+                createdAt
+            )
+            .setParameter(
+                "accommodationId",
+                accommodationId
+            )
+            .executeUpdate();
     }
 }
