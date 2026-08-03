@@ -32,6 +32,9 @@ class AccommodationServiceTest {
     @Mock
     private AccommodationRepository accommodationRepository;
 
+    @Mock
+    private PopularAccommodationCacheService popularAccommodationCacheService;
+
     @InjectMocks
     private AccommodationService accommodationService;
 
@@ -69,6 +72,76 @@ class AccommodationServiceTest {
                 ((BusinessException) exception).getErrorCode()
             )
             .isEqualTo(ErrorCode.ACCOMMODATION_NOT_FOUND);
+    }
+
+    @Test
+    void 숙소_공개_정보를_수정하면_인기_숙소_캐시를_삭제한다() {
+        // given: 수정할 숙소가 존재합니다.
+        Long accommodationId = 1L;
+        Accommodation accommodation = createAccommodation();
+
+        given(accommodationRepository.findById(accommodationId))
+            .willReturn(Optional.of(accommodation));
+
+        String updatedName = "수정된 룸픽 호텔";
+        String updatedAddress = "서울특별시 송파구";
+        String updatedDescription = "수정된 숙소 설명";
+        LocalTime updatedCheckInTime =
+            LocalTime.of(16, 0);
+        LocalTime updatedCheckOutTime =
+            LocalTime.of(10, 0);
+
+        // when: 숙소의 공개 정보를 수정합니다.
+        Accommodation result =
+            accommodationService.updatePublicInformation(
+                accommodationId,
+                updatedName,
+                updatedAddress,
+                updatedDescription,
+                updatedCheckInTime,
+                updatedCheckOutTime
+            );
+
+        // then: 숙소 정보가 변경되고 인기 숙소 캐시 삭제를 요청합니다.
+        assertThat(result).isSameAs(accommodation);
+        assertThat(result.getName()).isEqualTo(updatedName);
+        assertThat(result.getAddress()).isEqualTo(updatedAddress);
+        assertThat(result.getDescription())
+            .isEqualTo(updatedDescription);
+        assertThat(result.getCheckInTime())
+            .isEqualTo(updatedCheckInTime);
+        assertThat(result.getCheckOutTime())
+            .isEqualTo(updatedCheckOutTime);
+
+        then(popularAccommodationCacheService)
+            .should()
+            .evictAll();
+    }
+
+    @Test
+    void 숙소를_비공개로_전환하면_인기_숙소_캐시를_삭제한다() {
+        // given: 운영 중인 숙소가 존재합니다.
+        Long accommodationId = 1L;
+        Accommodation accommodation = createAccommodation();
+
+        given(accommodationRepository.findById(accommodationId))
+            .willReturn(Optional.of(accommodation));
+
+        // when: 숙소를 운영 중단 상태로 변경합니다.
+        accommodationService.inactivateAccommodation(
+            accommodationId
+        );
+
+        // then: 숙소가 비공개 상태로 변경되고 캐시 삭제를 요청합니다.
+        assertThat(accommodation.getStatus())
+            .isEqualTo(
+                com.roompick.domain.accommodation.entity
+                    .AccommodationStatus.INACTIVE
+            );
+
+        then(popularAccommodationCacheService)
+            .should()
+            .evictAll();
     }
 
     private Accommodation createAccommodation() {
