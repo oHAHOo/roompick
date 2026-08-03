@@ -74,8 +74,6 @@ class PaymentServicePortOneCompletionTest {
         given(member.getId())
             .willReturn(MEMBER_ID);
 
-        given(payment.getStatus())
-            .willReturn(PaymentStatus.READY);
 
         // when
         Payment result =
@@ -103,9 +101,9 @@ class PaymentServicePortOneCompletionTest {
 
     @Test
     @DisplayName(
-        "PortOne 외부 호출 전 결제가 READY 상태가 아니면 거절한다"
+        "PortOne 외부 호출 전 조회에서는 승인 완료된 결제도 소유권 확인 후 반환한다"
     )
-    void rejectPortOneCompletionWhenPaymentIsNotReady() {
+    void findForPortOneCompletionReturnsPaidPayment() {
 
         // given
         given(
@@ -130,34 +128,19 @@ class PaymentServicePortOneCompletionTest {
             .willReturn(PaymentStatus.PAID);
 
         // when
-        BusinessException exception =
-            catchThrowableOfType(
-                () ->
-                    paymentService
-                        .findForPortOneCompletion(
-                            PAYMENT_ID,
-                            MEMBER_ID
-                        ),
-                BusinessException.class
-            );
+        Payment result =
+            paymentService
+                .findForPortOneCompletion(
+                    PAYMENT_ID,
+                    MEMBER_ID
+                );
 
         // then
-        assertThat(exception.getErrorCode())
-            .isEqualTo(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            );
+        assertThat(result)
+            .isSameAs(payment);
 
-        then(paymentRepository)
-            .should()
-            .findByIdWithReservationAndMember(
-                PAYMENT_ID
-            );
-
-        then(paymentRepository)
-            .should(never())
-            .findByIdForUpdate(
-                PAYMENT_ID
-            );
+        assertThat(result.getStatus())
+            .isEqualTo(PaymentStatus.PAID);
     }
 
     @Test

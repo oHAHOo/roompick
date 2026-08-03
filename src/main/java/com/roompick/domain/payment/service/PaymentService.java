@@ -121,7 +121,7 @@ public class PaymentService {
                     )
                 );
 
-        validatePortOneCompletion(
+        validatePaymentOwner(
             payment,
             memberId
         );

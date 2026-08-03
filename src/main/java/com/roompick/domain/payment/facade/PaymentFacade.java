@@ -3,7 +3,10 @@ package com.roompick.domain.payment.facade;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 
+import com.roompick.domain.payment.entity.PaymentStatus;
+import com.roompick.domain.reservation.entity.ReservationStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -76,13 +79,6 @@ public class PaymentFacade {
         );
     }
 
-    /**
-     * 기존 Mock 결제를 승인하고
-     * 연결된 예약을 확정합니다.
-     *
-     * Payment를 비관적 쓰기 락으로 조회하여
-     * 동일 결제의 중복 상태 변경을 방지합니다.
-     */
     @Transactional
     public PaymentApproveResponseDto approvePayment(
         Long paymentId,
@@ -98,6 +94,29 @@ public class PaymentFacade {
 
         Reservation reservation =
             payment.getReservation();
+
+        PaymentStatus currentStatus =
+            payment.getStatus();
+
+        if (
+            currentStatus
+                == PaymentStatus.PAID
+        ) {
+            return resolveExistingMockApproval(
+                payment,
+                reservation,
+                requestedAmount
+            );
+        }
+
+        if (
+            currentStatus
+                == PaymentStatus.FAILED
+        ) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_CONFLICT
+            );
+        }
 
         LocalDateTime approvedAt =
             LocalDateTime
@@ -125,11 +144,11 @@ public class PaymentFacade {
     }
 
     /**
-     * READY 상태의 기존 Mock 결제를 실패 처리하고
+     * READY 상태의 Mock 결제를 실패 처리하고
      * 연결된 예약을 취소합니다.
      *
-     * Payment를 비관적 쓰기 락으로 조회하여
-     * 동일 결제의 중복 상태 변경을 방지합니다.
+     * 이미 동일한 실패 처리가 완료된 경우에는
+     * 상태 전이를 다시 수행하지 않고 기존 결과를 반환합니다.
      */
     @Transactional
     public PaymentFailResponseDto failPayment(
@@ -146,6 +165,28 @@ public class PaymentFacade {
         Reservation reservation =
             payment.getReservation();
 
+        PaymentStatus currentStatus =
+            payment.getStatus();
+
+        if (
+            currentStatus
+                == PaymentStatus.FAILED
+        ) {
+            return resolveExistingMockFailure(
+                payment,
+                reservation
+            );
+        }
+
+        if (
+            currentStatus
+                == PaymentStatus.PAID
+        ) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_CONFLICT
+            );
+        }
+
         LocalDateTime failedAt =
             LocalDateTime
                 .now(SERVICE_ZONE_ID)
@@ -159,11 +200,12 @@ public class PaymentFacade {
                 failedAt
             );
 
-        reservationService.cancelByPaymentFailure(
-            reservation,
-            memberId,
-            failedAt
-        );
+        reservationService
+            .cancelByPaymentFailure(
+                reservation,
+                memberId,
+                failedAt
+            );
 
         return PaymentFailResponseDto.from(
             failedPayment
@@ -186,8 +228,8 @@ public class PaymentFacade {
         /*
          * PortOne 외부 API 호출 전 일반 조회입니다.
          *
-         * 요청 회원의 결제인지 확인하고
-         * Payment가 READY 상태인지 검증합니다.
+         * 요청 회원의 결제인지 확인하고,
+         * 현재 결제 상태에 따라 멱등성 또는 진행 가능 여부를 판단합니다.
          *
          * 외부 API를 호출하는 동안 DB 락을
          * 유지하지 않기 위해 일반 조회를 사용합니다.
@@ -198,6 +240,40 @@ public class PaymentFacade {
                     paymentId,
                     memberId
                 );
+
+        Reservation reservationSnapshot =
+            paymentSnapshot.getReservation();
+
+        PaymentStatus snapshotStatus =
+            paymentSnapshot.getStatus();
+
+        if (
+            snapshotStatus
+                == PaymentStatus.PAID
+        ) {
+            return resolveExistingPortOneCompletion(
+                paymentSnapshot,
+                reservationSnapshot
+            );
+        }
+
+        if (
+            snapshotStatus
+                == PaymentStatus.FAILED
+        ) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_CONFLICT
+            );
+        }
+
+        if (
+            snapshotStatus
+                != PaymentStatus.READY
+        ) {
+            throw new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+        }
 
         String expectedPortOnePaymentId =
             paymentSnapshot
@@ -250,13 +326,6 @@ public class PaymentFacade {
         return result;
     }
 
-    /**
-     * PortOne 응답 검증 이후 실행되는
-     * 결제 및 예약 상태 변경 트랜잭션입니다.
-     *
-     * Payment를 비관적 쓰기 락으로 조회하여
-     * 동일 결제의 동시 상태 변경을 방지합니다.
-     */
     private PaymentCompleteResponseDto
     completePortOnePaymentInTransaction(
         Long paymentId,
@@ -264,17 +333,6 @@ public class PaymentFacade {
         PortOnePaymentVerificationResultDto
             verificationResult
     ) {
-
-        /*
-         * Mock 승인, Mock 실패, PortOne 완료 처리가
-         * 모두 동일한 공통 비관적 락 조회를 사용합니다.
-         *
-         * 공통 락 조회에서는 최신 Payment를 조회하고
-         * 결제 소유권을 검증합니다.
-         *
-         * READY 상태 검증은 실제 상태 전이 메서드인
-         * approvePortOnePayment()에서 처리합니다.
-         */
         Payment payment =
             paymentService
                 .findForPaymentTransitionForUpdate(
@@ -284,6 +342,38 @@ public class PaymentFacade {
 
         Reservation reservation =
             payment.getReservation();
+
+        PaymentStatus currentStatus =
+            payment.getStatus();
+
+        if (
+            currentStatus
+                == PaymentStatus.PAID
+        ) {
+            return resolveExistingPortOneCompletionAfterVerification(
+                payment,
+                reservation,
+                verificationResult
+            );
+        }
+
+        if (
+            currentStatus
+                == PaymentStatus.FAILED
+        ) {
+            throw new BusinessException(
+                ErrorCode.PAYMENT_CONFLICT
+            );
+        }
+
+        if (
+            currentStatus
+                != PaymentStatus.READY
+        ) {
+            throw new BusinessException(
+                ErrorCode.INVALID_PAYMENT_STATUS
+            );
+        }
 
         Payment approvedPayment =
             paymentService
@@ -304,5 +394,216 @@ public class PaymentFacade {
         return PaymentCompleteResponseDto.from(
             approvedPayment
         );
+    }
+    /**
+     * 이미 승인된 Mock 결제 재요청의 멱등성을 처리합니다.
+     *
+     * Payment와 Reservation이 모두 정상 완료 상태이고,
+     * 기존 결제 금액과 재요청 금액이 같은 경우에만
+     * 기존 성공 결과를 반환합니다.
+     */
+    private PaymentApproveResponseDto
+    resolveExistingMockApproval(
+        Payment payment,
+        Reservation reservation,
+        long requestedAmount
+    ) {
+        validateApprovedStateConsistency(
+            reservation
+        );
+
+        validateIdempotentApprovalAmount(
+            payment,
+            requestedAmount
+        );
+
+        return PaymentApproveResponseDto.from(
+            payment
+        );
+    }
+
+    /**
+     * 승인 완료된 Payment와 Reservation의
+     * 상태가 일치하는지 검증합니다.
+     */
+    private void validateApprovedStateConsistency(
+        Reservation reservation
+    ) {
+        if (
+            reservation == null
+                || reservation.getStatus()
+                != ReservationStatus.CONFIRMED
+        ) {
+            throw new BusinessException(
+                ErrorCode
+                    .PAYMENT_STATE_INCONSISTENCY
+            );
+        }
+    }
+
+    /**
+     * 최초 승인 금액과 재요청 금액이
+     * 동일한지 검증합니다.
+     */
+    private void validateIdempotentApprovalAmount(
+        Payment payment,
+        long requestedAmount
+    ) {
+        if (
+            payment.getAmount()
+                != requestedAmount
+        ) {
+            throw new BusinessException(
+                ErrorCode
+                    .PAYMENT_IDEMPOTENCY_CONFLICT
+            );
+        }
+    }
+
+    /**
+     * 이미 실패 처리된 Mock 결제 재요청의
+     * 멱등성을 처리합니다.
+     */
+    private PaymentFailResponseDto
+    resolveExistingMockFailure(
+        Payment payment,
+        Reservation reservation
+    ) {
+        validateFailedStateConsistency(
+            reservation
+        );
+
+        return PaymentFailResponseDto.from(
+            payment
+        );
+    }
+
+    /**
+     * 실패 처리된 Payment에 연결된 Reservation이
+     * 정상적으로 취소됐는지 확인합니다.
+     */
+    private void validateFailedStateConsistency(
+        Reservation reservation
+    ) {
+        if (
+            reservation == null
+                || reservation.getStatus()
+                != ReservationStatus.CANCELED
+        ) {
+            throw new BusinessException(
+                ErrorCode
+                    .PAYMENT_STATE_INCONSISTENCY
+            );
+        }
+    }
+
+    /**
+     * 이미 완료된 PortOne 결제 재요청에 대해
+     * 기존 성공 결과를 반환합니다.
+     */
+    private PaymentCompleteResponseDto
+    resolveExistingPortOneCompletion(
+        Payment payment,
+        Reservation reservation
+    ) {
+        validateApprovedStateConsistency(
+            reservation
+        );
+
+        validateCompletedPortOnePayment(
+            payment
+        );
+
+        return PaymentCompleteResponseDto.from(
+            payment
+        );
+    }
+
+    /**
+     * 완료된 PortOne 결제에 필요한 정보가
+     * 정상적으로 저장되어 있는지 확인합니다.
+     */
+    private void validateCompletedPortOnePayment(
+        Payment payment
+    ) {
+        if (
+            payment.getPortOnePaymentId() == null
+                || payment
+                .getPortOneTransactionId()
+                == null
+                || payment.getApprovedAt() == null
+        ) {
+            throw new BusinessException(
+                ErrorCode
+                    .PAYMENT_STATE_INCONSISTENCY
+            );
+        }
+    }
+
+    /**
+     * 외부 PortOne 검증까지 마친 요청이 락을 획득했을 때,
+     * 다른 요청이 먼저 동일 결제를 완료했다면
+     * 기존 성공 결과를 반환합니다.
+     */
+    private PaymentCompleteResponseDto
+    resolveExistingPortOneCompletionAfterVerification(
+        Payment payment,
+        Reservation reservation,
+        PortOnePaymentVerificationResultDto
+            verificationResult
+    ) {
+        validateApprovedStateConsistency(
+            reservation
+        );
+
+        validateCompletedPortOnePayment(
+            payment
+        );
+
+        validateExistingPortOneResultMatches(
+            payment,
+            verificationResult
+        );
+
+        return PaymentCompleteResponseDto.from(
+            payment
+        );
+    }
+
+    /**
+     * 먼저 완료된 PortOne 결제 정보와
+     * 현재 요청이 검증한 결제 정보가 같은지 확인합니다.
+     */
+    private void validateExistingPortOneResultMatches(
+        Payment payment,
+        PortOnePaymentVerificationResultDto
+            verificationResult
+    ) {
+        boolean transactionIdMatches =
+            Objects.equals(
+                payment.getPortOneTransactionId(),
+                verificationResult.transactionId()
+            );
+
+        boolean amountMatches =
+            payment.getAmount()
+                == verificationResult.amount();
+
+        boolean paidAtMatches =
+            Objects.equals(
+                payment.getApprovedAt(),
+                verificationResult.paidAt()
+            );
+
+        if (
+            !transactionIdMatches
+                || !amountMatches
+                || !paidAtMatches
+        ) {
+            throw new BusinessException(
+                ErrorCode
+                    .PAYMENT_IDEMPOTENCY_CONFLICT
+            );
+        }
     }
 }
