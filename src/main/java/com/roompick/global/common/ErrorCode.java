@@ -65,7 +65,8 @@ public enum ErrorCode {
     PORTONE_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "PORTONE_INVALID_RESPONSE", "PortOne 결제 응답이 올바르지 않습니다."),
     PORTONE_PAYMENT_NOT_PAID(HttpStatus.CONFLICT, "PORTONE_PAYMENT_NOT_PAID", "PortOne에서 결제가 완료되지 않았습니다."),
     PORTONE_PAYMENT_ID_MISMATCH(HttpStatus.BAD_GATEWAY, "PORTONE_PAYMENT_ID_MISMATCH", "PortOne 결제 식별값이 일치하지 않습니다."),
-    PORTONE_PAYMENT_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "PORTONE_PAYMENT_AMOUNT_MISMATCH", "PortOne 결제 금액이 저장된 결제 금액과 일치하지 않습니다.");
+    PORTONE_PAYMENT_AMOUNT_MISMATCH(HttpStatus.CONFLICT, "PORTONE_PAYMENT_AMOUNT_MISMATCH", "PortOne 결제 금액이 저장된 결제 금액과 일치하지 않습니다."),
+    PAYMENT_LOCK_TIMEOUT(HttpStatus.CONFLICT,"PAYMENT_LOCK_TIMEOUT","결제 처리 요청이 많습니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus httpStatus;
     private final String code;
