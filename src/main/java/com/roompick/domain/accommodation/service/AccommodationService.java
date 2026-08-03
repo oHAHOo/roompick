@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class AccommodationService {
 
     private final AccommodationRepository accommodationRepository;
+    private final PopularAccommodationCacheService popularAccommodationCacheService;
 
     @Transactional(readOnly = true)
     public Accommodation findById(Long accommodationId) {
@@ -105,6 +106,76 @@ public class AccommodationService {
             .findAllActiveSummaryByIdIn(
                 accommodationIds
             );
+    }
+
+    /**
+     * Redis 인기 랭킹 장애 시 제공할 최신 운영 숙소를 조회합니다.
+     *
+     * 실제 인기 순위가 아니라 API 응답을 유지하기 위한 임시 fallback이며,
+     * 등록일이 최신인 ACTIVE 숙소를 요청한 개수만큼만 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<AccommodationListResponseDto> findLatestActive(
+        int limit
+    ) {
+        PageRequest pageable = PageRequest.of(
+            0,
+            limit
+        );
+
+        return accommodationRepository.findLatestActive(
+            pageable
+        );
+    }
+
+    /**
+     * 숙소의 공개 정보를 수정합니다.
+     *
+     * Entity 변경이 정상적으로 완료된 뒤 인기 숙소 캐시 삭제를 요청합니다.
+     * CacheManager의 transactionAware 설정에 따라 실제 삭제는
+     * 트랜잭션 커밋 이후 수행되며, 롤백되면 삭제되지 않습니다.
+     */
+    @Transactional
+    public Accommodation updatePublicInformation(
+        Long accommodationId,
+        String name,
+        String address,
+        String description,
+        LocalTime checkInTime,
+        LocalTime checkOutTime
+    ) {
+        Accommodation accommodation =
+            findById(accommodationId);
+
+        accommodation.updatePublicInformation(
+            name,
+            address,
+            description,
+            checkInTime,
+            checkOutTime
+        );
+
+        popularAccommodationCacheService.evictAll();
+
+        return accommodation;
+    }
+
+    /**
+     * 숙소를 운영 중단 상태로 변경합니다.
+     *
+     * 비공개 전환이 정상적으로 완료된 경우
+     * 기존 인기 숙소 캐시를 커밋 이후 삭제합니다.
+     */
+    @Transactional
+    public void inactivateAccommodation(
+        Long accommodationId
+    ) {
+        Accommodation accommodation =
+            findById(accommodationId);
+
+        accommodation.inactivate();
+
+        popularAccommodationCacheService.evictAll();
     }
 
     @Transactional

@@ -1,10 +1,9 @@
 package com.roompick.domain.accommodation.facade;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
@@ -14,12 +13,15 @@ import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
+import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationService;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class AccommodationFacade {
@@ -27,6 +29,7 @@ public class AccommodationFacade {
     private final AccommodationService accommodationService;
     private final RoomService roomService;
     private final PopularAccommodationService popularAccommodationService;
+    private final PopularAccommodationQueryService popularAccommodationQueryService;
 
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
@@ -50,70 +53,37 @@ public class AccommodationFacade {
     }
 
     /**
-     * 오늘 날짜의 인기 숙소 목록을 조회합니다.
+     * 인기 숙소 목록을 조회합니다.
      *
-     * Redis에서 전체 인기 숙소 ID를 순위대로 한 번 조회하고,
-     * 해당 숙소의 공개 정보는 IN 조건으로 한 번만 DB에서 조회합니다.
-     *
-     * DB 조회 결과는 순서가 보장되지 않으므로 Redis 랭킹 순서로 다시 정렬합니다.
-     * 존재하지 않거나 비공개 상태인 숙소는 제외하고,
-     * 최종 ACTIVE 숙소가 요청한 limit만큼 채워지면 조회 결과 생성을 종료합니다.
+     * Redis 인기 랭킹을 정상적으로 조회하면 실제 인기 순위를 반환하고,
+     * Redis 장애가 발생하면 최신 ACTIVE 숙소를 임시 fallback으로 반환합니다.
      */
     public List<PopularAccommodationResponseDto>
     getPopularAccommodations(
         int limit
     ) {
-        List<Long> rankedAccommodationIds =
-            popularAccommodationService.findRankedAccommodationIds(
-                limit
+        try {
+            return popularAccommodationQueryService
+                .getPopularAccommodations(
+                    limit
+                );
+        } catch (DataAccessException exception) {
+            log.warn(
+                "Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. limit={}",
+                limit,
+                exception
             );
 
-        List<AccommodationListResponseDto> activeAccommodations =
-            accommodationService.findAllActiveSummaryByIds(
-                rankedAccommodationIds
-            );
-
-        Map<Long, AccommodationListResponseDto> accommodationById =
-            new HashMap<>();
-
-        for (
-            AccommodationListResponseDto accommodation
-            : activeAccommodations
-        ) {
-            accommodationById.put(
-                accommodation.accommodationId(),
-                accommodation
-            );
-        }
-
-        List<PopularAccommodationResponseDto> result =
-            new ArrayList<>();
-
-        for (Long accommodationId : rankedAccommodationIds) {
-            AccommodationListResponseDto accommodation =
-                accommodationById.get(
-                    accommodationId
+            List<AccommodationListResponseDto>
+                latestActiveAccommodations =
+                accommodationService.findLatestActive(
+                    limit
                 );
 
-            if (accommodation == null) {
-                continue;
-            }
-
-            int rank = result.size() + 1;
-
-            result.add(
-                PopularAccommodationResponseDto.from(
-                    rank,
-                    accommodation
-                )
+            return createFallbackPopularAccommodations(
+                latestActiveAccommodations
             );
-
-            if (result.size() == limit) {
-                break;
-            }
         }
-
-        return result;
     }
 
     /**
@@ -162,5 +132,36 @@ public class AccommodationFacade {
             .findAllActiveSummaryByAccommodationId(
                 accommodationId
             );
+    }
+
+    /**
+     * 최신 ACTIVE 숙소 목록을 인기 숙소 응답 형태로 변환합니다.
+     *
+     * 여기서 부여하는 순위는 실제 인기 순위가 아니라
+     * fallback 응답 형식을 유지하기 위한 임시 순번입니다.
+     */
+    private List<PopularAccommodationResponseDto>
+    createFallbackPopularAccommodations(
+        List<AccommodationListResponseDto>
+            accommodations
+    ) {
+        List<PopularAccommodationResponseDto> result =
+            new ArrayList<>();
+
+        for (
+            AccommodationListResponseDto accommodation
+            : accommodations
+        ) {
+            int temporaryRank = result.size() + 1;
+
+            result.add(
+                PopularAccommodationResponseDto.from(
+                    temporaryRank,
+                    accommodation
+                )
+            );
+        }
+
+        return result;
     }
 }
