@@ -215,6 +215,7 @@ class AccommodationFacadeTest {
         // when: 인기 숙소 목록을 조회합니다.
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
@@ -353,6 +354,7 @@ class AccommodationFacadeTest {
         // when: 인기 숙소 목록을 조회합니다.
         List<PopularAccommodationResponseDto> result =
             accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
                 limit
             );
 
@@ -433,7 +435,10 @@ class AccommodationFacadeTest {
 
         // when & then
         assertThatThrownBy(() ->
-            accommodationFacade.getPopularAccommodations(limit)
+            accommodationFacade.getPopularAccommodations(
+                PopularAccommodationPeriod.DAILY,
+                limit
+            )
         ).isSameAs(databaseException);
 
         then(popularAccommodationQueryService)
@@ -474,6 +479,7 @@ class AccommodationFacadeTest {
             () ->
                 accommodationFacade
                     .getPopularAccommodations(
+                        PopularAccommodationPeriod.DAILY,
                         invalidLimit
                     )
         ).isSameAs(

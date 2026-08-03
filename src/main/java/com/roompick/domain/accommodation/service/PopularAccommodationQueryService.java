@@ -101,16 +101,6 @@ public class PopularAccommodationQueryService {
         return result;
     }
 
-    public List<PopularAccommodationResponseDto>
-    getPopularAccommodations(
-        int limit
-    ) {
-        return getPopularAccommodations(
-            PopularAccommodationPeriod.DAILY,
-            limit
-        );
-    }
-
     private void appendActiveAccommodations(
         List<Long> rankedAccommodationIds,
         List<PopularAccommodationResponseDto> result,

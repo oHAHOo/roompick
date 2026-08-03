@@ -113,19 +113,6 @@ public class PopularAccommodationRankingService {
         }
     }
 
-    public List<Long> findRankedAccommodationIds(
-        int limit,
-        long start,
-        long end
-    ) {
-        return findRankedAccommodationIds(
-            PopularAccommodationPeriod.DAILY,
-            limit,
-            start,
-            end
-        );
-    }
-
     /**
      * 인기 숙소 조회 개수가 허용 범위인지 검증합니다.
      */

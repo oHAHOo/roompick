@@ -94,16 +94,6 @@ public class AccommodationFacade {
         }
     }
 
-    public List<PopularAccommodationResponseDto>
-    getPopularAccommodations(
-        int limit
-    ) {
-        return getPopularAccommodations(
-            PopularAccommodationPeriod.DAILY,
-            limit
-        );
-    }
-
     /**
      * 운영 중인 숙소의 기본 정보를 조회하고 조회 점수를 기록합니다.
      *

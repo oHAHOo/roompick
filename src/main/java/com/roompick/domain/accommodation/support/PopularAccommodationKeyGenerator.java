@@ -52,15 +52,6 @@ public class PopularAccommodationKeyGenerator {
     }
 
     /**
-     * 기존 일간 호출과의 내부 호환을 위한 DAILY 키를 생성합니다.
-     */
-    public String generateTodayKey() {
-        return generateCurrentKey(
-            PopularAccommodationPeriod.DAILY
-        );
-    }
-
-    /**
      * 전달받은 날짜를 기간별 기준 날짜로 보정하여 인기 숙소 키를 생성합니다.
      *
      * 날짜를 직접 받는 메서드를 분리해 두면
@@ -87,15 +78,6 @@ public class PopularAccommodationKeyGenerator {
 
         return keyPrefix + resolveBaseDate(
             period,
-            date
-        );
-    }
-
-    public String generateDailyKey(
-        LocalDate date
-    ) {
-        return generateKey(
-            PopularAccommodationPeriod.DAILY,
             date
         );
     }
