@@ -1,0 +1,8 @@
+Cold cache DAILY limit=5
+표본 수: 100
+평균: 13.84ms
+p50: 11.79ms
+p95: 18.75ms
+p99: 61.68ms
+최소: 7.22ms
+최대: 77.29ms
