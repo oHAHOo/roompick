@@ -45,7 +45,8 @@ public class PopularAccommodationQueryService {
     @Cacheable(
         cacheNames = "popularAccommodations",
         key = "@popularAccommodationKeyGenerator.generateCurrentKey("
-            + "#root.args[0]) + ':' + #root.args[1]"
+            + "#root.args[0]) + ':' + #root.args[1]",
+        condition = "@popularAccommodationCacheCondition.isEnabled()"
     )
     public List<PopularAccommodationResponseDto>
     getPopularAccommodations(
