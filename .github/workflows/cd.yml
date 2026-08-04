@@ -101,11 +101,40 @@ jobs:
           script: |
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             sudo docker pull ${{ env.IMAGE }}:${{ github.sha }}
+
+            if ! sudo docker network inspect roompick-net > /dev/null 2>&1; then
+              echo "roompick-net Docker network not found on EC2 host — aborting deploy, existing container left untouched" >&2
+              exit 1
+            fi
+
+            REDIS_CONTAINER=roompick-redis
+            if ! sudo docker inspect "$REDIS_CONTAINER" > /dev/null 2>&1; then
+              echo "Redis container ($REDIS_CONTAINER) not found — aborting deploy, existing container left untouched" >&2
+              exit 1
+            fi
+
+            REDIS_RUNNING=$(sudo docker inspect --format '{{.State.Running}}' "$REDIS_CONTAINER" 2>/dev/null || true)
+            if [ "$REDIS_RUNNING" != "true" ]; then
+              echo "Redis container ($REDIS_CONTAINER) is not running — aborting deploy, existing container left untouched" >&2
+              exit 1
+            fi
+
+            REDIS_NETWORK=$(sudo docker inspect \
+              --format '{{index .NetworkSettings.Networks "roompick-net"}}' \
+              "$REDIS_CONTAINER" 2>/dev/null || true)
+
+            if [ -z "$REDIS_NETWORK" ] || [ "$REDIS_NETWORK" = "<no value>" ]; then
+              echo "Redis is not connected to roompick-net — aborting deploy, existing container left untouched" >&2
+              exit 1
+            fi
+
             sudo docker stop roompick-backend || true
             sudo docker rm roompick-backend || true
             sudo docker run -d --name roompick-backend \
+              --network roompick-net \
               --env-file /home/ec2-user/app/.env.prod \
               -p 8080:8080 \
+              -p 127.0.0.1:8081:8081 \
               --restart unless-stopped \
               ${{ env.IMAGE }}:${{ github.sha }}
             sudo docker image prune -af

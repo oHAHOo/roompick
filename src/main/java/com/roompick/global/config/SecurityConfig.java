@@ -30,7 +30,9 @@ public class SecurityConfig {
         "/api/v1/auth/login",
         "/api/v1/auth/refresh",
         "/actuator/health",
-        "/actuator/info"
+        "/actuator/info",
+        "/actuator/metrics/**",
+        "/actuator/prometheus"
     };
 
     private static final String[] PUBLIC_GET_PATHS = {
