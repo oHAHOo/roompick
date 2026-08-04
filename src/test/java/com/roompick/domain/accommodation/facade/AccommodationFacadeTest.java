@@ -236,6 +236,9 @@ class AccommodationFacadeTest {
          */
         then(accommodationService)
             .shouldHaveNoInteractions();
+
+        then(popularAccommodationRankingService)
+            .shouldHaveNoInteractions();
     }
 
     @Test
