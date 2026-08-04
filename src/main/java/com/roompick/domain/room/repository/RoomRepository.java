@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -12,25 +13,48 @@ import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 
+import jakarta.persistence.LockModeType;
+
 /**
  * 객실 데이터를 저장하고 조회하는 Repository입니다.
  */
-public interface RoomRepository extends JpaRepository<Room, Long> {
+public interface RoomRepository
+    extends JpaRepository<Room, Long> {
+
+    /**
+     * 예약 생성 시 동일 객실에 대한 요청을 직렬화하기 위해
+     * 객실을 비관적 쓰기 락과 함께 조회합니다.
+     *
+     * 객실 행만 먼저 잠그고 숙소는 트랜잭션 안에서
+     * 지연 로딩하여 같은 숙소의 다른 객실 예약까지
+     * 불필요하게 대기하지 않도록 합니다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT room
+        FROM Room room
+        WHERE room.id = :roomId
+        """)
+    Optional<Room> findByIdForUpdate(
+        @Param("roomId") Long roomId
+    );
 
     /**
      * 예약 생성에 필요한 객실과 소속 숙소를
      * fetch join으로 한 번에 조회합니다.
      *
-     * 예약 생성 응답에서 숙소 정보를 사용할 때
-     * LAZY 연관관계의 추가 조회 쿼리가 발생하지 않도록 합니다.
+     * 일반 조회에서 LAZY 연관관계의
+     * 추가 쿼리가 발생하지 않도록 합니다.
      */
     @Query("""
-            SELECT room
-            FROM Room room
-            JOIN FETCH room.accommodation
-            WHERE room.id = :roomId
-            """)
-    Optional<Room> findByIdWithAccommodation(@Param("roomId") Long roomId);
+        SELECT room
+        FROM Room room
+        JOIN FETCH room.accommodation
+        WHERE room.id = :roomId
+        """)
+    Optional<Room> findByIdWithAccommodation(
+        @Param("roomId") Long roomId
+    );
 
     /**
      * 관리자 객실 활성화 요청에서 객실 소속과 숙소 상태를
@@ -62,11 +86,13 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     Optional<Room> findPublicById(
         @Param("roomId") Long roomId,
         @Param("roomStatus") RoomStatus roomStatus,
-        @Param("accommodationStatus") AccommodationStatus accommodationStatus
+        @Param("accommodationStatus")
+        AccommodationStatus accommodationStatus
     );
 
     /**
-     * 관리자 요청의 숙소 ID와 객실 소속을 한 번의 조회로 검증합니다.
+     * 관리자 요청의 숙소 ID와 객실 소속을
+     * 한 번의 조회로 검증합니다.
      */
     Optional<Room> findByIdAndAccommodationId(
         Long roomId,
@@ -82,13 +108,13 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
         WHERE room.accommodation.id = :accommodationId
         ORDER BY room.id ASC
         """)
-    List<Room> findAllByAccommodationId(@Param("accommodationId") Long accommodationId);
+    List<Room> findAllByAccommodationId(
+        @Param("accommodationId")
+        Long accommodationId
+    );
 
     /**
      * 특정 숙소의 운영 중인 객실을 목록 DTO로 직접 조회합니다.
-     *
-     * 객실 목록 화면에 필요한 필드만 조회하며,
-     * 객실 번호와 객실 ID 기준으로 고정 정렬합니다.
      */
     @Query("""
         SELECT new com.roompick.domain.room.dto.RoomListResponseDto(
@@ -104,8 +130,10 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
               com.roompick.domain.room.entity.RoomStatus.ACTIVE
         ORDER BY room.roomNumber ASC, room.id ASC
         """)
-    List<RoomListResponseDto> findAllActiveSummaryByAccommodationId(
-        @Param("accommodationId") Long accommodationId
+    List<RoomListResponseDto>
+    findAllActiveSummaryByAccommodationId(
+        @Param("accommodationId")
+        Long accommodationId
     );
 
     /**
