@@ -224,10 +224,39 @@ claude_args: |
 
 - [ ] 저장소에 `claude-triage` 라벨 생성 (Issues → Labels → New label)
 - [x] `claude-triage.yml`을 `.github/workflows/claude-triage.yml`로 커밋 완료
-- [ ] 테스트 이슈에 `claude-triage` 라벨을 붙여 워크플로우가 트리거되고, 계획 댓글만 남고 코드 수정/PR이 발생하지 않는지 검증
+- [x] `track_progress: true` 반영 (10.6 참고 — 실사용 테스트에서 코멘트 미등록 버그 확인 후 추가)
+- [ ] 테스트 이슈에 `claude-triage` 라벨을 붙여 워크플로우가 트리거되고, 계획 댓글만 남고 코드 수정/PR이 발생하지 않는지 재검증
 - [ ] 이슈 #98 완료조건 문구("agent 배정 시")를 라벨 트리거 기준으로 조정할지 이슈에 코멘트로 논의
 
 ### 10.5 현재 상태
 
 - `claude-triage.yml`은 [`.github/workflows/claude-triage.yml`](../.github/workflows/claude-triage.yml)에 배치 완료됐다 (Claude Code GitHub App은 이 디렉토리를 직접 수정할 수 없어 사람이 직접 커밋함).
 - 라벨 트리거 방식은 조직/라이선스 설정에 의존하지 않으므로, `claude-triage` 라벨만 저장소에 만들면 바로 동작 가능한 상태다.
+
+### 10.6 실사용 테스트 중 발견된 버그 — 계획 코멘트가 등록되지 않음
+
+**증상**: 이슈 #98에 `claude-triage` 라벨을 붙여 실제로 트리거해본 결과, 워크플로우는 `success`로 정상 종료됐고(약 4분, 18턴 실행) Claude가 이슈를 분석까지 했으나 **이슈에 댓글이 하나도 남지 않았다.**
+
+**원인 분석**: Actions 실행 로그(`gh run view <run-id> --log`)를 확인한 결과, 액션에 전달된 설정에 다음이 포함돼 있었다.
+
+```
+track_progress: false
+display_report: false
+```
+
+`anthropics/claude-code-action`의 `track_progress` 입력은 공식 문서에 "`pull_request`와 `issue`(`opened`, `edited`, `labeled`, `assigned`) 이벤트에 대해 tag mode + 트래킹 코멘트를 강제한다"고 명시돼 있다. 즉 **이슈에 결과를 댓글로 남기는 동작 자체가 이 입력에 의존**하는데, `claude-triage.yml` 초안에는 이 값을 넣지 않아 기본값(`false`)으로 실행됐다. 그 결과 Claude는 분석은 수행했지만(로그상 `permission_denials_count: 11` — `Edit`/`Write` 시도가 막힌 흔적으로 추정) 결과를 게시할 코멘트 자체가 생성되지 않았다.
+
+`prompt`에 "댓글로 남기세요"라고 지시문으로 적어둔 것만으로는 실제 댓글 생성 메커니즘이 활성화되지 않는다는 점에서, 10.3의 "`prompt`는 강제력이 없다"는 결론과 같은 성격의 문제다.
+
+**수정**:
+
+```diff
+         with:
+           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+           label_trigger: "claude-triage"
++          track_progress: true
+           claude_args: |
+             --disallowedTools Edit,Write
+```
+
+`track_progress: true`를 추가해 트래킹 코멘트가 강제로 생성/갱신되도록 했다. 이 값을 반영한 뒤 `claude-triage` 라벨을 재부착해 실제로 계획 댓글이 남는지 재검증이 필요하다 (10.4 체크리스트 참고).
