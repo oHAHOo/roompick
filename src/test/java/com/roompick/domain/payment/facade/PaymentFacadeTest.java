@@ -266,7 +266,10 @@ class PaymentFacadeTest {
             .willReturn(requestedAmount);
 
         given(payment.getStatus())
-            .willReturn(PaymentStatus.PAID);
+            .willReturn(
+                PaymentStatus.READY,
+                PaymentStatus.PAID
+            );
 
         given(reservation.getStatus())
             .willReturn(
@@ -341,62 +344,6 @@ class PaymentFacadeTest {
             paymentApprovedAtCaptor.getValue()
         ).isEqualTo(
             reservationApprovedAtCaptor.getValue()
-        );
-    }
-
-    @Test
-    @DisplayName(
-        "이미 승인된 결제는 예약 검증 전에 거절한다"
-    )
-    void rejectDuplicatedApprovalBeforeReservationValidation() {
-
-        // given
-        Long paymentId = 100L;
-        Long memberId = 10L;
-        long requestedAmount = 200_000L;
-
-        given(
-            paymentService
-                .findForPaymentTransitionForUpdate(
-                    paymentId,
-                    memberId
-                )
-        ).willReturn(payment);
-
-        given(payment.getReservation())
-            .willReturn(reservation);
-
-        given(
-            paymentService.approvePayment(
-                eq(payment),
-                eq(requestedAmount),
-                any(LocalDateTime.class)
-            )
-        ).willThrow(
-            new BusinessException(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            )
-        );
-
-        // when
-        BusinessException exception =
-            catchThrowableOfType(
-                () -> paymentFacade.approvePayment(
-                    paymentId,
-                    memberId,
-                    requestedAmount
-                ),
-                BusinessException.class
-            );
-
-        // then
-        assertThat(exception.getErrorCode())
-            .isEqualTo(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            );
-
-        verifyNoInteractions(
-            reservationService
         );
     }
 
@@ -491,7 +438,10 @@ class PaymentFacadeTest {
             .willReturn(200_000L);
 
         given(payment.getStatus())
-            .willReturn(PaymentStatus.FAILED);
+            .willReturn(
+                PaymentStatus.READY,
+                PaymentStatus.FAILED
+            );
 
         given(payment.getFailedAt())
             .willReturn(
@@ -703,6 +653,9 @@ class PaymentFacadeTest {
             PORTONE_PAYMENT_AMOUNT
         );
 
+        given(paymentSnapshot.getStatus())
+            .willReturn(PaymentStatus.READY);
+
         given(
             portOneClient.getPayment(
                 PORTONE_PAYMENT_ID
@@ -762,6 +715,7 @@ class PaymentFacadeTest {
 
         given(paymentForUpdate.getStatus())
             .willReturn(
+                PaymentStatus.READY,
                 PaymentStatus.PAID
             );
 
@@ -909,6 +863,9 @@ class PaymentFacadeTest {
         ).willReturn(
             PORTONE_PAYMENT_AMOUNT
         );
+
+        given(paymentSnapshot.getStatus())
+            .willReturn(PaymentStatus.READY);
 
         given(
             portOneClient.getPayment(
@@ -1099,9 +1056,9 @@ class PaymentFacadeTest {
 
     @Test
     @DisplayName(
-        "PortOne 검증 후 락을 획득한 결제가 이미 처리된 상태이면 예약을 확정하지 않는다"
+        "PortOne 외부 검증 후 락 획득 시 이미 동일 결제가 완료됐다면 기존 성공 결과를 반환한다"
     )
-    void doNotConfirmReservationWhenLockedPaymentIsNotReady() {
+    void completedPaymentAfterPortOneVerificationReturnsExistingSuccess() {
 
         // given
         stubTransactionTemplate();
@@ -1116,6 +1073,11 @@ class PaymentFacadeTest {
                 Payment.class
             );
 
+        Reservation reservationForUpdate =
+            org.mockito.Mockito.mock(
+                Reservation.class
+            );
+
         PortOnePaymentResponseDto portOneResponse =
             createPaidPortOneResponse();
 
@@ -1124,47 +1086,27 @@ class PaymentFacadeTest {
             createVerificationResult();
 
         given(
-            paymentService.findForPortOneCompletion(
-                PORTONE_PAYMENT_INTERNAL_ID,
-                PORTONE_MEMBER_ID
-            )
-        ).willReturn(
-            paymentSnapshot
-        );
-
-        /*
-         * 공통 락 조회 메서드는 READY 상태를 검증하지 않고
-         * 최신 Payment를 반환합니다.
-         */
-        given(
             paymentService
-                .findForPaymentTransitionForUpdate(
+                .findForPortOneCompletion(
                     PORTONE_PAYMENT_INTERNAL_ID,
                     PORTONE_MEMBER_ID
                 )
-        ).willReturn(
-            paymentForUpdate
-        );
+        ).willReturn(paymentSnapshot);
 
-        given(
-            paymentSnapshot.getPortOnePaymentId()
-        ).willReturn(
-            PORTONE_PAYMENT_ID
-        );
+        given(paymentSnapshot.getStatus())
+            .willReturn(PaymentStatus.READY);
 
-        given(
-            paymentSnapshot.getAmount()
-        ).willReturn(
-            PORTONE_PAYMENT_AMOUNT
-        );
+        given(paymentSnapshot.getPortOnePaymentId())
+            .willReturn(PORTONE_PAYMENT_ID);
+
+        given(paymentSnapshot.getAmount())
+            .willReturn(PORTONE_PAYMENT_AMOUNT);
 
         given(
             portOneClient.getPayment(
                 PORTONE_PAYMENT_ID
             )
-        ).willReturn(
-            portOneResponse
-        );
+        ).willReturn(portOneResponse);
 
         given(
             portOnePaymentVerifier.verify(
@@ -1172,73 +1114,87 @@ class PaymentFacadeTest {
                 PORTONE_PAYMENT_ID,
                 PORTONE_PAYMENT_AMOUNT
             )
-        ).willReturn(
-            verificationResult
-        );
+        ).willReturn(verificationResult);
 
-        /*
-         * 외부 API를 조회하는 사이 다른 요청이 결제를
-         * 먼저 처리한 상황을 가정합니다.
-         *
-         * 공통 락 조회가 아니라 실제 Payment 상태 전이에서
-         * INVALID_PAYMENT_STATUS가 발생해야 합니다.
-         */
         given(
-            paymentService.approvePortOnePayment(
-                paymentForUpdate,
-                PORTONE_TRANSACTION_ID,
-                PORTONE_PAYMENT_AMOUNT,
-                PORTONE_PAID_AT
-            )
-        ).willThrow(
-            new BusinessException(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            )
-        );
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    PORTONE_PAYMENT_INTERNAL_ID,
+                    PORTONE_MEMBER_ID
+                )
+        ).willReturn(paymentForUpdate);
+
+        given(paymentForUpdate.getPortOnePaymentId())
+            .willReturn(PORTONE_PAYMENT_ID);
+
+        given(paymentForUpdate.getReservation())
+            .willReturn(reservationForUpdate);
+
+        given(paymentForUpdate.getStatus())
+            .willReturn(PaymentStatus.PAID);
+
+        given(paymentForUpdate.getId())
+            .willReturn(
+                PORTONE_PAYMENT_INTERNAL_ID
+            );
+
+        given(paymentForUpdate.getPortOneTransactionId())
+            .willReturn(PORTONE_TRANSACTION_ID);
+
+        given(paymentForUpdate.getAmount())
+            .willReturn(PORTONE_PAYMENT_AMOUNT);
+
+        given(paymentForUpdate.getApprovedAt())
+            .willReturn(PORTONE_PAID_AT);
+
+        given(reservationForUpdate.getId())
+            .willReturn(PORTONE_RESERVATION_ID);
+
+        given(reservationForUpdate.getStatus())
+            .willReturn(
+                ReservationStatus.CONFIRMED
+            );
 
         // when
-        BusinessException exception =
-            catchThrowableOfType(
-                () ->
-                    paymentFacade.completePortOnePayment(
-                        PORTONE_PAYMENT_INTERNAL_ID,
-                        PORTONE_MEMBER_ID
-                    ),
-                BusinessException.class
+        PaymentCompleteResponseDto response =
+            paymentFacade.completePortOnePayment(
+                PORTONE_PAYMENT_INTERNAL_ID,
+                PORTONE_MEMBER_ID
             );
 
         // then
-        assertThat(exception.getErrorCode())
+        assertThat(response.paymentId())
             .isEqualTo(
-                ErrorCode.INVALID_PAYMENT_STATUS
+                PORTONE_PAYMENT_INTERNAL_ID
             );
 
-        then(paymentService)
-            .should(times(1))
-            .findForPortOneCompletion(
-                PORTONE_PAYMENT_INTERNAL_ID,
-                PORTONE_MEMBER_ID
+        assertThat(response.portOneTransactionId())
+            .isEqualTo(
+                PORTONE_TRANSACTION_ID
             );
 
-        then(paymentService)
-            .should(times(1))
-            .findForPaymentTransitionForUpdate(
-                PORTONE_PAYMENT_INTERNAL_ID,
-                PORTONE_MEMBER_ID
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.PAID);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CONFIRMED
             );
 
+        assertThat(response.approvedAt())
+            .isEqualTo(PORTONE_PAID_AT);
+
         then(paymentService)
-            .should(times(1))
+            .should(never())
             .approvePortOnePayment(
-                paymentForUpdate,
-                PORTONE_TRANSACTION_ID,
-                PORTONE_PAYMENT_AMOUNT,
-                PORTONE_PAID_AT
+                any(Payment.class),
+                any(String.class),
+                anyLong(),
+                any(LocalDateTime.class)
             );
 
-        verifyNoInteractions(
-            reservationService
-        );
+        then(reservationService)
+            .shouldHaveNoInteractions();
     }
 
     /**
@@ -1298,5 +1254,614 @@ class PaymentFacadeTest {
             PORTONE_PAYMENT_AMOUNT,
             PORTONE_PAID_AT
         );
+    }
+
+    @Test
+    @DisplayName(
+        "이미 승인된 결제에 동일 금액으로 재요청하면 기존 성공 결과를 반환한다"
+    )
+    void sameMockApprovalRequestReturnsExistingSuccess() {
+
+        // given
+        Long paymentId = 100L;
+        Long reservationId = 1L;
+        Long memberId = 10L;
+        long requestedAmount = 200_000L;
+
+        LocalDateTime approvedAt =
+            LocalDateTime.of(
+                2026,
+                8,
+                3,
+                15,
+                30
+            );
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getId())
+            .willReturn(paymentId);
+
+        given(payment.getAmount())
+            .willReturn(requestedAmount);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.PAID);
+
+        given(payment.getApprovedAt())
+            .willReturn(approvedAt);
+
+        given(reservation.getId())
+            .willReturn(reservationId);
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.CONFIRMED
+            );
+
+        // when
+        PaymentApproveResponseDto response =
+            paymentFacade.approvePayment(
+                paymentId,
+                memberId,
+                requestedAmount
+            );
+
+        // then
+        assertThat(response.paymentId())
+            .isEqualTo(paymentId);
+
+        assertThat(response.reservationId())
+            .isEqualTo(reservationId);
+
+        assertThat(response.amount())
+            .isEqualTo(requestedAmount);
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.PAID);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CONFIRMED
+            );
+
+        assertThat(response.approvedAt())
+            .isEqualTo(approvedAt);
+
+        then(paymentService)
+            .should(never())
+            .approvePayment(
+                any(Payment.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .should(never())
+            .confirmPayment(
+                any(Reservation.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "이미 승인된 결제에 다른 금액으로 재요청하면 멱등성 충돌 예외가 발생한다"
+    )
+    void differentAmountAfterMockApprovalReturnsIdempotencyConflict() {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+        long approvedAmount = 200_000L;
+        long differentAmount = 190_000L;
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.PAID);
+
+        given(payment.getAmount())
+            .willReturn(approvedAmount);
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.CONFIRMED
+            );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.approvePayment(
+                    paymentId,
+                    memberId,
+                    differentAmount
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode
+                    .PAYMENT_IDEMPOTENCY_CONFLICT
+            );
+
+        then(paymentService)
+            .should(never())
+            .approvePayment(
+                any(Payment.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .should(never())
+            .confirmPayment(
+                any(Reservation.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "이미 실패 처리된 결제의 재요청은 기존 성공 결과를 반환한다"
+    )
+    void sameMockFailureRequestReturnsExistingSuccess() {
+
+        // given
+        Long paymentId = 100L;
+        Long reservationId = 1L;
+        Long memberId = 10L;
+        long amount = 200_000L;
+
+        LocalDateTime failedAt =
+            LocalDateTime.of(
+                2026,
+                8,
+                3,
+                16,
+                0
+            );
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.FAILED);
+
+        given(payment.getId())
+            .willReturn(paymentId);
+
+        given(payment.getAmount())
+            .willReturn(amount);
+
+        given(payment.getFailedAt())
+            .willReturn(failedAt);
+
+        given(reservation.getId())
+            .willReturn(reservationId);
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.CANCELED
+            );
+
+        given(reservation.getCanceledAt())
+            .willReturn(failedAt);
+
+        // when
+        PaymentFailResponseDto response =
+            paymentFacade.failPayment(
+                paymentId,
+                memberId
+            );
+
+        // then
+        assertThat(response.paymentId())
+            .isEqualTo(paymentId);
+
+        assertThat(response.reservationId())
+            .isEqualTo(reservationId);
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        then(paymentService)
+            .should(never())
+            .failPayment(
+                any(Payment.class),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .should(never())
+            .cancelByPaymentFailure(
+                any(Reservation.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "승인된 결제에 실패 요청을 보내면 결제 작업 충돌 예외가 발생한다"
+    )
+    void failureRequestForPaidPaymentReturnsPaymentConflict() {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.PAID);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.failPayment(
+                    paymentId,
+                    memberId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.PAYMENT_CONFLICT
+            );
+
+        then(paymentService)
+            .should(never())
+            .failPayment(
+                any(Payment.class),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "실패 처리된 결제에 승인 요청을 보내면 결제 작업 충돌 예외가 발생한다"
+    )
+    void approvalRequestForFailedPaymentReturnsPaymentConflict() {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+        long requestedAmount = 200_000L;
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.FAILED);
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.approvePayment(
+                    paymentId,
+                    memberId,
+                    requestedAmount
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.PAYMENT_CONFLICT
+            );
+
+        then(paymentService)
+            .should(never())
+            .approvePayment(
+                any(Payment.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "결제는 승인됐지만 예약이 확정되지 않았다면 상태 불일치 예외가 발생한다"
+    )
+    void paidPaymentWithPendingReservationReturnsStateInconsistency() {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+        long requestedAmount = 200_000L;
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.PAID);
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.approvePayment(
+                    paymentId,
+                    memberId,
+                    requestedAmount
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode
+                    .PAYMENT_STATE_INCONSISTENCY
+            );
+
+        then(paymentService)
+            .should(never())
+            .approvePayment(
+                any(Payment.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "결제는 실패했지만 예약이 취소되지 않았다면 상태 불일치 예외가 발생한다"
+    )
+    void failedPaymentWithPendingReservationReturnsStateInconsistency() {
+
+        // given
+        Long paymentId = 100L;
+        Long memberId = 10L;
+
+        given(
+            paymentService
+                .findForPaymentTransitionForUpdate(
+                    paymentId,
+                    memberId
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.FAILED);
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.PENDING_PAYMENT
+            );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () -> paymentFacade.failPayment(
+                    paymentId,
+                    memberId
+                ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode
+                    .PAYMENT_STATE_INCONSISTENCY
+            );
+
+        then(paymentService)
+            .should(never())
+            .failPayment(
+                any(Payment.class),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "이미 완료된 PortOne 결제 재요청은 외부 API 호출 없이 기존 결과를 반환한다"
+    )
+    void completedPortOnePaymentReturnsExistingSuccessWithoutExternalCall() {
+
+        // given
+        given(
+            paymentService
+                .findForPortOneCompletion(
+                    PORTONE_PAYMENT_INTERNAL_ID,
+                    PORTONE_MEMBER_ID
+                )
+        ).willReturn(payment);
+
+        given(payment.getReservation())
+            .willReturn(reservation);
+
+        given(payment.getStatus())
+            .willReturn(PaymentStatus.PAID);
+
+        given(payment.getId())
+            .willReturn(
+                PORTONE_PAYMENT_INTERNAL_ID
+            );
+
+        given(payment.getPortOnePaymentId())
+            .willReturn(
+                PORTONE_PAYMENT_ID
+            );
+
+        given(payment.getPortOneTransactionId())
+            .willReturn(
+                PORTONE_TRANSACTION_ID
+            );
+
+        given(payment.getAmount())
+            .willReturn(
+                PORTONE_PAYMENT_AMOUNT
+            );
+
+        given(payment.getApprovedAt())
+            .willReturn(
+                PORTONE_PAID_AT
+            );
+
+        given(reservation.getId())
+            .willReturn(
+                PORTONE_RESERVATION_ID
+            );
+
+        given(reservation.getStatus())
+            .willReturn(
+                ReservationStatus.CONFIRMED
+            );
+
+        // when
+        PaymentCompleteResponseDto response =
+            paymentFacade
+                .completePortOnePayment(
+                    PORTONE_PAYMENT_INTERNAL_ID,
+                    PORTONE_MEMBER_ID
+                );
+
+        // then
+        assertThat(response.paymentId())
+            .isEqualTo(
+                PORTONE_PAYMENT_INTERNAL_ID
+            );
+
+        assertThat(response.portOnePaymentId())
+            .isEqualTo(
+                PORTONE_PAYMENT_ID
+            );
+
+        assertThat(response.portOneTransactionId())
+            .isEqualTo(
+                PORTONE_TRANSACTION_ID
+            );
+
+        assertThat(response.reservationId())
+            .isEqualTo(
+                PORTONE_RESERVATION_ID
+            );
+
+        assertThat(response.amount())
+            .isEqualTo(
+                PORTONE_PAYMENT_AMOUNT
+            );
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.PAID);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CONFIRMED
+            );
+
+        assertThat(response.approvedAt())
+            .isEqualTo(PORTONE_PAID_AT);
+
+        verifyNoInteractions(
+            portOneClient,
+            portOnePaymentVerifier,
+            transactionTemplate
+        );
+
+        then(paymentService)
+            .should(never())
+            .findForPaymentTransitionForUpdate(
+                anyLong(),
+                anyLong()
+            );
+
+        then(paymentService)
+            .should(never())
+            .approvePortOnePayment(
+                any(Payment.class),
+                any(String.class),
+                anyLong(),
+                any(LocalDateTime.class)
+            );
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
     }
 }
