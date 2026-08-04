@@ -113,6 +113,12 @@ jobs:
               exit 1
             fi
 
+            REDIS_RUNNING=$(sudo docker inspect --format '{{.State.Running}}' "$REDIS_CONTAINER" 2>/dev/null || true)
+            if [ "$REDIS_RUNNING" != "true" ]; then
+              echo "Redis container ($REDIS_CONTAINER) is not running — aborting deploy, existing container left untouched" >&2
+              exit 1
+            fi
+
             REDIS_NETWORK=$(sudo docker inspect \
               --format '{{index .NetworkSettings.Networks "roompick-net"}}' \
               "$REDIS_CONTAINER" 2>/dev/null || true)
