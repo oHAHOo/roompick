@@ -1,0 +1,47 @@
+name: Claude Implement
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  implement:
+    if: github.event.label.name == 'claude-implement'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Implement and open PR
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          label_trigger: "claude-implement"
+          track_progress: true
+          base_branch: develop
+          branch_prefix: "claude/"
+          prompt: |
+            이 이슈에 "claude-implement" 라벨이 붙었습니다. 이슈 내용(그리고 claude-triage 단계에서
+            남긴 계획 댓글이 있다면 그 계획)을 바탕으로 실제 코드를 수정하고, develop 브랜치를
+            대상으로 PR을 생성하세요.
+
+            반드시 지킬 것:
+            - AGENTS.md의 도메인 담당자 규칙을 확인하세요. .github/CODEOWNERS에 명시된 다른
+              담당자 영역(payment → minjae123123, member/SecurityConfig → oHAHOo 등)은 이슈가
+              명시적으로 요구하지 않는 한 수정하지 마세요. 수정이 불가피하면 왜 필요한지 PR
+              본문에 명시하세요.
+            - 새 브랜치를 만들어 커밋하고, develop을 대상으로 PR을 생성하세요. main/develop에
+              직접 push하지 마세요.
+            - 이슈 요구사항 범위를 벗어나는 리팩터링이나 관련 없는 변경을 추가하지 마세요.
+            - 커밋하기 전에 ./gradlew test로 관련 테스트가 통과하는지 확인하세요.
+            - PR 본문에는 작업 내용, 변경 이유, 테스트 결과, AI 활용 내역을 포함하세요.
+            - 이슈 요구사항이 모호하거나 도메인 경계를 넘어야만 해결 가능하다고 판단되면,
+              코드를 수정하는 대신 이슈 댓글로 이유를 남기고 사람 판단을 요청하세요.
