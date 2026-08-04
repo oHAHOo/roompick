@@ -3,6 +3,8 @@
 # RoomPick 로컬 성능 테스트 전용 데이터 설정 스크립트입니다.
 # 정규식으로 식별되는 "성능 테스트 숙소 NN" 데이터만 교체하며
 # 일반 숙소 데이터는 삭제하지 않습니다.
+# RoomPick 공식 Docker MySQL 컨테이너처럼 MYSQL_USER와 MYSQL_PASSWORD가
+# 컨테이너 환경변수로 설정된 환경을 전제로 합니다.
 
 set -euo pipefail
 
@@ -29,6 +31,15 @@ fi
 
 if [ "$(docker inspect -f '{{.State.Running}}' "$REDIS_CONTAINER")" != "true" ]; then
   echo "Redis 컨테이너가 실행 중이 아닙니다."
+  exit 1
+fi
+
+if ! docker exec "$MYSQL_CONTAINER" sh -c '
+  if [ -z "${MYSQL_USER:-}" ] || [ -z "${MYSQL_PASSWORD:-}" ]; then
+    echo "MySQL 컨테이너에 MYSQL_USER와 MYSQL_PASSWORD가 모두 설정되어 있어야 합니다." >&2
+    exit 1
+  fi
+'; then
   exit 1
 fi
 
