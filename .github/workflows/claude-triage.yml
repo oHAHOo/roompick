@@ -1,0 +1,42 @@
+name: Claude Triage
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  triage-plan:
+    if: github.event.label.name == 'claude-triage'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Post triage plan comment
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          label_trigger: "claude-triage"
+          claude_args: |
+            --disallowedTools Edit,Write
+          prompt: |
+            이 이슈에 방금 "claude-triage" 라벨이 붙었습니다.
+            코드베이스를 기준으로 이슈 내용을 분석해서, 어떤 방향으로 해결할지 "계획"만 이슈 댓글로 남기세요.
+
+            반드시 지킬 것:
+            - 코드를 수정하지 마세요. 브랜치를 만들거나 커밋/PR을 생성하지 마세요.
+            - 파일을 새로 만들거나 기존 파일을 편집하지 마세요 (Edit, Write 도구 사용 금지).
+            - 이 단계는 실제 구현이 아니라 방향 제시입니다. 실제 구현은 별도로 진행됩니다.
+
+            댓글에 포함할 내용:
+            - 이슈 요구사항 요약 (오해 소지가 있다면 확인 질문 포함)
+            - 관련될 것으로 보이는 파일/모듈 목록
+            - 예상되는 변경 범위와 접근 방식
+            - 진행 전 사람이 결정해야 할 사항이 있다면 명시
