@@ -107,7 +107,7 @@ jobs:
               exit 1
             fi
 
-            REDIS_CONTAINER=roompick-redis
+            REDIS_CONTAINER=redis
             if ! sudo docker inspect "$REDIS_CONTAINER" > /dev/null 2>&1; then
               echo "Redis container ($REDIS_CONTAINER) not found — aborting deploy, existing container left untouched" >&2
               exit 1
