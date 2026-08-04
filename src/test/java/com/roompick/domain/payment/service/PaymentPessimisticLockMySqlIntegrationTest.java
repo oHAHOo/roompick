@@ -88,9 +88,6 @@ class PaymentPessimisticLockMySqlIntegrationTest {
     private static final String FIRST_PORTONE_TRANSACTION_ID =
         "transaction-lock-test-001";
 
-    private static final String SECOND_PORTONE_TRANSACTION_ID =
-        "transaction-lock-test-002";
-
     private static final Duration LOCK_CHECK_DURATION =
         Duration.ofMillis(500);
 
@@ -191,10 +188,10 @@ class PaymentPessimisticLockMySqlIntegrationTest {
 
     @Test
     @DisplayName(
-        "동일 Payment 승인 요청이 동시에 실행되면 "
-            + "두 번째 요청은 락을 기다린 뒤 최신 상태에서 거절된다"
+        "동일 PortOne 완료 요청이 동시에 실행되면 "
+            + "두 번째 요청은 락을 기다린 뒤 기존 성공 결과를 반환한다"
     )
-    void concurrentPaymentTransitionWaitsForPessimisticLock()
+    void concurrentSamePortOneCompletionReturnsExistingSuccessAfterLock()
         throws Exception {
 
         // given
@@ -205,9 +202,6 @@ class PaymentPessimisticLockMySqlIntegrationTest {
 
         LocalDateTime firstApprovedAt =
             now.plusSeconds(1);
-
-        LocalDateTime secondApprovedAt =
-            now.plusSeconds(2);
 
         TestData testData =
             createTestData(
@@ -307,17 +301,42 @@ class PaymentPessimisticLockMySqlIntegrationTest {
                                                 testData.memberId()
                                             );
 
-                                    paymentService.approvePortOnePayment(
-                                        lockedPayment,
-                                        SECOND_PORTONE_TRANSACTION_ID,
-                                        testData.amount(),
-                                        secondApprovedAt
+                                    Reservation reservation =
+                                        lockedPayment.getReservation();
+
+                                    /*
+                                     * 첫 번째 요청이 커밋한 최신 상태와
+                                     * 최초 PortOne 완료 정보를 확인합니다.
+                                     *
+                                     * 두 번째 동일 요청은 상태 전이를
+                                     * 다시 실행하지 않고 이 기존 결과를
+                                     * 그대로 반환할 수 있어야 합니다.
+                                     */
+                                    assertThat(lockedPayment.getStatus())
+                                        .isEqualTo(PaymentStatus.PAID);
+
+                                    assertThat(
+                                        lockedPayment
+                                            .getPortOneTransactionId()
+                                    ).isEqualTo(
+                                        FIRST_PORTONE_TRANSACTION_ID
                                     );
+
+                                    assertThat(lockedPayment.getAmount())
+                                        .isEqualTo(testData.amount());
+
+                                    assertThat(lockedPayment.getApprovedAt())
+                                        .isEqualTo(firstApprovedAt);
+
+                                    assertThat(reservation.getStatus())
+                                        .isEqualTo(
+                                            ReservationStatus.CONFIRMED
+                                        );
                                 }
                             );
 
                         return SecondAttemptResult
-                            .unexpectedSuccess(
+                            .success(
                                 elapsedMillis(startedAtNanos)
                             );
                     } catch (BusinessException exception) {
@@ -365,12 +384,10 @@ class PaymentPessimisticLockMySqlIntegrationTest {
 
             // then
             assertThat(secondResult.success())
-                .isFalse();
+                .isTrue();
 
             assertThat(secondResult.errorCode())
-                .isEqualTo(
-                    ErrorCode.INVALID_PAYMENT_STATUS
-                );
+                .isNull();
 
             assertThat(secondResult.elapsedMillis())
                 .isGreaterThanOrEqualTo(
@@ -395,13 +412,252 @@ class PaymentPessimisticLockMySqlIntegrationTest {
                     FIRST_PORTONE_TRANSACTION_ID
                 );
 
-            assertThat(savedPayment.getPortOneTransactionId())
-                .isNotEqualTo(
-                    SECOND_PORTONE_TRANSACTION_ID
+            assertThat(savedPayment.getApprovedAt())
+                .isEqualTo(firstApprovedAt);
+
+            assertThat(savedPayment.getFailedAt())
+                .isNull();
+
+            assertThat(savedReservation.getStatus())
+                .isEqualTo(
+                    ReservationStatus.CONFIRMED
                 );
 
+            assertThat(savedReservation.getCanceledAt())
+                .isNull();
+        } finally {
+            releaseFirstTransaction.countDown();
+
+            executorService.shutdownNow();
+
+            executorService.awaitTermination(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+        }
+    }
+
+    @Test
+    @DisplayName(
+        "동일 Mock 승인 요청이 동시에 실행되면 "
+            + "두 번째 요청은 락을 기다린 뒤 기존 성공 결과를 반환한다"
+    )
+    void concurrentSameMockApprovalReturnsExistingSuccessAfterLock()
+        throws Exception {
+
+        // given
+        LocalDateTime now =
+            LocalDateTime
+                .now(TEST_ZONE_ID)
+                .withNano(0);
+
+        LocalDateTime firstApprovedAt =
+            now.plusSeconds(1);
+
+        TestData testData =
+            createTestData(
+                now.plusMinutes(10)
+            );
+
+        TransactionTemplate firstTransactionTemplate =
+            createNewTransactionTemplate();
+
+        TransactionTemplate secondTransactionTemplate =
+            createNewTransactionTemplate();
+
+        CountDownLatch firstLockAcquired =
+            new CountDownLatch(1);
+
+        CountDownLatch releaseFirstTransaction =
+            new CountDownLatch(1);
+
+        CountDownLatch secondLockAttemptStarted =
+            new CountDownLatch(1);
+
+        CountDownLatch secondAttemptFinished =
+            new CountDownLatch(1);
+
+        ExecutorService executorService =
+            Executors.newFixedThreadPool(2);
+
+        Future<Void> firstFuture = null;
+        Future<SecondAttemptResult> secondFuture = null;
+
+        try {
+            firstFuture =
+                executorService.submit(() -> {
+                    firstTransactionTemplate
+                        .executeWithoutResult(
+                            transactionStatus -> {
+                                Payment lockedPayment =
+                                    paymentService
+                                        .findForPaymentTransitionForUpdate(
+                                            testData.paymentId(),
+                                            testData.memberId()
+                                        );
+
+                                firstLockAcquired.countDown();
+
+                                awaitLatch(
+                                    releaseFirstTransaction,
+                                    ASYNC_TIMEOUT,
+                                    "첫 번째 Mock 승인 트랜잭션 해제 신호를 "
+                                        + "기다리는 중 시간이 초과됐습니다."
+                                );
+
+                                Reservation reservation =
+                                    lockedPayment.getReservation();
+
+                                paymentService.approvePayment(
+                                    lockedPayment,
+                                    testData.amount(),
+                                    firstApprovedAt
+                                );
+
+                                reservationService.confirmPayment(
+                                    reservation,
+                                    testData.memberId(),
+                                    firstApprovedAt
+                                );
+                            }
+                        );
+
+                    return null;
+                });
+
+            assertThat(
+                firstLockAcquired.await(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                )
+            ).isTrue();
+
+            secondFuture =
+                executorService.submit(() -> {
+                    long startedAtNanos =
+                        System.nanoTime();
+
+                    try {
+                        secondTransactionTemplate
+                            .executeWithoutResult(
+                                transactionStatus -> {
+                                    secondLockAttemptStarted
+                                        .countDown();
+
+                                    Payment lockedPayment =
+                                        paymentService
+                                            .findForPaymentTransitionForUpdate(
+                                                testData.paymentId(),
+                                                testData.memberId()
+                                            );
+
+                                    Reservation reservation =
+                                        lockedPayment.getReservation();
+
+                                    assertThat(lockedPayment.getStatus())
+                                        .isEqualTo(PaymentStatus.PAID);
+
+                                    assertThat(lockedPayment.getAmount())
+                                        .isEqualTo(testData.amount());
+
+                                    assertThat(lockedPayment.getApprovedAt())
+                                        .isEqualTo(firstApprovedAt);
+
+                                    assertThat(
+                                        lockedPayment
+                                            .getPortOneTransactionId()
+                                    ).isNull();
+
+                                    assertThat(reservation.getStatus())
+                                        .isEqualTo(
+                                            ReservationStatus.CONFIRMED
+                                        );
+
+                                    assertThat(reservation.getCanceledAt())
+                                        .isNull();
+                                }
+                            );
+
+                        return SecondAttemptResult
+                            .success(
+                                elapsedMillis(startedAtNanos)
+                            );
+                    } catch (BusinessException exception) {
+                        return SecondAttemptResult.failure(
+                            exception.getErrorCode(),
+                            elapsedMillis(startedAtNanos)
+                        );
+                    } finally {
+                        secondAttemptFinished.countDown();
+                    }
+                });
+
+            assertThat(
+                secondLockAttemptStarted.await(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                )
+            ).isTrue();
+
+            boolean secondCompletedBeforeLockRelease =
+                secondAttemptFinished.await(
+                    LOCK_CHECK_DURATION.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            assertThat(secondCompletedBeforeLockRelease)
+                .as(
+                    "첫 번째 트랜잭션이 락을 보유하는 동안 "
+                        + "두 번째 Mock 승인 요청은 완료되면 안 됩니다."
+                )
+                .isFalse();
+
+            releaseFirstTransaction.countDown();
+
+            firstFuture.get(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+
+            SecondAttemptResult secondResult =
+                secondFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            // then
+            assertThat(secondResult.success())
+                .isTrue();
+
+            assertThat(secondResult.errorCode())
+                .isNull();
+
+            assertThat(secondResult.elapsedMillis())
+                .isGreaterThanOrEqualTo(
+                    LOCK_CHECK_DURATION.toMillis()
+                );
+
+            Payment savedPayment =
+                paymentRepository
+                    .findById(testData.paymentId())
+                    .orElseThrow();
+
+            Reservation savedReservation =
+                reservationRepository
+                    .findById(testData.reservationId())
+                    .orElseThrow();
+
+            assertThat(savedPayment.getStatus())
+                .isEqualTo(PaymentStatus.PAID);
+
+            assertThat(savedPayment.getAmount())
+                .isEqualTo(testData.amount());
+
             assertThat(savedPayment.getApprovedAt())
-                .isNotNull();
+                .isEqualTo(firstApprovedAt);
+
+            assertThat(savedPayment.getPortOneTransactionId())
+                .isNull();
 
             assertThat(savedPayment.getFailedAt())
                 .isNull();
@@ -893,9 +1149,9 @@ class PaymentPessimisticLockMySqlIntegrationTest {
     @Test
     @DisplayName(
         "동일 Payment 실패 요청이 동시에 실행되면 "
-            + "두 번째 요청은 락을 기다린 뒤 최신 FAILED 상태에서 거절된다"
+            + "두 번째 요청은 락을 기다린 뒤 기존 성공 결과를 반환한다"
     )
-    void concurrentFailureRequestsOnlyOneSucceeds()
+    void concurrentSameMockFailureReturnsExistingSuccessAfterLock()
         throws Exception {
 
         // given
@@ -906,9 +1162,6 @@ class PaymentPessimisticLockMySqlIntegrationTest {
 
         LocalDateTime firstFailedAt =
             now.plusSeconds(1);
-
-        LocalDateTime secondFailedAt =
-            now.plusSeconds(2);
 
         TestData testData =
             createTestData(
@@ -1007,22 +1260,27 @@ class PaymentPessimisticLockMySqlIntegrationTest {
                                                 testData.memberId()
                                             );
 
-                                    paymentService.failPayment(
-                                        lockedPayment,
-                                        secondFailedAt
-                                    );
+                                    Reservation reservation =
+                                        lockedPayment.getReservation();
 
-                                    reservationService
-                                        .cancelByPaymentFailure(
-                                            lockedPayment.getReservation(),
-                                            testData.memberId(),
-                                            secondFailedAt
+                                    assertThat(lockedPayment.getStatus())
+                                        .isEqualTo(PaymentStatus.FAILED);
+
+                                    assertThat(lockedPayment.getFailedAt())
+                                        .isEqualTo(firstFailedAt);
+
+                                    assertThat(reservation.getStatus())
+                                        .isEqualTo(
+                                            ReservationStatus.CANCELED
                                         );
+
+                                    assertThat(reservation.getCanceledAt())
+                                        .isEqualTo(firstFailedAt);
                                 }
                             );
 
                         return SecondAttemptResult
-                            .unexpectedSuccess(
+                            .success(
                                 elapsedMillis(startedAtNanos)
                             );
                     } catch (BusinessException exception) {
@@ -1070,12 +1328,10 @@ class PaymentPessimisticLockMySqlIntegrationTest {
 
             // then
             assertThat(secondResult.success())
-                .isFalse();
+                .isTrue();
 
             assertThat(secondResult.errorCode())
-                .isEqualTo(
-                    ErrorCode.INVALID_PAYMENT_STATUS
-                );
+                .isNull();
 
             assertThat(secondResult.elapsedMillis())
                 .isGreaterThanOrEqualTo(
@@ -1100,9 +1356,6 @@ class PaymentPessimisticLockMySqlIntegrationTest {
 
             assertThat(savedPayment.getFailedAt())
                 .isEqualTo(firstFailedAt);
-
-            assertThat(savedPayment.getFailedAt())
-                .isNotEqualTo(secondFailedAt);
 
             assertThat(savedReservation.getStatus())
                 .isEqualTo(
@@ -1550,6 +1803,16 @@ class PaymentPessimisticLockMySqlIntegrationTest {
         ErrorCode errorCode,
         long elapsedMillis
     ) {
+
+        private static SecondAttemptResult success(
+            long elapsedMillis
+        ) {
+            return new SecondAttemptResult(
+                true,
+                null,
+                elapsedMillis
+            );
+        }
 
         private static SecondAttemptResult unexpectedSuccess(
             long elapsedMillis

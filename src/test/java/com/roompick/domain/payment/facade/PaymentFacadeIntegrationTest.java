@@ -220,9 +220,9 @@ class PaymentFacadeIntegrationTest {
 
     @Test
     @DisplayName(
-        "이미 승인된 결제를 다시 승인하면 INVALID_PAYMENT_STATUS를 반환한다"
+        "이미 승인된 결제를 같은 금액으로 다시 승인하면 기존 성공 결과를 반환한다"
     )
-    void duplicatedApprovalReturnsInvalidPaymentStatus() {
+    void duplicatedApprovalReturnsExistingSuccess() {
         // given
         LocalDateTime now =
             LocalDateTime.now(TEST_ZONE_ID);
@@ -238,23 +238,23 @@ class PaymentFacadeIntegrationTest {
             testData.amount()
         );
 
+        Payment firstApprovedPayment =
+            paymentRepository
+                .findById(testData.paymentId())
+                .orElseThrow();
+
+        LocalDateTime firstApprovedAt =
+            firstApprovedPayment.getApprovedAt();
+
         // when
-        BusinessException exception =
-            catchThrowableOfType(
-                () -> paymentFacade.approvePayment(
-                    testData.paymentId(),
-                    testData.memberId(),
-                    testData.amount()
-                ),
-                BusinessException.class
+        PaymentApproveResponseDto response =
+            paymentFacade.approvePayment(
+                testData.paymentId(),
+                testData.memberId(),
+                testData.amount()
             );
 
         // then
-        assertThat(exception.getErrorCode())
-            .isEqualTo(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            );
-
         Payment savedPayment =
             paymentRepository
                 .findById(testData.paymentId())
@@ -269,12 +269,32 @@ class PaymentFacadeIntegrationTest {
             .isEqualTo(PaymentStatus.PAID);
 
         assertThat(savedPayment.getApprovedAt())
-            .isNotNull();
+            .isEqualTo(firstApprovedAt);
 
         assertThat(savedReservation.getStatus())
             .isEqualTo(
                 ReservationStatus.CONFIRMED
             );
+
+        assertThat(response.paymentId())
+            .isEqualTo(testData.paymentId());
+
+        assertThat(response.reservationId())
+            .isEqualTo(testData.reservationId());
+
+        assertThat(response.amount())
+            .isEqualTo(testData.amount());
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.PAID);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CONFIRMED
+            );
+
+        assertThat(response.approvedAt())
+            .isEqualTo(firstApprovedAt);
     }
 
     @Test
@@ -489,9 +509,9 @@ class PaymentFacadeIntegrationTest {
 
     @Test
     @DisplayName(
-        "이미 실패 처리된 결제를 다시 처리하면 INVALID_PAYMENT_STATUS를 반환한다"
+        "이미 실패 처리된 결제를 다시 처리하면 기존 성공 결과를 반환한다"
     )
-    void duplicatedFailureReturnsInvalidPaymentStatus() {
+    void duplicatedFailureReturnsExistingSuccess() {
         // given
         LocalDateTime now =
             LocalDateTime.now(TEST_ZONE_ID);
@@ -523,21 +543,13 @@ class PaymentFacadeIntegrationTest {
             firstCanceledReservation.getCanceledAt();
 
         // when
-        BusinessException exception =
-            catchThrowableOfType(
-                () -> paymentFacade.failPayment(
-                    testData.paymentId(),
-                    testData.memberId()
-                ),
-                BusinessException.class
+        PaymentFailResponseDto response =
+            paymentFacade.failPayment(
+                testData.paymentId(),
+                testData.memberId()
             );
 
         // then
-        assertThat(exception.getErrorCode())
-            .isEqualTo(
-                ErrorCode.INVALID_PAYMENT_STATUS
-            );
-
         Payment savedPayment =
             paymentRepository
                 .findById(testData.paymentId())
@@ -560,6 +572,29 @@ class PaymentFacadeIntegrationTest {
             );
 
         assertThat(savedReservation.getCanceledAt())
+            .isEqualTo(firstCanceledAt);
+
+        assertThat(response.paymentId())
+            .isEqualTo(testData.paymentId());
+
+        assertThat(response.reservationId())
+            .isEqualTo(testData.reservationId());
+
+        assertThat(response.amount())
+            .isEqualTo(testData.amount());
+
+        assertThat(response.paymentStatus())
+            .isEqualTo(PaymentStatus.FAILED);
+
+        assertThat(response.reservationStatus())
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
+
+        assertThat(response.failedAt())
+            .isEqualTo(firstFailedAt);
+
+        assertThat(response.canceledAt())
             .isEqualTo(firstCanceledAt);
     }
 
