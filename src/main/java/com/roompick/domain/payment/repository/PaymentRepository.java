@@ -2,11 +2,9 @@ package com.roompick.domain.payment.repository;
 
 import java.util.Optional;
 
-import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import com.roompick.domain.payment.entity.Payment;
@@ -56,19 +54,15 @@ public interface PaymentRepository
      *
      * 같은 Payment에 대한 다른 상태 변경 요청은
      * 현재 트랜잭션이 종료될 때까지 대기하게 됩니다.
+     * MySQL 락 대기 한도는 DataSource Connection 초기화 SQL의
+     * innodb_lock_wait_timeout 설정으로 제어합니다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @QueryHints(
-        @QueryHint(
-            name = "jakarta.persistence.lock.timeout",
-            value = "3000"
-        )
-    )
     @Query("""
-    select p
-    from Payment p
-    where p.id = :paymentId
-    """)
+        select p
+        from Payment p
+        where p.id = :paymentId
+        """)
     Optional<Payment> findByIdForUpdate(
         @Param("paymentId") Long paymentId
     );

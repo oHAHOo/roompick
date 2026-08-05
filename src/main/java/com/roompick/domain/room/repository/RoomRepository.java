@@ -6,7 +6,6 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -15,7 +14,6 @@ import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 
 import jakarta.persistence.LockModeType;
-import jakarta.persistence.QueryHint;
 
 /**
  * 객실 데이터를 저장하고 조회하는 Repository입니다.
@@ -30,15 +28,10 @@ public interface RoomRepository
      * 객실 행만 먼저 잠그고 숙소는 트랜잭션 안에서
      * 지연 로딩하여 같은 숙소의 다른 객실 예약까지
      * 불필요하게 대기하지 않도록 합니다.
-     * 락 대기는 최대 3초로 제한합니다.
+     * MySQL 락 대기 한도는 DataSource Connection 초기화 SQL의
+     * innodb_lock_wait_timeout 설정으로 제어합니다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @QueryHints(
-        @QueryHint(
-            name = "jakarta.persistence.lock.timeout",
-            value = "3000"
-        )
-    )
     @Query("""
         SELECT room
         FROM Room room

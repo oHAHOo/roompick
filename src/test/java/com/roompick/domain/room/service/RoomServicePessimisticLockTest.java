@@ -15,7 +15,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.PessimisticLockingFailureException;
-import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -456,39 +455,5 @@ class RoomServicePessimisticLockTest {
             .isEqualTo(
                 Propagation.MANDATORY
             );
-    }
-
-    @Test
-    @DisplayName(
-        "비관적 락 조회의 대기 한도는 3초이다"
-    )
-    void 비관적_락_조회의_대기_한도는_3초이다()
-        throws NoSuchMethodException {
-
-        // given
-        QueryHints queryHints =
-            RoomRepository.class
-                .getMethod(
-                    "findByIdForUpdate",
-                    Long.class
-                )
-                .getAnnotation(
-                    QueryHints.class
-                );
-
-        // when & then
-        assertThat(queryHints)
-            .isNotNull();
-
-        assertThat(queryHints.value())
-            .hasSize(1);
-
-        assertThat(queryHints.value()[0].name())
-            .isEqualTo(
-                "jakarta.persistence.lock.timeout"
-            );
-
-        assertThat(queryHints.value()[0].value())
-            .isEqualTo("3000");
     }
 }

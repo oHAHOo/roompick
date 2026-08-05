@@ -82,20 +82,14 @@ but was: 2L
 
 ```java
 @Lock(LockModeType.PESSIMISTIC_WRITE)
-@QueryHints(
-    @QueryHint(
-        name = "jakarta.persistence.lock.timeout",
-        value = "3000"
-    )
-)
 @Query("""
-    SELECT room
-    FROM Room room
-    WHERE room.id = :roomId
-    """)
+  SELECT room
+  FROM Room room
+  WHERE room.id = :roomId
+  """)
 Optional<Room> findByIdForUpdate(
     @Param("roomId") Long roomId
-);
+  );
 ```
 
 동일 객실에 대한 후속 요청은 선행 트랜잭션이 커밋되거나 롤백되어
@@ -243,12 +237,25 @@ existing.checkOutDate > request.checkInDate
 
 동일 객실에 요청이 집중되면 후속 요청의 락 대기 시간이 증가할 수 있습니다.
 
-무제한 대기나 DB 기본 대기 시간 이후의 일반 500 응답을 방지하기 위해
-JPA 락 대기 한도를 3초로 설정했습니다.
+무제한 대기나 MySQL 기본 대기 시간 이후의 일반 500 응답을 방지하기 위해
+각 MySQL Connection의 InnoDB 행 락 대기 한도를 3초로 설정했습니다.
 
-```text
-jakarta.persistence.lock.timeout = 3000ms
+```yaml
+spring:
+  datasource:
+    hikari:
+      connection-init-sql: SET SESSION innodb_lock_wait_timeout = 3
 ```
+
+Hibernate 6.6의 MySQL Dialect에서는
+`jakarta.persistence.lock.timeout=3000` 힌트가 `FOR UPDATE WAIT 3`으로
+변환되지 않으므로, 해당 힌트만으로 실제 3초 대기를 보장할 수 없습니다.
+
+HikariCP가 물리 Connection을 생성할 때
+`SET SESSION innodb_lock_wait_timeout = 3`을 실행하게 하여
+MySQL이 실제로 3초 뒤 락 대기 시간 초과 오류를 반환하도록 구성합니다.
+
+이 설정은 같은 DataSource를 사용하는 예약 락과 결제 락에 모두 적용됩니다.
 
 Spring이 변환한 `PessimisticLockingFailureException`은
 예약 도메인의 `BusinessException`으로 변경합니다.
@@ -326,7 +333,6 @@ sequenceDiagram
 - 객실 최대 인원 초과 시 `ROOM_CAPACITY_EXCEEDED` 처리
 - 락 대기 예외를 `RESERVATION_LOCK_TIMEOUT`으로 변환
 - `Propagation.MANDATORY` 설정
-- 락 대기 한도 3초 설정
 
 ### 9.2 MySQL 통합 테스트
 
@@ -337,7 +343,8 @@ MySQL 8.4를 사용해 다음 시나리오를 검증합니다.
 |---|---|
 | 동일 객실·완전히 동일한 기간 | 1건 성공, 1건 거절 |
 | 동일 객실·일부 겹치는 기간 | 1건 성공, 1건 거절 |
-| 동일 객실에서 선행 트랜잭션이 락 유지 | 후속 요청 대기 |
+| MySQL Connection 세션 설정 | `innodb_lock_wait_timeout=3` |
+| 동일 객실에서 선행 트랜잭션이 3초 이상 락 유지 | 후속 요청이 약 3초 후 `RESERVATION_LOCK_TIMEOUT` |
 | 동일 객실·겹치지 않는 기간 | 2건 모두 성공 |
 | 서로 다른 객실 | 서로 대기하지 않고 2건 모두 성공 |
 | 예약 생성 중 예외로 롤백 | 다음 요청 정상 진행 |
@@ -407,7 +414,8 @@ but was: 2L
 - 락 범위가 객실 행을 넘어 숙소나 다른 객실로 확대되지 않는지 점검해야 합니다.
 - 락 획득 후 외부 API 호출이나 오래 걸리는 작업을 추가하지 않아야 합니다.
 - 예약 저장 트랜잭션은 가능한 짧게 유지해야 합니다.
-- 운영 DB와 JPA Provider에서 락 타임아웃 힌트가 의도대로 적용되는지 확인해야 합니다.
+- 운영 Connection의 `innodb_lock_wait_timeout`이 3초로 초기화되는지 확인해야 합니다.
+- 설정 변경 후 기존 Connection Pool을 재사용하지 않도록 애플리케이션을 재시작해야 합니다.
 
 ---
 
@@ -426,15 +434,3 @@ but was: 2L
 
 서로 다른 멱등성 키로 동일 객실을 예약하는 요청은
 현재 문서의 객실 단위 동시성 정책에 따라 처리됩니다.
-
----
-
-## 13. 관련 파일
-
-- `src/main/java/com/roompick/domain/room/repository/RoomRepository.java`
-- `src/main/java/com/roompick/domain/room/service/RoomService.java`
-- `src/main/java/com/roompick/domain/reservation/facade/ReservationFacade.java`
-- `src/main/java/com/roompick/domain/reservation/service/ReservationService.java`
-- `src/main/java/com/roompick/global/common/ErrorCode.java`
-- `src/test/java/com/roompick/domain/room/service/RoomServicePessimisticLockTest.java`
-- `src/test/java/com/roompick/domain/reservation/facade/ReservationConcurrencyMySqlIntegrationTest.java`

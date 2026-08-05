@@ -1,7 +1,6 @@
 package com.roompick.domain.reservation.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -13,7 +12,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +20,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -70,7 +69,9 @@ import com.roompick.global.common.ErrorCode;
         "spring.jpa.open-in-view=false",
         "spring.jpa.show-sql=true",
         "spring.jpa.properties.hibernate.format_sql=true",
-        "spring.datasource.hikari.maximum-pool-size=5"
+        "spring.datasource.hikari.maximum-pool-size=5",
+        "spring.datasource.hikari.connection-init-sql="
+            + "SET SESSION innodb_lock_wait_timeout = 3"
     }
 )
 @ActiveProfiles("test")
@@ -94,6 +95,12 @@ class ReservationConcurrencyMySqlIntegrationTest {
 
     private static final Duration ASYNC_TIMEOUT =
         Duration.ofSeconds(15);
+
+    private static final long MINIMUM_LOCK_WAIT_MILLIS =
+        2_500L;
+
+    private static final long MAXIMUM_LOCK_WAIT_MILLIS =
+        6_000L;
 
     @Container
     static final MySQLContainer<?> MYSQL_CONTAINER =
@@ -171,6 +178,9 @@ class ReservationConcurrencyMySqlIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private TestData testData;
 
@@ -261,10 +271,27 @@ class ReservationConcurrencyMySqlIntegrationTest {
 
     @Test
     @DisplayName(
-        "동일 객실의 두 번째 예약은 첫 트랜잭션이 "
-            + "락을 해제할 때까지 대기한다"
+        "MySQL Connection의 객실 락 대기 한도는 3초이다"
     )
-    void secondReservationForSameRoomWaitsForFirstTransaction()
+    void mysqlConnectionUsesThreeSecondLockWaitTimeout() {
+        // when
+        Long lockWaitTimeoutSeconds =
+            jdbcTemplate.queryForObject(
+                "SELECT @@SESSION.innodb_lock_wait_timeout",
+                Long.class
+            );
+
+        // then
+        assertThat(lockWaitTimeoutSeconds)
+            .isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName(
+        "동일 객실의 락을 3초 안에 획득하지 못하면 "
+            + "예약 락 타임아웃을 반환한다"
+    )
+    void secondReservationTimesOutAfterThreeSeconds()
         throws Exception {
 
         // given
@@ -283,9 +310,6 @@ class ReservationConcurrencyMySqlIntegrationTest {
             new CountDownLatch(1);
 
         CountDownLatch releaseFirstTransaction =
-            new CountDownLatch(1);
-
-        CountDownLatch secondRequestStarted =
             new CountDownLatch(1);
 
         ExecutorService executorService =
@@ -329,35 +353,59 @@ class ReservationConcurrencyMySqlIntegrationTest {
                     + "유지해야 합니다."
             );
 
-            Future<ReservationAttemptResult> secondFuture =
+            Future<TimedReservationAttemptResult> secondFuture =
                 executorService.submit(() -> {
-                    secondRequestStarted.countDown();
+                    long startedAt =
+                        System.nanoTime();
 
-                    return executeReservation(
-                        testData.secondMemberId(),
-                        request
+                    ReservationAttemptResult result =
+                        executeReservation(
+                            testData.secondMemberId(),
+                            request
+                        );
+
+                    Duration elapsedTime =
+                        Duration.ofNanos(
+                            System.nanoTime()
+                                - startedAt
+                        );
+
+                    return new TimedReservationAttemptResult(
+                        result,
+                        elapsedTime
                     );
                 });
 
-            awaitLatch(
-                secondRequestStarted,
-                ASYNC_TIMEOUT,
-                "두 번째 예약 요청이 시작돼야 합니다."
+            TimedReservationAttemptResult timedSecondResult =
+                secondFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            ReservationAttemptResult secondResult =
+                timedSecondResult.result();
+
+            assertThat(secondResult.success())
+                .isFalse();
+
+            assertThat(secondResult.errorCode())
+                .isEqualTo(
+                    ErrorCode.RESERVATION_LOCK_TIMEOUT
+                );
+
+            assertThat(
+                timedSecondResult
+                    .elapsedTime()
+                    .toMillis()
+            ).isBetween(
+                MINIMUM_LOCK_WAIT_MILLIS,
+                MAXIMUM_LOCK_WAIT_MILLIS
             );
 
             /*
-             * 첫 트랜잭션이 락을 유지하는 동안에는
-             * 같은 객실의 두 번째 요청이 완료되면 안 됩니다.
+             * 두 번째 요청의 타임아웃을 확인한 뒤에만
+             * 첫 번째 트랜잭션을 커밋해 락을 해제합니다.
              */
-            assertThatThrownBy(() ->
-                secondFuture.get(
-                    500,
-                    TimeUnit.MILLISECONDS
-                )
-            ).isInstanceOf(
-                TimeoutException.class
-            );
-
             releaseFirstTransaction.countDown();
 
             ReservationAttemptResult firstResult =
@@ -366,22 +414,8 @@ class ReservationConcurrencyMySqlIntegrationTest {
                     TimeUnit.MILLISECONDS
                 );
 
-            ReservationAttemptResult secondResult =
-                secondFuture.get(
-                    ASYNC_TIMEOUT.toMillis(),
-                    TimeUnit.MILLISECONDS
-                );
-
             assertThat(firstResult.success())
                 .isTrue();
-
-            assertThat(secondResult.success())
-                .isFalse();
-
-            assertThat(secondResult.errorCode())
-                .isEqualTo(
-                    ErrorCode.ROOM_NOT_AVAILABLE
-                );
 
             assertThat(
                 reservationRepository.count()
@@ -931,5 +965,11 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 errorCode
             );
         }
+    }
+
+    private record TimedReservationAttemptResult(
+        ReservationAttemptResult result,
+        Duration elapsedTime
+    ) {
     }
 }
