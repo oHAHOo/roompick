@@ -1,0 +1,478 @@
+# GitHub Actions AI 에이전트 워크플로우 설계 문서
+
+- 관련 Issue: #81 (W2 고도화 — GitHub Actions에 AI 에이전트 구현), #98 (issue에 agent 배정 시 해결 방향 코멘트 자동 등록), #99 (issue 내용에 맞춰 코드 수정/구현하는 agent 자동화)
+- 관련 파일: `.github/workflows/claude.yml`, `.github/workflows/claude-triage.yml`, `.github/workflows/claude-implement.yml` (제안, 아래 11장 참고)
+- 작성일: 2026-07-30 (10장 추가: 2026-08-04, 11장 추가: 2026-08-04)
+
+이 문서는 `claude.yml`을 왜 지금 구조로 설계했는지, 각 결정의 배경과 트레이드오프를 정리한다. 워크플로우 파일을 수정하기 전에 먼저 이 문서를 읽고, 구조를 바꾸면 이 문서도 함께 갱신한다.
+
+---
+
+## 1. 목표와 범위
+
+이슈 #81의 원래 목표는 PR 리뷰 코멘트 대응, CI 실패 자동 진단·수정, 이슈 트리아지까지 포함했다. 이번 구현은 그중 **PR/이슈 코멘트에서 `@claude` 멘션에 반응하는 부분만** 다룬다.
+
+CI 실패 자동 대응은 별도로 검토했으나 제외했다. 이유는 아래 3번 항목 참고.
+
+---
+
+## 2. 트리거 설계
+
+### 2.1 트리거 이벤트 설명
+
+| 이벤트 | 발생 시점 | 이 워크플로우에서의 용도 |
+| --- | --- | --- |
+| `issue_comment` (`created`) | 이슈 또는 PR에 새 코멘트가 달렸을 때 | 이슈/PR 코멘트에서 `@claude` 멘션 감지 |
+| `pull_request_review_comment` (`created`) | PR의 특정 코드 라인에 리뷰 코멘트가 달렸을 때 | 코드 리뷰 코멘트에서 `@claude` 멘션 감지 |
+| `pull_request_review` (`submitted`) | PR 리뷰(승인/변경 요청 등)가 제출됐을 때 | 리뷰 본문에서 `@claude` 멘션 감지 |
+| `issues` (`opened`, `assigned`) | 이슈가 새로 생성되거나 담당자가 지정됐을 때 | 이슈 본문에서 `@claude` 멘션 감지 |
+
+`pull_request_review_comment`와 `issue_comment`는 둘 다 "코멘트"지만 대상이 다르다. `issue_comment`는 이슈/PR 전체에 대한 일반 코멘트(GitHub 내부적으로 PR도 이슈로 취급), `pull_request_review_comment`는 코드 diff의 특정 줄에 달리는 리뷰 코멘트다. 두 경로 모두에서 `@claude`를 호출할 수 있도록 둘 다 등록했다.
+
+`issues: types: [opened, assigned]`를 넣은 이유는 이슈 트리아지 시나리오(이슈가 새로 열리거나 누군가에게 할당됐을 때 에이전트가 초기 분석을 도울 수 있도록)를 염두에 둔 것이다. 다만 현재는 `@claude`가 본문에 포함된 경우에만 반응하므로, 실제로는 이슈 생성 시점에 작성자가 직접 `@claude`를 함께 적어야 동작한다.
+
+### 2.2 GitHub App 설치와 기본 브랜치 요구사항
+
+`issue_comment`, `pull_request_review_comment`, `pull_request_review`, `issues` 이벤트는 **저장소의 기본 브랜치(`develop`)에 있는 워크플로우 파일**을 기준으로 실행 여부가 결정된다. PR 브랜치에만 워크플로우 파일이 있고 아직 기본 브랜치에 병합되지 않았다면, 그 PR에 `@claude` 코멘트를 남겨도 워크플로우 자체가 인식되지 않는다. (실제로 PR #87 머지 전 테스트 시 이 문제로 트리거가 발생하지 않는 것을 확인했다.)
+
+반면 `pull_request` 이벤트(이 워크플로우에서는 사용하지 않음)는 예외적으로 PR의 head 브랜치 워크플로우 파일을 사용한다. 병합 전 신규 워크플로우를 테스트해야 한다면 이 차이를 감안해야 한다.
+
+### 2.3 왜 `@claude` 멘션 방식인가
+
+```yaml
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+```
+
+4가지 이벤트 모두 "사람이 명시적으로 부를 때만" 실행되도록 `if:` 조건에서 `@claude` 문자열 포함 여부를 검사한다.
+
+- 라벨 부착 방식(예: `ai-review` 라벨) 대신 멘션 방식을 선택한 이유: 코멘트 하나로 트리거와 요청 내용을 동시에 전달할 수 있어 라벨 관리 부담이 없다.
+- 모든 코멘트에 무조건 반응하는 방식은 채택하지 않았다. 비용이 예측 불가능해지고 스팸성 반응이 될 수 있다.
+
+### 2.4 CI 실패 자동 대응을 제외한 이유
+
+`workflow_run` 이벤트로 CI 실패마다 자동 반응하는 워크플로우를 별도 설계했으나 다음 이유로 보류했다.
+
+- CI 실패는 사람이 트리거를 여는 게 아니라 **실패할 때마다 무조건 실행**되므로, `@claude` 멘션과 비용 성격이 다르다 (실패 빈도만큼 실행 횟수가 그대로 늘어남).
+- 같은 원인으로 반복 실패하면 중복 코멘트가 쌓이는 문제가 있고, 이를 막으려면 별도의 중복 판단 로직(그 자체로 추가 복잡도/비용)이 필요하다.
+- 비용을 예측 가능한 범위로 유지하는 것을 우선시해, 이번 스코프에서는 제외하고 필요 시 별도 이슈로 분리하기로 했다 (이슈 #81 본문에도 명시).
+
+---
+
+## 3. 무한 루프·중복 트리거 방지
+
+```yaml
+if: |
+  (github.event_name == 'issue_comment' && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '@claude')) ||
+  ...
+```
+
+### 3.1 문제 상황
+
+에이전트가 답변 코멘트를 남기면 그 코멘트도 `issue_comment` 이벤트를 다시 발생시킨다. 답변 안에 `@claude` 문자열이 포함되면(예: 사용 예시를 안내하는 경우) 워크플로우가 재귀적으로 계속 트리거될 수 있다.
+
+### 3.2 해결 방식과 변경 이력
+
+- 최초 구현: `github.event.comment.user.login != 'github-actions[bot]'`
+  - `GITHUB_TOKEN`으로 남긴 코멘트의 작성자 로그인만 걸러내는 방식.
+- 리뷰 피드백으로 발견된 문제: `claude-code-action`이 실제로 응답을 남기는 계정은 `github-actions[bot]`이 아니라 **`claude[bot]`**이다. 즉 최초 구현은 실제 응답 봇을 걸러내지 못했다.
+- 최종 수정: `github.event.comment.user.type != 'Bot'`
+  - 로그인 이름 하나를 비교하는 대신, GitHub이 제공하는 계정 타입(`User` vs `Bot`) 자체로 판단한다. 어떤 이름의 봇 계정이든 (현재의 `claude[bot]`이든 나중에 바뀌는 계정이든) 동일한 조건으로 걸러진다.
+- 실제 테스트로 검증됨: 이슈 #81에 `@claude` 테스트 코멘트를 남긴 뒤, 에이전트의 응답 코멘트(작성자 `claude`, `Bot` 타입)에 대해서는 워크플로우가 `skipped` 상태로 표시되고 실행되지 않는 것을 Actions 탭에서 확인했다.
+
+---
+
+## 4. 비용·실행 시간 상한
+
+```yaml
+runs-on: ubuntu-latest
+timeout-minutes: 10
+```
+
+GitHub Actions job의 기본 타임아웃은 360분(6시간)이다. 에이전트 응답이 비정상적으로 길어지거나 멈추는 경우 비용과 실행 시간이 과도하게 소모될 수 있어 10분으로 제한했다. 일반적인 코멘트 응답/간단한 작업은 이 시간 내에 끝난다.
+
+같은 PR/이슈에 대한 트리거 빈도 자체를 제한하는 로직(예: N분 내 재호출 금지)은 추가하지 않았다. `@claude` 멘션은 사람이 직접 입력하는 행위라 남용 가능성이 낮다고 판단했다. 필요성이 드러나면 추가한다.
+
+---
+
+## 5. 인증 방식
+
+```yaml
+with:
+  claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+- 별도 API 키를 발급받아 과금하는 대신, 기존 Claude Pro 구독 계정으로 `claude setup-token`을 실행해 OAuth 토큰을 발급받아 사용한다.
+- 저장소 Secrets에 `CLAUDE_CODE_OAUTH_TOKEN`으로 등록되어 있다.
+- 추가로 **Claude Code GitHub App** (https://github.com/apps/claude) 설치가 필요하다. OAuth 토큰만으로는 부족하고, 앱이 저장소에 설치되어 있어야 OIDC 토큰을 앱 토큰으로 교환하는 인증 과정이 성립한다. (설치 전 테스트 시 `Claude Code is not installed on this repository` 401 에러로 확인됨)
+- 참고로 이 GitHub App은 보안 정책상 `.github/workflows/` 디렉토리 내 파일을 에이전트가 직접 수정하지 못하도록 제한하고 있다. 즉 워크플로우 파일 자체를 에이전트가 스스로 변경할 수 없다.
+
+---
+
+## 6. 권한 범위
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+```
+
+- `contents: write`, `pull-requests: write`, `issues: write`: 에이전트가 코드 커밋, PR/이슈 코멘트 작성을 하기 위해 필요.
+- `id-token: write`: OIDC 토큰 발급 (GitHub App 인증 교환에 사용).
+- GitHub Actions의 `permissions` 필드는 브랜치 단위로 범위를 나눌 수 없다. 즉 "main/develop 제외 나머지 브랜치에만 커밋 권한"을 워크플로우 파일 안에서 표현할 방법이 없다.
+- 이 한계를 보완하는 것은 워크플로우 파일이 아니라 **저장소의 브랜치 보호 규칙**이다. main/develop에 "Require a pull request before merging"을 설정하면, 에이전트가 실수로 이 브랜치에 push를 시도해도 강제 반영되지 않는다.
+- **현재 상태: 브랜치 보호 규칙 미설정 (블로커).** 저장소 관리자 권한이 필요해 이 저장소에서는 아직 설정하지 못했다. 설정 방법은 별도 안내 참고, 완료 전까지는 워크플로우 레벨 방어(`if:` 조건, 봇 필터링)에만 의존하는 상태임을 인지하고 있어야 한다.
+
+---
+
+## 7. 외부 Action 버전 고정
+
+```yaml
+uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
+```
+
+- 최초 구현은 `@v4`, `@v1` 같은 가변 태그를 사용했다.
+- 코드 리뷰에서 지적된 문제: 이 워크플로우는 OAuth 토큰(Secret)과 `contents/pull-requests/issues: write` 권한을 함께 사용하므로, 가변 태그가 가리키는 코드가 향후 변경될 경우 공급망 공격에 노출될 위험이 있다.
+- 해결: 두 Action 모두 태그가 가리키는 실제 commit SHA를 GitHub API로 확인한 뒤, 그 SHA로 고정하고 태그는 주석으로만 남겼다. 버전을 올릴 때는 새 태그의 SHA를 다시 확인해서 갱신해야 한다.
+
+---
+
+## 8. 응답 포맷
+
+별도의 커스텀 헤더(`prompt`나 템플릿)를 추가하지 않았다. `claude-code-action`이 기본적으로 아래와 같은 포맷을 자동 생성하기 때문에 추가 설정 없이도 이슈 #81의 요구사항("팀원이 언제 에이전트가 개입했는지 PR에서 구분 가능함")을 충족한다.
+
+```
+**Claude finished @{user}'s task in {N}s** —— [View job](링크)
+```
+
+- 작성자 계정이 `claude` + `Bot` 타입으로 GitHub UI에서 명확히 구분된다.
+- 실행 시간과 실행 로그 링크가 코멘트에 자동 포함된다.
+
+---
+
+## 9. 남은 작업
+
+- [ ] main/develop 브랜치 보호 규칙 설정 (저장소 관리자 조치 필요, 완료조건 "의도치 않은 브랜치 직접 푸시 방지"의 마지막 방어선)
+- CI 실패 자동 대응은 이번 스코프에서 제외 — 필요 시 별도 이슈로 재검토 (비용 통제 방안이 먼저 정해져야 함)
+
+---
+
+## 10. `claude-triage.yml` — 이슈 트리아지 계획 코멘트 (이슈 #98)
+
+### 10.1 목표와 범위
+
+`claude.yml`은 이슈 본문에 `@claude`가 포함돼 있어야만 동작하고, 담당자(assignee)를 `claude`로 지정하는 것만으로는 아무 반응이 없다. 이슈 #98의 원래 요구사항은 담당자 지정 시점에 코드를 바로 수정하지 않고 해결 방향 "계획"만 이슈 댓글로 자동 등록하는 것이었다. 실제 코드 구현(브랜치/커밋/PR 생성)은 이 워크플로우의 범위가 아니며 별도 이슈로 분리한다.
+
+`claude.yml`을 확장하지 않고 별도 워크플로우 파일(`claude-triage.yml`)로 분리한 이유: 트리거 조건과 허용 동작 범위(코멘트만 vs 코드 수정까지)가 서로 다르고, 하나의 `if:` 조건에 섞으면 실수로 트리거만으로 코드 수정 권한을 가진 액션이 실행될 위험이 있다.
+
+### 10.2 트리거: 담당자 지정(assignee) → 라벨(label)로 변경
+
+**당초 설계**는 이슈 #98 본문 그대로 담당자 지정(`assignee_trigger`)을 트리거로 사용하는 것이었다. 그러나 실제로 이 방식은 다음 두 조건이 전부 충족돼야 동작한다.
+
+1. `claude`가 이 저장소의 담당자 지정 가능 목록(`GET /repos/{owner}/{repo}/assignees`)에 있어야 함
+2. GitHub 이슈 UI에서 봇 계정을 담당자로 지정하려면, GitHub 자체의 **Copilot → Coding agent → Partner Agents**에서 Claude를 활성화해야 함 (이는 Anthropic의 `claude-code-action`과는 무관한 **GitHub 네이티브 기능**이다)
+
+이 저장소가 속한 계정에서 Settings → Copilot → Cloud agent 화면을 직접 확인한 결과, "Copilot Pro/Pro+/Business/Enterprise 라이선스가 없다"는 경고와 함께 Partner Agents 섹션 자체가 노출되지 않았다. 즉 유료 Copilot 라이선스가 없는 현재 상태로는 담당자 지정 방식이 원천적으로 막혀 있다.
+
+**최종 결정**: 담당자 지정 대신 **라벨(label) 트리거**로 변경한다. 라이선스나 조직 관리자 설정 없이 `claude-code-action`의 `label_trigger` 입력만으로 즉시 동작 가능하다.
+
+```yaml
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  triage-plan:
+    if: github.event.label.name == 'claude-triage'
+```
+
+```yaml
+with:
+  label_trigger: "claude-triage"
+```
+
+사용법: 이슈에 `claude-triage` 라벨을 붙이면 트리거된다. 담당자 지정과 달리 라벨은 저장소에 쓰기 권한이 있는 사람이면 누구나 관리자 설정 없이 바로 만들고 붙일 수 있다. (`claude-triage` 라벨이 저장소에 미리 존재해야 하며, 없으면 사람이 먼저 만들어야 한다.)
+
+> 이슈 #98 본문의 완료조건("agent 배정 시")과 문자 그대로는 다르지만, "담당자(assignee) 개념을 GitHub 봇 계정 UI로 흉내낼 방법이 이 저장소 환경(무료 티어)에서 없다"는 것을 확인한 뒤 내린 대체 결정이다. 이슈 코멘트에도 이 사유를 남겨 완료조건 문구를 라벨 기준으로 조정할지 논의가 필요하다.
+
+### 10.3 코드 수정 방지 — `prompt`만으로는 부족함
+
+당초 이슈 작업 항목에는 "`prompt` 입력이 동작 범위를 실제로 강제하는지 확인"이 포함돼 있었다. 확인 결과: **`prompt`만으로는 코드 수정을 막을 수 없다.** `prompt`는 지시문일 뿐 도구 접근을 제한하지 않으므로, 모델이 지시를 무시하고 파일을 수정할 가능성을 코드 레벨에서 차단하지 못한다.
+
+실제 강제 수단은 `claude_args`로 도구 자체를 비활성화하는 것이다.
+
+```yaml
+claude_args: |
+  --disallowedTools Edit,Write
+```
+
+`Edit`, `Write` 도구를 비활성화하면 모델이 프롬프트를 무시하려 해도 파일을 편집/생성할 방법이 없다. 이 워크플로우의 권한도 `contents: write`가 아닌 `contents: read`로 최소화한다 (댓글 작성에는 `issues: write`만 있으면 된다).
+
+### 10.4 남은 준비 작업
+
+담당자 지정 방식의 라이선스 블로커는 라벨 방식으로 전환하면서 해소됐다. 다만 실제 배치 전에 아래는 사람이 직접 해야 한다.
+
+- [ ] 저장소에 `claude-triage` 라벨 생성 (Issues → Labels → New label)
+- [x] `claude-triage.yml`을 `.github/workflows/claude-triage.yml`로 커밋 완료
+- [x] `track_progress: true` 반영 (10.6 참고 — 실사용 테스트에서 코멘트 미등록 버그 확인 후 추가)
+- [ ] 테스트 이슈에 `claude-triage` 라벨을 붙여 워크플로우가 트리거되고, 계획 댓글만 남고 코드 수정/PR이 발생하지 않는지 재검증
+- [ ] 이슈 #98 완료조건 문구("agent 배정 시")를 라벨 트리거 기준으로 조정할지 이슈에 코멘트로 논의
+
+### 10.5 현재 상태
+
+- `claude-triage.yml`은 [`.github/workflows/claude-triage.yml`](../.github/workflows/claude-triage.yml)에 배치 완료됐다 (Claude Code GitHub App은 이 디렉토리를 직접 수정할 수 없어 사람이 직접 커밋함).
+- 라벨 트리거 방식은 조직/라이선스 설정에 의존하지 않으므로, `claude-triage` 라벨만 저장소에 만들면 바로 동작 가능한 상태다.
+
+### 10.6 실사용 테스트 중 발견된 버그 — 계획 코멘트가 등록되지 않음
+
+**증상**: 이슈 #98에 `claude-triage` 라벨을 붙여 실제로 트리거해본 결과, 워크플로우는 `success`로 정상 종료됐고(약 4분, 18턴 실행) Claude가 이슈를 분석까지 했으나 **이슈에 댓글이 하나도 남지 않았다.**
+
+**원인 분석**: Actions 실행 로그(`gh run view <run-id> --log`)를 확인한 결과, 액션에 전달된 설정에 다음이 포함돼 있었다.
+
+```
+track_progress: false
+display_report: false
+```
+
+`anthropics/claude-code-action`의 `track_progress` 입력은 공식 문서에 "`pull_request`와 `issue`(`opened`, `edited`, `labeled`, `assigned`) 이벤트에 대해 tag mode + 트래킹 코멘트를 강제한다"고 명시돼 있다. 즉 **이슈에 결과를 댓글로 남기는 동작 자체가 이 입력에 의존**하는데, `claude-triage.yml` 초안에는 이 값을 넣지 않아 기본값(`false`)으로 실행됐다. 그 결과 Claude는 분석은 수행했지만(로그상 `permission_denials_count: 11` — `Edit`/`Write` 시도가 막힌 흔적으로 추정) 결과를 게시할 코멘트 자체가 생성되지 않았다.
+
+`prompt`에 "댓글로 남기세요"라고 지시문으로 적어둔 것만으로는 실제 댓글 생성 메커니즘이 활성화되지 않는다는 점에서, 10.3의 "`prompt`는 강제력이 없다"는 결론과 같은 성격의 문제다.
+
+**수정**:
+
+```diff
+         with:
+           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+           label_trigger: "claude-triage"
++          track_progress: true
+           claude_args: |
+             --disallowedTools Edit,Write
+```
+
+`track_progress: true`를 추가해 트래킹 코멘트가 강제로 생성/갱신되도록 했다. 이 값을 반영한 뒤 `claude-triage` 라벨을 재부착해 실제로 계획 댓글이 남는지 재검증이 필요하다 (10.4 체크리스트 참고).
+
+---
+
+## 11. `claude-implement.yml` — 계획 이후 실제 코드 수정 + PR 생성 (이슈 #99)
+
+### 11.1 목표와 범위
+
+이슈 #98(`claude-triage.yml`)이 계획만 댓글로 남기는 단계라면, #99는 그 다음 단계로 **실제 코드를 수정하고 PR을 생성하는 자동화**(`claude-implement.yml`)를 추가한다. `claude.yml`, `claude-triage.yml`과는 별개 파일로 분리한다 (이유는 10.1과 동일 — 트리거 조건과 허용 동작 범위가 다른 워크플로우를 하나의 `if:`에 섞지 않는다).
+
+이슈 #99 본문은 자동 트리아지(`claude-triage.yml`)가 생성한 초기 계획 코멘트에서 다시 한번 분석됐다 (이슈 #99 코멘트, [실행 로그](https://github.com/IMSUN9/roompick-backend/actions/runs/30887877521)). 이 절은 그 분석 결과를 반영해 작성한다.
+
+### 11.2 트리거: 이슈 본문의 A/B안 대신 라벨(C안) 채택
+
+이슈 #99 본문은 트리거 방식으로 다음 두 안 중 택1을 요구했다.
+
+- **A안(이슈 본문 권장)**: 사람이 `@claude 이 계획대로 구현해줘`처럼 댓글을 달면 `issue_comment` 이벤트로 트리거
+- **B안**: `claude-triage.yml`의 계획 job 완료를 `workflow_run` 이벤트로 감지해 자동으로 이어 실행
+
+두 안 모두 다음 문제로 채택하지 않았다.
+
+- **A안의 문제**: `claude.yml`은 이미 `contains(github.event.comment.body, '@claude')` 조건으로 모든 `issue_comment`에 반응한다. `claude-implement.yml`을 같은 `issue_comment` 이벤트 + `@claude` 포함 조건으로 만들면, "구현해줘" 댓글 하나에 `claude.yml`과 `claude-implement.yml`이 **동시에 트리거**된다. `claude-code-action`의 `trigger_phrase`를 다르게 설정해도 `contains()` 문자열 검사는 부분 문자열도 매치하므로 `claude.yml`의 `@claude` 조건 자체는 여전히 참이 된다. 이를 막으려면 `claude.yml`의 `if:` 조건도 함께 고쳐야 하는데, 이는 완료조건 "`claude.yml` 기존 동작에 영향 없음"을 자동으로 보장할 수 없게 만든다.
+- **B안의 문제**: `workflow_run` 이벤트 payload에는 트리거된 워크플로우의 커밋/브랜치 정보만 있고 이슈 번호가 없어, 어떤 이슈에 대한 실행인지 별도로(아티팩트 등) 전달하는 로직이 추가로 필요하다. 또한 사람 개입 없이 계획→구현이 자동 연결되면, 완료조건 "리뷰 없이 머지되지 않도록 절차 확인"이 브랜치 보호 규칙에 전적으로 의존하게 되는데, 9장에 기록된 대로 **이 저장소는 main/develop 브랜치 보호 규칙이 아직 미설정 상태**다. 이 상태로 B안을 채택하면 사람 승인 없이 코드가 병합될 위험을 막을 수단이 없다.
+
+**채택한 C안**: `claude-triage.yml`과 동일한 패턴으로 **`claude-implement` 라벨 부착**을 트리거로 사용한다.
+
+```yaml
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  implement:
+    if: github.event.label.name == 'claude-implement'
+```
+
+```yaml
+with:
+  label_trigger: "claude-implement"
+```
+
+- `issue_comment` 이벤트를 쓰지 않으므로 `claude.yml`과 조건이 겹치지 않는다 — 워크플로우 파일 두 개를 동시에 고칠 필요가 없다.
+- 라벨 부착은 사람이 명시적으로 하는 행위이므로 A안의 "사람이 결정" 취지를 유지한다.
+- `workflow_run`처럼 이슈 번호를 별도로 전달할 필요 없이 `github.event.issue.number`를 바로 쓸 수 있다.
+- 이미 저장소에 있는 패턴(`claude-triage` 라벨)과 일관돼 운영 부담이 적다.
+
+이슈 본문이 명시한 "A/B 중 택1"과 문자 그대로 다른 대안이므로, 이슈 코멘트로 사유를 남기고 완료조건 문구 조정 여부를 논의해야 한다 (10.2에서 담당자→라벨 전환 때와 같은 절차).
+
+### 11.3 `claude-triage.yml`과의 차이 — 코드 수정을 허용
+
+`claude-triage.yml`은 `--disallowedTools Edit,Write`로 코드 수정을 원천 차단했지만, `claude-implement.yml`은 코드 수정과 PR 생성이 목적이므로 도구를 제한하지 않는다. 대신 권한과 프롬프트로 범위를 통제한다.
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+```
+
+`claude.yml`과 동일한 권한 구성이다 (코드 커밋 + PR 생성에 필요).
+
+```yaml
+base_branch: develop
+branch_prefix: "claude/"
+```
+
+저장소 기본 브랜치가 이미 `develop`이라 `base_branch`를 지정하지 않아도 대부분 같은 결과가 나오지만, "PR 대상이 항상 develop"이라는 의도를 명시적으로 고정하기 위해 넣는다. main에 직접 PR이 열리는 사고를 방지하는 효과도 있다.
+
+### 11.4 도메인 가드 — `AGENTS.md` / `.github/CODEOWNERS` 기반 프롬프트
+
+`AGENTS.md`에는 도메인 담당자 규칙이 이미 있고, `.github/CODEOWNERS`에도 같은 매핑이 코드로 반영돼 있다.
+
+| 경로 | 담당자 |
+| --- | --- |
+| `domain/accommodation/`, `domain/room/`, `domain/reservation/` | IMSUN9 |
+| `domain/payment/` | minjae123123 |
+| `domain/member/`, `global/config/SecurityConfig.java` | oHAHOo |
+
+이 매핑을 `claude-implement.yml`의 `prompt`에 가드 문구로 포함해, 이슈가 명시적으로 요구하지 않는 한 다른 담당자 영역을 건드리지 않도록 지시한다 (수정이 불가피하면 PR 본문에 사유를 남기도록 지시). 이 가드는 프롬프트 레벨 지시이므로 10.3에서 확인한 것과 같은 한계(강제력 없음)가 있다 — `CODEOWNERS`가 이미 존재하므로, 브랜치 보호 규칙에서 "코드 소유자 리뷰 필수"를 함께 켜면 실질적인 안전판이 된다 (11.5 참고).
+
+### 11.5 진행 전 결정이 필요했던 사항과 처리 현황
+
+이슈 #99의 트리아지 코멘트가 짚었던 미결 사항과 이번 설계에서의 처리:
+
+1. **트리거 방식** — C안(라벨) 채택. 위 11.2 참고.
+2. **브랜치 보호 규칙 미설정** — 9장에 기록된 기존 블로커와 동일. `claude-implement.yml`이 만드는 PR도 결국 이 규칙이 없으면 "리뷰 없이 머지되지 않도록" 완료조건을 워크플로우만으로 보장할 수 없다. 별도로 해결되지 않는 한 이번 작업의 완료조건이 아니라 9장의 기존 남은 작업으로 유지한다.
+3. **`claude-implement` 라벨 신규 생성** — `claude-triage` 라벨과 마찬가지로 사람이 저장소에 직접 만들어야 한다.
+4. **워크플로우 파일 커밋 주체** — `claude-implement.yml`은 Claude Code GitHub App이 `.github/workflows/`를 직접 수정할 수 없어(CLAUDE.md 명시 제약) 사람이 직접 커밋해야 한다.
+
+### 11.6 현재 상태
+
+- `claude-implement.yml`의 제안 내용은 [`docs/workflows/claude-implement.yml`](../.github/workflows/claude-implement.yml)에 준비돼 있다.
+- 배치 전 필요한 작업: `claude-implement` 라벨 생성, `.github/workflows/claude-implement.yml`로 커밋, 테스트 이슈로 실사용 검증 (10.6에서 확인했듯 `claude-triage.yml`도 첫 배치 시 `track_progress` 누락 버그가 있었으므로, 이 파일도 실사용 테스트를 거쳐야 한다).
+- 브랜치 보호 규칙(9장, 11.5-2)은 이번 작업으로 해소되지 않은 채로 남아 있다.
+
+### 11.7 PR 리뷰에서 지적된 두 가지 미충족 완료조건 (병합 전 수정 필요)
+
+최초 커밋(`493c76c0`)의 PR 리뷰에서 고정된 `anthropics/claude-code-action` 커밋의 공식 문서와
+대조한 결과, 프롬프트 지시만으로는 실제로 보장되지 않는 완료조건 두 가지가 지적됐다.
+
+1. **PR이 자동으로 생성되지 않는다.** 고정된 액션 버전은 이슈에서 변경사항을 커밋해 브랜치로
+   push한 뒤, 사람이 클릭해야 하는 사전 입력된 PR 생성 링크만 코멘트로 남긴다. 프롬프트에
+   "PR을 생성하세요"라고 적어도 액션 자체의 동작(PR 자동 생성 API 호출)이 추가되지는 않는다.
+2. **`./gradlew test` 실행 권한이 없다.** 액션은 기본적으로 임의 Bash 실행을 허용하지 않고,
+   `claude_args`에도 `Bash(./gradlew test)` 허용이 없었다. "커밋 전 테스트"는 프롬프트상 지시일
+   뿐 실행 가능한 제약이 아니었으므로, "테스트를 통과하는 PR만 생성"을 보장할 수 없었다.
+
+**수정 방향** (11.3 검토 결과 반영): 액션 스텝에 `id: claude`를 지정해 `branch_name` 출력을
+받고, 별도의 워크플로우 스텝에서 그 브랜치를 체크아웃해 `./gradlew test`를 실행한 뒤, 통과한
+경우에만 `gh pr create`로 명시적으로 PR을 생성한다. PR 생성 전 `gh pr list --head <branch>`로
+기존 열린 PR이 있는지 확인해 재실행 시 중복 PR이 생기지 않도록 한다. 액션의 코드 수정 자체에는
+`claude_args: --allowedTools "Bash(./gradlew test)"`를 추가해, "커밋 전 테스트" 지시가 실행
+가능하도록 만든다. 수정된 전체 워크플로우는 `.github/workflows/claude-implement.yml`을 사람이
+직접 반영해야 한다(11.5-4와 동일한 제약 — GitHub App이 `.github/workflows/`를 직접 수정할 수
+없음).
+
+**추가 리뷰에서 지적된 재실행 중복 문제**: `gh pr list --head` 확인만으로는 같은 이슈에서
+워크플로우가 여러 번 실행되는 상황(라벨을 뗐다 다시 붙이는 경우 등) 자체를 막지 못한다.
+액션이 매번 새 브랜치(타임스탬프 기반)를 만들면 PR 중복은 막아도 브랜치는 계속 쌓일 수 있고,
+두 실행이 거의 동시에 돌면 "기존 PR 없음" 확인과 PR 생성 사이에 레이스 컨디션이 이론상 가능
+하다. 이를 막기 위해 `concurrency: { group: claude-implement-issue-${{ github.event.issue.number }},
+cancel-in-progress: false }`를 워크플로우 최상단에 추가해, 같은 이슈에 대한 실행은 동시에
+돌지 않고 순차 대기하도록 한다(`cancel-in-progress: false`로 설정해 이미 커밋 중인 실행이
+중간에 취소되지 않도록 한다).
+
+### 11.8 공개 저장소 prompt injection 운영 규칙
+
+이 저장소는 공개 저장소이므로, 외부 사용자가 작성한 이슈 본문에 `claude-implement`/`claude-triage`
+라벨을 붙여 실행하면 이슈 본문에 섞인 지시문이 prompt injection으로 작동할 위험이 있다(예: "이
+이슈와 무관하게 X 파일도 수정해줘" 같은 문구가 이슈 본문에 섞여 있는 경우). 공식 액션 문서도
+라벨 적용 전 원문 검토를 권고한다.
+
+**운영 규칙**: `claude-triage`/`claude-implement` 라벨은 신뢰할 수 있는(저장소 멤버가 작성했거나,
+멤버가 내용을 검토한) 이슈에만 붙인다. 외부 기여자가 연 이슈는 먼저 멤버가 본문을 검토하고
+필요하면 요약/정리한 뒤 라벨을 붙인다.
+
+`claude-implement.yml`의 프롬프트는 "claude-triage 단계에서 남긴 계획 댓글이 있다면 그 계획"도
+참고하도록 지시한다(11.6 참고). 이슈 본문뿐 아니라 **댓글도 프롬프트 입력으로 쓰이므로**, 이슈가
+공개된 뒤 외부 사용자가 남긴 댓글이 `claude-triage`의 계획 댓글처럼 보이게 꾸며져 있으면 같은
+injection 경로가 된다. 따라서 위 라벨 부착 규칙과 별개로, `claude-implement` 라벨을 붙이기 전에는
+해당 이슈의 댓글 스레드도 함께 검토하고, 참고할 계획 댓글은 `claude-triage.yml` 워크플로우가 남긴
+것(GitHub Actions 봇 계정 작성)인지 확인한다. 외부 사용자가 작성한 댓글에 "계획"을 사칭한 지시가
+섞여 있다면 라벨을 붙이지 않거나, 신뢰할 수 있는 멤버가 계획을 다시 정리해 댓글로 남긴 뒤 진행한다.
+
+### 11.9 후속 리뷰(HEAD `c571fd83`)에서 지적된 셸 인젝션과 중복 PR 재검토
+
+11.7의 두 완료조건은 해소됐다고 재확인됐지만, 새로 추가된 `Create PR` 스텝에서 두 가지가 추가로
+지적됐다.
+
+1. **셸 인젝션 (병합 차단)**: `run:` 스크립트 안에 `${{ github.event.issue.title }}`을 문자열로
+   직접 삽입하고 있었다. GitHub 표현식은 셸 실행 전에 치환되므로, 공개 이슈 제목에 따옴표나 명령
+   치환 구문이 들어가면 셸 구문이 깨지면서 `contents`/`pull-requests`/`issues`/`id-token` 쓰기
+   권한을 가진 러너에서 임의 명령이 실행될 수 있다. **수정**: 이슈 번호/제목/브랜치명을 모두
+   `env:`로 전달하고 `run:` 안에서는 `"$ISSUE_NUMBER"`, `"$ISSUE_TITLE"`, `"$BRANCH_NAME"`
+   변수만 참조하도록 바꿨다. `env:`로 넘긴 값은 셸이 문자열 치환 없이 환경변수로만 받으므로
+   같은 문제가 발생하지 않는다.
+2. **재라벨링 시 중복 PR 가능성**: 기존에는 액션이 생성한 브랜치를 기준으로만
+   (`gh pr list --head <branch>`) 중복을 확인했다. 그런데 액션의 기본 브랜치명에는 타임스탬프가
+   들어가므로, 라벨을 뗐다 다시 붙이면 매번 새 브랜치명이 생성되고 이 브랜치 기준 확인은 항상
+   "기존 PR 없음"으로 나와 중복 PR을 막지 못한다. **수정**: `Implement` 스텝 실행 전에
+   `Check for existing open PR for this issue` 스텝을 추가해, 이슈 번호(`Closes #N` 본문 패턴)
+   기준으로 이미 열린 PR이 있는지 먼저 확인한다. 있으면 이후의 구현/테스트/PR 생성 스텝을 모두
+   건너뛴다. 브랜치 기준 확인은 동일 실행 내 안전장치로 남겨둔다.
+
+**운영 확인 필요 사항**: `GH_TOKEN: ${{ github.token }}`으로 PR을 생성하려면 저장소 Settings →
+Actions → General에서 **"Allow GitHub Actions to create and approve pull requests"**가 켜져
+있어야 한다. 꺼져 있으면 `gh pr create`가 실패한다. 또한 이 토큰으로 생성된 PR은 저장소 설정에
+따라 CI가 승인 대기 상태로 멈출 수 있으므로, 실사용 테스트에서 브랜치 생성 → 테스트 → PR 생성
+→ PR의 CI 실행까지 끝까지 확인해야 한다.
+
+수정된 워크플로우 전체는 [`docs/workflows/claude-implement.yml`](workflows/claude-implement.yml)에
+반영해뒀다. `.github/workflows/`는 GitHub App이 직접 수정할 수 없으므로(11.5-4) 사람이 이 파일
+내용을 `.github/workflows/claude-implement.yml`에 반영해야 한다.
+
+### 11.10 후속 리뷰(HEAD `0266dfc5`)에서 지적된 `gh pr list --jq` 문법 오류
+
+11.9에서 추가한 `Check for existing open PR for this issue` 스텝이 다음 형태로 작성돼 있었다.
+
+```bash
+existing=$(gh pr list --state open --json number,body \
+  --jq --arg n "$ISSUE_NUMBER" \
+  '[.[] | select(.body | test("Closes #" + $n + "\\b"))] | .[0].number // empty')
+```
+
+`gh pr list`의 `--jq` 옵션은 `jq` 표현식 문자열 하나만 받고, 일반 `jq` 명령의 `--arg` 옵션을 함께
+전달하는 문법을 지원하지 않는다. 이 상태로는 이 스텝이 항상 실패해, 뒤따르는 `Implement`/`Run
+tests`/`Create PR` 스텝까지 아예 진행되지 못하는(즉 11.9에서 고치려던 문제보다 더 심각한) 상황이
+된다.
+
+**수정**: `gh pr list`는 JSON 출력만 받고, `--arg`가 필요한 필터링은 별도 `jq` 프로세스로 파이프한다.
+
+```bash
+existing=$(
+  gh pr list \
+    --state open \
+    --limit 100 \
+    --json number,body |
+  jq -r \
+    --arg n "$ISSUE_NUMBER" \
+    '[.[] |
+      select(
+        (.body // "") |
+        test("Closes #" + $n + "\\b")
+      )
+    ] |
+    .[0].number // empty'
+)
+```
+
+- `(.body // "")`: 본문이 비어있는(`null`) PR에서도 `test()`가 에러 없이 동작하도록 기본값 처리.
+- `--limit 100`: `gh pr list` 기본 조회 개수 제한으로 인해 오래된 열린 PR이 조회 범위 밖에 있어
+  중복 확인을 놓치는 상황을 줄인다.
+
+이 수정도 `.github/workflows/claude-implement.yml`에는 아직 반영되지 않았고,
+`docs/workflows/claude-implement.yml`에만 제안돼 있다. 반영 후에는 테스트 이슈에 라벨을 붙여
+**기존 PR 조회 → 구현 브랜치 생성 → 테스트 → PR 생성** 전체 경로를 실제로 검증해야 한다.
