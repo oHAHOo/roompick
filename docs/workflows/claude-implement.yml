@@ -1,0 +1,126 @@
+name: Claude Implement
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: claude-implement-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    if: github.event.label.name == 'claude-implement'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Check for existing open PR for this issue
+        id: existing_issue_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          existing=$(
+            gh pr list \
+              --state open \
+              --limit 100 \
+              --json number,body |
+            jq -r \
+              --arg n "$ISSUE_NUMBER" \
+              '[.[] |
+                select(
+                  (.body // "") |
+                  test("Closes #" + $n + "\\b")
+                )
+              ] |
+              .[0].number // empty'
+          )
+          echo "number=$existing" >> "$GITHUB_OUTPUT"
+
+      - name: Implement on branch (no PR yet)
+        if: steps.existing_issue_pr.outputs.number == ''
+        id: claude
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          label_trigger: "claude-implement"
+          track_progress: true
+          base_branch: develop
+          branch_prefix: "claude/"
+          claude_args: |
+            --allowedTools "Bash(./gradlew test)"
+          prompt: |
+            이 이슈에 "claude-implement" 라벨이 붙었습니다. 이슈 내용(그리고 claude-triage 단계에서
+            남긴 계획 댓글이 있다면 그 계획)을 바탕으로 실제 코드를 수정하고 브랜치에 커밋하세요.
+            PR 생성은 이후 워크플로우 단계에서 자동으로 처리되므로 직접 PR을 만들지 마세요.
+
+            반드시 지킬 것:
+            - AGENTS.md의 도메인 담당자 규칙을 확인하세요. .github/CODEOWNERS에 명시된 다른
+              담당자 영역(payment → minjae123123, member/SecurityConfig → oHAHOo 등)은 이슈가
+              명시적으로 요구하지 않는 한 수정하지 마세요. 수정이 불가피하면 왜 필요한지 커밋
+              메시지나 이슈 댓글에 명시하세요.
+            - 새 브랜치를 만들어 커밋하세요. main/develop에 직접 push하지 마세요.
+            - 이슈 요구사항 범위를 벗어나는 리팩터링이나 관련 없는 변경을 추가하지 마세요.
+            - 커밋하기 전에 ./gradlew test로 관련 테스트가 통과하는지 확인하세요(허용된 Bash
+              명령입니다). 실패하면 원인을 수정한 뒤 다시 실행하세요.
+            - 이슈 요구사항이 모호하거나 도메인 경계를 넘어야만 해결 가능하다고 판단되면,
+              코드를 수정하는 대신 이슈 댓글로 이유를 남기고 사람 판단을 요청하세요.
+            - 커밋을 마친 뒤, 저장소 루트에 `.pr_body_draft.md` 파일을 만들어
+              `.github/pull_request_template.md`의 섹션 구성을 그대로 따르되 각 섹션 내용을
+              이번 작업에 맞게 채워 넣으세요. "관련 Issue" 섹션에는 반드시
+              `Closes #<이슈번호>`를 적으세요. 이 파일은 git에 추가하거나 커밋하지 마세요
+              (PR 생성 스텝에서만 사용하고 버려집니다).
+
+      - name: Run tests on implemented branch
+        if: steps.existing_issue_pr.outputs.number == '' && steps.claude.outputs.branch_name != ''
+        run: |
+          git fetch origin "${{ steps.claude.outputs.branch_name }}"
+          git checkout "${{ steps.claude.outputs.branch_name }}"
+          ./gradlew test
+
+      - name: Check for existing open PR from this branch
+        if: steps.existing_issue_pr.outputs.number == '' && steps.claude.outputs.branch_name != ''
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing=$(gh pr list --head "${{ steps.claude.outputs.branch_name }}" --state open --json number --jq '.[0].number // empty')
+          echo "number=$existing" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        if: >-
+          steps.existing_issue_pr.outputs.number == '' &&
+          steps.claude.outputs.branch_name != '' &&
+          steps.existing_pr.outputs.number == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          BRANCH_NAME: ${{ steps.claude.outputs.branch_name }}
+        run: |
+          if [ -f .pr_body_draft.md ]; then
+            body_file=.pr_body_draft.md
+          else
+            fallback="Closes #$ISSUE_NUMBER
+
+          claude-implement 라벨 기반 자동 구현입니다. \`./gradlew test\`를 통과한 브랜치만
+          PR로 생성됩니다."
+            body_file=$(mktemp)
+            printf '%s' "$fallback" > "$body_file"
+          fi
+
+          gh pr create \
+            --base develop \
+            --head "$BRANCH_NAME" \
+            --title "이슈 #$ISSUE_NUMBER 자동 구현: $ISSUE_TITLE" \
+            --body-file "$body_file"
