@@ -65,7 +65,7 @@ jobs:
             PR 생성은 이후 워크플로우 단계에서 자동으로 처리되므로 직접 PR을 만들지 마세요.
 
             반드시 지킬 것:
-            - AGENTS.md의 도메인 담당자 규칙을 확인하세요. .github/CODEOWNERS에 명시된 다른
+            - 수정 전 AGENTS.md를 확인하세요. .github/CODEOWNERS에 명시된 다른
               담당자 영역(payment → minjae123123, member/SecurityConfig → oHAHOo 등)은 이슈가
               명시적으로 요구하지 않는 한 수정하지 마세요. 수정이 불가피하면 왜 필요한지 커밋
               메시지나 이슈 댓글에 명시하세요.
