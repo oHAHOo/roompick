@@ -39,7 +39,7 @@ import com.roompick.global.common.ErrorCode;
 
 /**
  * 객실 Service와 예약 Service를 연결하는
- * ReservationFacade의 예약 생성 흐름을 검증합니다.
+ * ReservationFacade의 흐름을 검증합니다.
  */
 @ExtendWith(MockitoExtension.class)
 class ReservationFacadeTest {
@@ -54,8 +54,11 @@ class ReservationFacadeTest {
     private ReservationFacade reservationFacade;
 
     @Test
-    @DisplayName("객실을 조회한 뒤 결제 대기 상태의 예약을 생성한다")
-    void 객실을_조회한_뒤_예약을_생성한다() {
+    @DisplayName(
+        "객실에 비관적 락을 획득한 뒤 "
+            + "결제 대기 예약을 생성한다"
+    )
+    void 객실에_락을_획득한_뒤_예약을_생성한다() {
         // given
         Long memberId = 1L;
         Long accommodationId = 10L;
@@ -69,7 +72,13 @@ class ReservationFacadeTest {
             LocalDate.of(2026, 8, 12);
 
         LocalDateTime expiresAt =
-            LocalDateTime.of(2026, 8, 1, 12, 10);
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                12,
+                10
+            );
 
         ReservationCreateRequestDto request =
             new ReservationCreateRequestDto(
@@ -80,7 +89,9 @@ class ReservationFacadeTest {
             );
 
         Accommodation accommodation =
-            createAccommodation(accommodationId);
+            createAccommodation(
+                accommodationId
+            );
 
         Room room =
             createRoom(
@@ -108,10 +119,11 @@ class ReservationFacadeTest {
         );
 
         given(
-            roomService.findReservableRoomWithAccommodation(
-                roomId,
-                2
-            )
+            roomService
+                .findReservableRoomForUpdate(
+                    roomId,
+                    2
+                )
         ).willReturn(room);
 
         given(
@@ -138,11 +150,17 @@ class ReservationFacadeTest {
         assertThat(response.memberId())
             .isEqualTo(memberId);
 
-        assertThat(response.accommodation().accommodationId())
-            .isEqualTo(accommodationId);
+        assertThat(
+            response
+                .accommodation()
+                .accommodationId()
+        ).isEqualTo(accommodationId);
 
-        assertThat(response.accommodation().name())
-            .isEqualTo("룸픽 호텔");
+        assertThat(
+            response
+                .accommodation()
+                .name()
+        ).isEqualTo("룸픽 호텔");
 
         assertThat(response.room().roomId())
             .isEqualTo(roomId);
@@ -172,7 +190,7 @@ class ReservationFacadeTest {
 
         then(roomService)
             .should()
-            .findReservableRoomWithAccommodation(
+            .findReservableRoomForUpdate(
                 roomId,
                 2
             );
@@ -189,11 +207,15 @@ class ReservationFacadeTest {
     }
 
     @Test
-    @DisplayName("숙소 또는 객실이 운영 중지 상태면 예약을 생성하지 않는다")
+    @DisplayName(
+        "락 조회한 숙소 또는 객실이 운영 중지 상태면 "
+            + "예약을 생성하지 않는다"
+    )
     void 운영_중지된_숙소나_객실에는_예약을_생성하지_않는다() {
         // given
         Long memberId = 1L;
         Long roomId = 20L;
+
         ReservationCreateRequestDto request =
             new ReservationCreateRequestDto(
                 roomId,
@@ -203,29 +225,44 @@ class ReservationFacadeTest {
             );
 
         given(
-            roomService.findReservableRoomWithAccommodation(
-                roomId,
-                2
-            )
+            roomService
+                .findReservableRoomForUpdate(
+                    roomId,
+                    2
+                )
         ).willThrow(
-            new BusinessException(ErrorCode.ROOM_INACTIVE)
+            new BusinessException(
+                ErrorCode.ROOM_INACTIVE
+            )
         );
 
         // when & then
         assertThatThrownBy(() ->
-            reservationFacade.createReservation(memberId, request)
-        )
-            .isInstanceOf(BusinessException.class)
-            .extracting(exception ->
-                ((BusinessException) exception).getErrorCode()
+            reservationFacade.createReservation(
+                memberId,
+                request
             )
-            .isEqualTo(ErrorCode.ROOM_INACTIVE);
+        )
+            .isInstanceOf(
+                BusinessException.class
+            )
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode.ROOM_INACTIVE
+            );
 
-        then(reservationService).shouldHaveNoInteractions();
+        then(reservationService)
+            .shouldHaveNoInteractions();
     }
 
     @Test
-    @DisplayName("인증된 회원의 예약 목록을 페이지 응답 DTO로 변환한다")
+    @DisplayName(
+        "인증된 회원의 예약 목록을 "
+            + "페이지 응답 DTO로 변환한다"
+    )
     void 인증된_회원의_예약_목록을_조회한다() {
         // given
         Long memberId = 1L;
@@ -243,13 +280,27 @@ class ReservationFacadeTest {
             LocalDate.of(2026, 8, 12);
 
         LocalDateTime expiresAt =
-            LocalDateTime.of(2026, 8, 1, 12, 10);
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                12,
+                10
+            );
 
         LocalDateTime createdAt =
-            LocalDateTime.of(2026, 8, 1, 12, 0);
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                12,
+                0
+            );
 
         Accommodation accommodation =
-            createAccommodation(accommodationId);
+            createAccommodation(
+                accommodationId
+            );
 
         Room room =
             createRoom(
@@ -285,61 +336,77 @@ class ReservationFacadeTest {
         Page<Reservation> reservationPage =
             new PageImpl<>(
                 List.of(reservation),
-                PageRequest.of(page, size),
+                PageRequest.of(
+                    page,
+                    size
+                ),
                 1
             );
 
         given(
-            reservationService.findMyReservations(
-                memberId,
-                page,
-                size
-            )
+            reservationService
+                .findMyReservations(
+                    memberId,
+                    page,
+                    size
+                )
         ).willReturn(reservationPage);
 
         // when
         ReservationPageResponseDto response =
-            reservationFacade.getMyReservations(
-                memberId,
-                page,
-                size
-            );
+            reservationFacade
+                .getMyReservations(
+                    memberId,
+                    page,
+                    size
+                );
 
         // then
         assertThat(response.content())
             .hasSize(1);
 
-        ReservationListResponseDto reservationResponse =
+        ReservationListResponseDto
+            reservationResponse =
             response.content().get(0);
 
-        assertThat(reservationResponse.reservationId())
-            .isEqualTo(reservationId);
+        assertThat(
+            reservationResponse.reservationId()
+        ).isEqualTo(reservationId);
 
-        assertThat(reservationResponse.accommodationName())
-            .isEqualTo("룸픽 호텔");
+        assertThat(
+            reservationResponse
+                .accommodationName()
+        ).isEqualTo("룸픽 호텔");
 
-        assertThat(reservationResponse.roomName())
-            .isEqualTo("디럭스 더블룸");
+        assertThat(
+            reservationResponse.roomName()
+        ).isEqualTo("디럭스 더블룸");
 
-        assertThat(reservationResponse.checkInDate())
-            .isEqualTo(checkInDate);
+        assertThat(
+            reservationResponse.checkInDate()
+        ).isEqualTo(checkInDate);
 
-        assertThat(reservationResponse.checkOutDate())
-            .isEqualTo(checkOutDate);
+        assertThat(
+            reservationResponse.checkOutDate()
+        ).isEqualTo(checkOutDate);
 
-        assertThat(reservationResponse.guestCount())
-            .isEqualTo(2);
+        assertThat(
+            reservationResponse.guestCount()
+        ).isEqualTo(2);
 
-        assertThat(reservationResponse.totalAmount())
-            .isEqualTo(200_000L);
+        assertThat(
+            reservationResponse.totalAmount()
+        ).isEqualTo(200_000L);
 
-        assertThat(reservationResponse.status())
-            .isEqualTo(
-                ReservationStatus.PENDING_PAYMENT
-            );
+        assertThat(
+            reservationResponse.status()
+        ).isEqualTo(
+            ReservationStatus.PENDING_PAYMENT
+        );
 
-        assertThat(reservationResponse.createdAt())
-            .isEqualTo(createdAt);
+        assertThat(
+            reservationResponse.createdAt()
+        ).isEqualTo(createdAt);
 
         assertThat(response.pageNumber())
             .isZero();
@@ -366,7 +433,10 @@ class ReservationFacadeTest {
     }
 
     @Test
-    @DisplayName("본인의 예약 상세 정보를 응답 DTO로 변환한다")
+    @DisplayName(
+        "본인의 예약 상세 정보를 "
+            + "응답 DTO로 변환한다"
+    )
     void 본인의_예약_상세_정보를_조회한다() {
         // given
         Long memberId = 1L;
@@ -381,13 +451,27 @@ class ReservationFacadeTest {
             LocalDate.of(2026, 8, 12);
 
         LocalDateTime expiresAt =
-            LocalDateTime.of(2026, 8, 1, 12, 10);
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                12,
+                10
+            );
 
         LocalDateTime createdAt =
-            LocalDateTime.of(2026, 8, 1, 12, 0);
+            LocalDateTime.of(
+                2026,
+                8,
+                1,
+                12,
+                0
+            );
 
         Accommodation accommodation =
-            createAccommodation(accommodationId);
+            createAccommodation(
+                accommodationId
+            );
 
         Room room =
             createRoom(
@@ -421,18 +505,20 @@ class ReservationFacadeTest {
         );
 
         given(
-            reservationService.findMyReservation(
-                memberId,
-                reservationId
-            )
+            reservationService
+                .findMyReservation(
+                    memberId,
+                    reservationId
+                )
         ).willReturn(reservation);
 
         // when
         ReservationDetailResponseDto response =
-            reservationFacade.getMyReservation(
-                memberId,
-                reservationId
-            );
+            reservationFacade
+                .getMyReservation(
+                    memberId,
+                    reservationId
+                );
 
         // then
         assertThat(response.reservationId())
@@ -454,7 +540,9 @@ class ReservationFacadeTest {
             response
                 .accommodation()
                 .address()
-        ).isEqualTo("서울특별시 강남구");
+        ).isEqualTo(
+            "서울특별시 강남구"
+        );
 
         assertThat(response.room().roomId())
             .isEqualTo(roomId);
@@ -506,9 +594,12 @@ class ReservationFacadeTest {
     }
 
     @Test
-    @DisplayName("취소된 예약을 예약 취소 응답 DTO로 변환한다")
+    @DisplayName(
+        "취소된 예약을 예약 취소 "
+            + "응답 DTO로 변환한다"
+    )
     void 결제_대기_예약을_취소한다() {
-        // given: 인증된 회원이 소유한 결제 대기 예약이 있습니다.
+        // given
         Long memberId = 1L;
         Long reservationId = 30L;
 
@@ -537,10 +628,24 @@ class ReservationFacadeTest {
             Reservation.create(
                 member,
                 room,
-                LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12),
+                LocalDate.of(
+                    2026,
+                    8,
+                    10
+                ),
+                LocalDate.of(
+                    2026,
+                    8,
+                    12
+                ),
                 2,
-                LocalDateTime.of(2026, 8, 1, 14, 10)
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    14,
+                    10
+                )
             );
 
         ReflectionTestUtils.setField(
@@ -555,25 +660,29 @@ class ReservationFacadeTest {
         );
 
         given(
-            reservationService.cancelReservation(
-                memberId,
-                reservationId
-            )
+            reservationService
+                .cancelReservation(
+                    memberId,
+                    reservationId
+                )
         ).willReturn(reservation);
 
-        // when: Facade를 통해 예약을 취소합니다.
+        // when
         ReservationCancelResponseDto response =
-            reservationFacade.cancelReservation(
-                memberId,
-                reservationId
-            );
+            reservationFacade
+                .cancelReservation(
+                    memberId,
+                    reservationId
+                );
 
-        // then: 취소 결과가 응답 DTO로 변환됩니다.
+        // then
         assertThat(response.reservationId())
             .isEqualTo(reservationId);
 
         assertThat(response.status())
-            .isEqualTo(ReservationStatus.CANCELED);
+            .isEqualTo(
+                ReservationStatus.CANCELED
+            );
 
         assertThat(response.canceledAt())
             .isEqualTo(canceledAt);
@@ -587,7 +696,7 @@ class ReservationFacadeTest {
     }
 
     /**
-     * ID가 필요한 단위 테스트 객체를 생성합니다.
+     * ID가 필요한 단위 테스트 숙소를 생성합니다.
      */
     private Accommodation createAccommodation(
         Long accommodationId
@@ -638,9 +747,12 @@ class ReservationFacadeTest {
     }
 
     /**
-     * 예약 회원의 ID가 필요한 테스트 객체를 생성합니다.
+     * 예약 회원의 ID가 필요한
+     * 단위 테스트 회원을 생성합니다.
      */
-    private Member createMember(Long memberId) {
+    private Member createMember(
+        Long memberId
+    ) {
         Member member =
             Member.create(
                 "roompick@example.com",
