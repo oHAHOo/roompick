@@ -22,7 +22,7 @@ import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
+import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.service.RoomService;
@@ -47,8 +47,8 @@ class AccommodationFacadeTest {
         popularAccommodationRankingService;
 
     @Mock
-    private PopularAccommodationQueryService
-        popularAccommodationQueryService;
+    private PopularAccommodationSingleFlightService
+        popularAccommodationSingleFlightService;
 
     @InjectMocks
     private AccommodationFacade accommodationFacade;
@@ -203,7 +203,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            popularAccommodationQueryService
+            popularAccommodationSingleFlightService
                 .getPopularAccommodations(
                     PopularAccommodationPeriod.DAILY,
                     limit
@@ -223,7 +223,7 @@ class AccommodationFacadeTest {
         assertThat(result)
             .isSameAs(expected);
 
-        then(popularAccommodationQueryService)
+        then(popularAccommodationSingleFlightService)
             .should()
             .getPopularAccommodations(
                 PopularAccommodationPeriod.DAILY,
@@ -256,7 +256,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            popularAccommodationQueryService.getPopularAccommodations(
+            popularAccommodationSingleFlightService.getPopularAccommodations(
                 PopularAccommodationPeriod.WEEKLY,
                 limit
             )
@@ -282,7 +282,7 @@ class AccommodationFacadeTest {
         DataAccessResourceFailureException databaseException =
             new DataAccessResourceFailureException("DB 연결 실패");
         given(
-            popularAccommodationQueryService.getPopularAccommodations(
+            popularAccommodationSingleFlightService.getPopularAccommodations(
                 PopularAccommodationPeriod.WEEKLY,
                 limit
             )
@@ -318,7 +318,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            popularAccommodationQueryService
+            popularAccommodationSingleFlightService
                 .getPopularAccommodations(
                     PopularAccommodationPeriod.DAILY,
                     limit
@@ -401,7 +401,7 @@ class AccommodationFacadeTest {
                 "서울특별시 종로구"
             );
 
-        then(popularAccommodationQueryService)
+        then(popularAccommodationSingleFlightService)
             .should()
             .getPopularAccommodations(
                 PopularAccommodationPeriod.DAILY,
@@ -429,7 +429,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            popularAccommodationQueryService
+            popularAccommodationSingleFlightService
                 .getPopularAccommodations(
                     PopularAccommodationPeriod.DAILY,
                     limit
@@ -444,7 +444,7 @@ class AccommodationFacadeTest {
             )
         ).isSameAs(databaseException);
 
-        then(popularAccommodationQueryService)
+        then(popularAccommodationSingleFlightService)
             .should()
             .getPopularAccommodations(
                 PopularAccommodationPeriod.DAILY,
@@ -468,7 +468,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            popularAccommodationQueryService
+            popularAccommodationSingleFlightService
                 .getPopularAccommodations(
                     PopularAccommodationPeriod.DAILY,
                     invalidLimit
@@ -489,7 +489,7 @@ class AccommodationFacadeTest {
             exception
         );
 
-        then(popularAccommodationQueryService)
+        then(popularAccommodationSingleFlightService)
             .should()
             .getPopularAccommodations(
                 PopularAccommodationPeriod.DAILY,

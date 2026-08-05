@@ -39,11 +39,8 @@ import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 
 /**
  * 인기 숙소 응답 캐시가 비어 있는 상태에서
- * 동일한 캐시 Key로 요청이 동시에 들어올 때 발생하는
- * Cache Stampede 현상을 실제 Redis 환경에서 검증합니다.
- *
- * 개선 코드를 먼저 적용하지 않고,
- * 현재 구조에서 원본 조회가 중복되는지 재현하는 것이 목적입니다.
+ * 동일한 캐시 Key의 동시 요청을 Single Flight가
+ * 하나의 원본 조회로 묶는지 실제 Redis 환경에서 검증합니다.
  */
 @Tag("integration")
 @Testcontainers
@@ -98,12 +95,12 @@ class PopularAccommodationCacheStampedeIntegrationTest {
     }
 
     /**
-     * @Cacheable 프록시가 적용된
-     * 실제 인기 숙소 조회 Bean입니다.
+     * 동일 캐시 Key의 동시 요청을 하나의 작업으로 묶는
+     * 실제 Single Flight Service입니다.
      */
     @Autowired
-    private PopularAccommodationQueryService
-        popularAccommodationQueryService;
+    private PopularAccommodationSingleFlightService
+        popularAccommodationSingleFlightService;
 
     /**
      * 테스트 전후 인기 숙소 응답 캐시를
@@ -164,10 +161,10 @@ class PopularAccommodationCacheStampedeIntegrationTest {
 
     @Test
     @DisplayName(
-        "Cold cache 상태에서 동일한 요청이 동시에 들어오면 "
-            + "각 요청이 원본 조회를 중복 실행한다"
+        "Cold cache 상태의 동일한 동시 요청은 "
+            + "하나의 원본 조회 결과를 공유한다"
     )
-    void duplicateOriginalLookupOnConcurrentCacheMiss()
+    void shareSingleOriginalLookupOnConcurrentCacheMiss()
         throws Exception {
 
         /*
@@ -199,18 +196,16 @@ class PopularAccommodationCacheStampedeIntegrationTest {
             new CountDownLatch(1);
 
         /*
-         * 각 요청이 Cache Miss 후 실제 랭킹 조회까지
+         * 최초 요청이 Cache Miss 후 실제 랭킹 조회까지
          * 진입했는지 확인합니다.
          */
         CountDownLatch rankingLookupEntered =
-            new CountDownLatch(THREAD_COUNT);
+            new CountDownLatch(1);
 
         /*
-         * 먼저 진입한 요청이 캐시를 빠르게 생성하지 못하도록
-         * 랭킹 조회 결과 반환을 잠시 막습니다.
-         *
-         * 이 장치가 없으면 첫 요청이 캐시를 만든 뒤
-         * 나머지 요청이 Cache Hit가 되는 우연이 발생할 수 있습니다.
+         * 최초 요청이 캐시를 생성하기 전에
+         * 나머지 요청도 동일한 Single Flight 작업을
+         * 확인할 수 있도록 원본 조회를 잠시 막습니다.
          */
         CountDownLatch releaseRankingLookup =
             new CountDownLatch(1);
@@ -224,16 +219,8 @@ class PopularAccommodationCacheStampedeIntegrationTest {
                     4L
                 )
         ).willAnswer(invocation -> {
-            /*
-             * Cache Miss 후 원본 조회에 진입한 요청 수를
-             * 한 건씩 기록합니다.
-             */
             rankingLookupEntered.countDown();
 
-            /*
-             * 모든 동시 요청이 원본 조회에 진입할 때까지
-             * 랭킹 결과를 반환하지 않습니다.
-             */
             boolean released =
                 releaseRankingLookup.await(
                     WAIT_TIMEOUT_SECONDS,
@@ -275,10 +262,6 @@ class PopularAccommodationCacheStampedeIntegrationTest {
                 Future<List<PopularAccommodationResponseDto>>
                     future = executorService.submit(() -> {
 
-                    /*
-                     * 현재 스레드가 출발 준비를 마쳤음을
-                     * 메인 테스트 스레드에 알립니다.
-                     */
                     ready.countDown();
 
                     boolean started =
@@ -294,7 +277,7 @@ class PopularAccommodationCacheStampedeIntegrationTest {
                         );
                     }
 
-                    return popularAccommodationQueryService
+                    return popularAccommodationSingleFlightService
                         .getPopularAccommodations(
                             DAILY,
                             LIMIT
@@ -327,28 +310,27 @@ class PopularAccommodationCacheStampedeIntegrationTest {
             start.countDown();
 
             /*
-             * sync 제어가 없는 현재 구조에서는
-             * 모든 요청이 캐시가 생성되기 전에
-             * 원본 조회까지 진입할 수 있습니다.
+             * 최초 요청이 실제 원본 조회에 진입할 때까지
+             * 결과 반환을 막아 Cold cache 동시 요청 조건을 유지합니다.
              */
-            boolean allRequestsEnteredOriginalLookup =
+            boolean firstRequestEnteredOriginalLookup =
                 rankingLookupEntered.await(
                     WAIT_TIMEOUT_SECONDS,
                     TimeUnit.SECONDS
                 );
 
-            /*
-             * 대기 중인 랭킹 조회가
-             * 결과를 반환하도록 해제합니다.
-             */
-            releaseRankingLookup.countDown();
-
-            assertThat(allRequestsEnteredOriginalLookup)
+            assertThat(firstRequestEnteredOriginalLookup)
                 .as(
-                    "동일한 Cold cache Key 요청이 모두 "
-                        + "원본 조회까지 중복 진입해야 합니다."
+                    "최초 요청이 제한 시간 안에 "
+                        + "원본 조회에 진입해야 합니다."
                 )
                 .isTrue();
+
+            /*
+             * 최초 요청이 랭킹 결과를 반환하고
+             * 캐시를 생성할 수 있도록 해제합니다.
+             */
+            releaseRankingLookup.countDown();
 
             /*
              * 모든 동시 요청이 예외 없이
@@ -388,12 +370,11 @@ class PopularAccommodationCacheStampedeIntegrationTest {
         }
 
         /*
-         * then: sync 제어가 없는 현재 구조에서는
-         * 동일한 캐시 Key임에도 모든 요청이
-         * Redis 랭킹 원본을 각각 조회합니다.
+         * then: 동일한 Cold cache Key의 동시 요청 10건이
+         * 하나의 Redis 랭킹 원본 조회를 공유해야 합니다.
          */
         then(popularAccommodationRankingService)
-            .should(times(THREAD_COUNT))
+            .should(times(1))
             .findRankedAccommodationIds(
                 DAILY,
                 LIMIT,
@@ -402,18 +383,18 @@ class PopularAccommodationCacheStampedeIntegrationTest {
             );
 
         /*
-         * 각 요청은 랭킹 ID를 조회한 뒤
-         * MySQL 조회 역할도 각각 실행합니다.
+         * 랭킹 ID에 해당하는 MySQL 조회 역할도
+         * 최초 요청 한 건에서만 실행되어야 합니다.
          */
         then(accommodationService)
-            .should(times(THREAD_COUNT))
+            .should(times(1))
             .findAllActiveSummaryByIds(
                 rankedAccommodationIds
             );
 
         /*
-         * 여러 요청이 동일한 응답을 중복 생성했더라도
-         * 최종적으로 Redis에는 응답이 저장되어야 합니다.
+         * 최초 요청이 생성한 응답은
+         * 최종적으로 Redis 캐시에 저장되어야 합니다.
          */
         assertThat(
             popularAccommodationCache.get(
