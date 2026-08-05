@@ -3,15 +3,12 @@ package com.roompick.domain.accommodation.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.redis.DataRedisTest;
@@ -74,8 +71,11 @@ class PopularAccommodationRankingFreshnessIntegrationTest {
     private final Set<String> createdKeys =
         new HashSet<>();
 
-    private PopularAccommodationKeyGenerator
-        popularAccommodationKeyGenerator;
+    private final PopularAccommodationKeyGenerator
+        popularAccommodationKeyGenerator =
+        new PopularAccommodationKeyGenerator(
+            Clock.systemUTC()
+        );
 
     @DynamicPropertySource
     static void configureRedis(
@@ -92,19 +92,6 @@ class PopularAccommodationRankingFreshnessIntegrationTest {
                 REDIS_PORT
             )
         );
-    }
-
-    @BeforeEach
-    void setUp() {
-        popularAccommodationKeyGenerator =
-            new PopularAccommodationKeyGenerator(
-                Clock.fixed(
-                    Instant.parse(
-                        "2026-08-04T00:00:00Z"
-                    ),
-                    ZoneOffset.UTC
-                )
-            );
     }
 
     @AfterEach
@@ -299,9 +286,6 @@ class PopularAccommodationRankingFreshnessIntegrationTest {
             .containsExactly(
                 firstExistingAccommodationId,
                 secondExistingAccommodationId
-            )
-            .doesNotContain(
-                newAccommodationId
             );
 
         assertThat(dailyTopTwo)
