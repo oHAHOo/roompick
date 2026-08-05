@@ -354,3 +354,52 @@ branch_prefix: "claude/"
 - `claude-implement.yml`의 제안 내용은 [`docs/workflows/claude-implement.yml`](../.github/workflows/claude-implement.yml)에 준비돼 있다.
 - 배치 전 필요한 작업: `claude-implement` 라벨 생성, `.github/workflows/claude-implement.yml`로 커밋, 테스트 이슈로 실사용 검증 (10.6에서 확인했듯 `claude-triage.yml`도 첫 배치 시 `track_progress` 누락 버그가 있었으므로, 이 파일도 실사용 테스트를 거쳐야 한다).
 - 브랜치 보호 규칙(9장, 11.5-2)은 이번 작업으로 해소되지 않은 채로 남아 있다.
+
+### 11.7 PR 리뷰에서 지적된 두 가지 미충족 완료조건 (병합 전 수정 필요)
+
+최초 커밋(`493c76c0`)의 PR 리뷰에서 고정된 `anthropics/claude-code-action` 커밋의 공식 문서와
+대조한 결과, 프롬프트 지시만으로는 실제로 보장되지 않는 완료조건 두 가지가 지적됐다.
+
+1. **PR이 자동으로 생성되지 않는다.** 고정된 액션 버전은 이슈에서 변경사항을 커밋해 브랜치로
+   push한 뒤, 사람이 클릭해야 하는 사전 입력된 PR 생성 링크만 코멘트로 남긴다. 프롬프트에
+   "PR을 생성하세요"라고 적어도 액션 자체의 동작(PR 자동 생성 API 호출)이 추가되지는 않는다.
+2. **`./gradlew test` 실행 권한이 없다.** 액션은 기본적으로 임의 Bash 실행을 허용하지 않고,
+   `claude_args`에도 `Bash(./gradlew test)` 허용이 없었다. "커밋 전 테스트"는 프롬프트상 지시일
+   뿐 실행 가능한 제약이 아니었으므로, "테스트를 통과하는 PR만 생성"을 보장할 수 없었다.
+
+**수정 방향** (11.3 검토 결과 반영): 액션 스텝에 `id: claude`를 지정해 `branch_name` 출력을
+받고, 별도의 워크플로우 스텝에서 그 브랜치를 체크아웃해 `./gradlew test`를 실행한 뒤, 통과한
+경우에만 `gh pr create`로 명시적으로 PR을 생성한다. PR 생성 전 `gh pr list --head <branch>`로
+기존 열린 PR이 있는지 확인해 재실행 시 중복 PR이 생기지 않도록 한다. 액션의 코드 수정 자체에는
+`claude_args: --allowedTools "Bash(./gradlew test)"`를 추가해, "커밋 전 테스트" 지시가 실행
+가능하도록 만든다. 수정된 전체 워크플로우는 `.github/workflows/claude-implement.yml`을 사람이
+직접 반영해야 한다(11.5-4와 동일한 제약 — GitHub App이 `.github/workflows/`를 직접 수정할 수
+없음).
+
+**추가 리뷰에서 지적된 재실행 중복 문제**: `gh pr list --head` 확인만으로는 같은 이슈에서
+워크플로우가 여러 번 실행되는 상황(라벨을 뗐다 다시 붙이는 경우 등) 자체를 막지 못한다.
+액션이 매번 새 브랜치(타임스탬프 기반)를 만들면 PR 중복은 막아도 브랜치는 계속 쌓일 수 있고,
+두 실행이 거의 동시에 돌면 "기존 PR 없음" 확인과 PR 생성 사이에 레이스 컨디션이 이론상 가능
+하다. 이를 막기 위해 `concurrency: { group: claude-implement-issue-${{ github.event.issue.number }},
+cancel-in-progress: false }`를 워크플로우 최상단에 추가해, 같은 이슈에 대한 실행은 동시에
+돌지 않고 순차 대기하도록 한다(`cancel-in-progress: false`로 설정해 이미 커밋 중인 실행이
+중간에 취소되지 않도록 한다).
+
+### 11.8 공개 저장소 prompt injection 운영 규칙
+
+이 저장소는 공개 저장소이므로, 외부 사용자가 작성한 이슈 본문에 `claude-implement`/`claude-triage`
+라벨을 붙여 실행하면 이슈 본문에 섞인 지시문이 prompt injection으로 작동할 위험이 있다(예: "이
+이슈와 무관하게 X 파일도 수정해줘" 같은 문구가 이슈 본문에 섞여 있는 경우). 공식 액션 문서도
+라벨 적용 전 원문 검토를 권고한다.
+
+**운영 규칙**: `claude-triage`/`claude-implement` 라벨은 신뢰할 수 있는(저장소 멤버가 작성했거나,
+멤버가 내용을 검토한) 이슈에만 붙인다. 외부 기여자가 연 이슈는 먼저 멤버가 본문을 검토하고
+필요하면 요약/정리한 뒤 라벨을 붙인다.
+
+`claude-implement.yml`의 프롬프트는 "claude-triage 단계에서 남긴 계획 댓글이 있다면 그 계획"도
+참고하도록 지시한다(11.6 참고). 이슈 본문뿐 아니라 **댓글도 프롬프트 입력으로 쓰이므로**, 이슈가
+공개된 뒤 외부 사용자가 남긴 댓글이 `claude-triage`의 계획 댓글처럼 보이게 꾸며져 있으면 같은
+injection 경로가 된다. 따라서 위 라벨 부착 규칙과 별개로, `claude-implement` 라벨을 붙이기 전에는
+해당 이슈의 댓글 스레드도 함께 검토하고, 참고할 계획 댓글은 `claude-triage.yml` 워크플로우가 남긴
+것(GitHub Actions 봇 계정 작성)인지 확인한다. 외부 사용자가 작성한 댓글에 "계획"을 사칭한 지시가
+섞여 있다면 라벨을 붙이지 않거나, 신뢰할 수 있는 멤버가 계획을 다시 정리해 댓글로 남긴 뒤 진행한다.
