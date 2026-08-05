@@ -278,7 +278,29 @@ curl http://localhost:9090/api/v1/targets   # roompick-backend job이 up인지 �
 
 - Grafana: `http://<EC2 퍼블릭 IP>:3000` (`GF_SECURITY_ADMIN_PASSWORD`로 지정한 비밀번호로 로그인,
   기본 `admin`/`admin` 계정으로는 기동되지 않습니다)
-- Grafana Data source로 Prometheus 추가 시 URL은 컨테이너 간 통신이므로 `http://prometheus:9090`
+- Prometheus 데이터소스와 핵심 지표 대시보드는 Grafana provisioning으로 컨테이너 기동 시
+  자동 등록됩니다(수동 설정 불필요). `monitoring/grafana/provisioning/datasources/prometheus.yml`이
+  데이터소스(`http://prometheus:9090`)를, `monitoring/grafana/provisioning/dashboards/dashboards.yml`이
+  `monitoring/grafana/dashboards/roompick-backend.json` 대시보드를 등록합니다. 로그인 후
+  대시보드 목록에서 **RoomPick Backend**를 열면 됩니다.
+
+### 11-2-1. RoomPick Backend 대시보드 구성
+
+`roompick-backend.json`은 다음 패널로 구성됩니다.
+
+| 패널 | 지표 |
+| --- | --- |
+| Request Rate | `http_server_requests_seconds_count` rate (uri, status별) |
+| 5xx Error Rate | 5xx 응답 비율(%) |
+| Response Time p95 / Avg | `http_server_requests_seconds_bucket`/`_sum`/`_count` |
+| JVM Heap Memory Used | `jvm_memory_used_bytes`(heap), `jvm_memory_max_bytes` |
+| CPU Usage | `process_cpu_usage`, `system_cpu_usage` |
+| Uptime / Live Threads | `process_uptime_seconds`, `jvm_threads_live_threads` |
+| DB Connection Pool | `hikaricp_connections_active`, `hikaricp_connections_pending` |
+
+대시보드 JSON은 코드로 관리되므로 패널을 추가·수정하려면 Grafana UI에서 편집 후 JSON을
+export해 이 파일에 반영합니다(`allowUiUpdates: true`로 UI 편집은 가능하지만, 컨테이너를
+재생성하면 provisioning 파일 기준으로 되돌아갑니다).
 
 ### 11-3. 알려진 제약
 
