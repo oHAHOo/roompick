@@ -14,6 +14,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.data.jpa.repository.QueryHints;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -376,5 +380,115 @@ class RoomServicePessimisticLockTest {
         then(room)
             .should(never())
             .getMaxCapacity();
+    }
+
+    @Test
+    @DisplayName(
+        "객실 락 대기 시간이 초과되면 예약 전용 예외로 변환한다"
+    )
+    void 객실_락_대기_시간_초과를_예약_예외로_변환한다() {
+        // given
+        Long roomId = 1L;
+
+        given(
+            roomRepository.findByIdForUpdate(
+                roomId
+            )
+        ).willThrow(
+            new PessimisticLockingFailureException(
+                "lock timeout"
+            )
+        );
+
+        // when
+        BusinessException exception =
+            catchThrowableOfType(
+                () ->
+                    roomService
+                        .findReservableRoomForUpdate(
+                            roomId,
+                            2
+                        ),
+                BusinessException.class
+            );
+
+        // then
+        assertThat(exception.getErrorCode())
+            .isEqualTo(
+                ErrorCode.RESERVATION_LOCK_TIMEOUT
+            );
+
+        then(roomRepository)
+            .should()
+            .findByIdForUpdate(roomId);
+
+        then(room)
+            .shouldHaveNoInteractions();
+
+        then(accommodation)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "비관적 락 조회는 기존 트랜잭션 안에서만 실행된다"
+    )
+    void 비관적_락_조회는_기존_트랜잭션을_요구한다()
+        throws NoSuchMethodException {
+
+        // given
+        Transactional transactional =
+            RoomService.class
+                .getMethod(
+                    "findReservableRoomForUpdate",
+                    Long.class,
+                    int.class
+                )
+                .getAnnotation(
+                    Transactional.class
+                );
+
+        // when & then
+        assertThat(transactional)
+            .isNotNull();
+
+        assertThat(transactional.propagation())
+            .isEqualTo(
+                Propagation.MANDATORY
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "비관적 락 조회의 대기 한도는 3초이다"
+    )
+    void 비관적_락_조회의_대기_한도는_3초이다()
+        throws NoSuchMethodException {
+
+        // given
+        QueryHints queryHints =
+            RoomRepository.class
+                .getMethod(
+                    "findByIdForUpdate",
+                    Long.class
+                )
+                .getAnnotation(
+                    QueryHints.class
+                );
+
+        // when & then
+        assertThat(queryHints)
+            .isNotNull();
+
+        assertThat(queryHints.value())
+            .hasSize(1);
+
+        assertThat(queryHints.value()[0].name())
+            .isEqualTo(
+                "jakarta.persistence.lock.timeout"
+            );
+
+        assertThat(queryHints.value()[0].value())
+            .isEqualTo("3000");
     }
 }

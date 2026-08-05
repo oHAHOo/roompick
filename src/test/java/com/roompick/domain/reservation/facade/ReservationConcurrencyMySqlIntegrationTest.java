@@ -1,6 +1,7 @@
 package com.roompick.domain.reservation.facade;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -12,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -46,8 +50,9 @@ import com.roompick.global.common.ErrorCode;
  * 실제 MySQL 환경에서 동일 객실 예약 생성의
  * 동시성 제어를 검증합니다.
  *
- * 서로 다른 회원이 동일한 객실과 숙박 기간을
- * 동시에 예약하더라도 하나의 예약만 생성되어야 합니다.
+ * 동일 객실의 겹치는 기간은 한 요청만 성공하고,
+ * 겹치지 않는 기간과 서로 다른 객실은 독립적으로 처리되는지
+ * 실제 트랜잭션과 Connection을 사용해 확인합니다.
  *
  * 각 요청이 서로 다른 Connection과 트랜잭션을 사용해야 하므로
  * 테스트 클래스에는 @Transactional을 적용하지 않습니다.
@@ -164,6 +169,9 @@ class ReservationConcurrencyMySqlIntegrationTest {
     @Autowired
     private ReservationRepository reservationRepository;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private TestData testData;
 
     @BeforeEach
@@ -196,17 +204,425 @@ class ReservationConcurrencyMySqlIntegrationTest {
             checkInDate.plusDays(2);
 
         ReservationCreateRequestDto request =
-            new ReservationCreateRequestDto(
-                testData.roomId(),
+            createRequest(
+                testData.firstRoomId(),
                 checkInDate,
-                checkOutDate,
-                2
+                checkOutDate
             );
 
-        /*
-         * 두 작업 스레드가 모두 준비될 때까지 기다린 뒤
-         * startRequests를 열어 거의 같은 시각에 요청합니다.
-         */
+        // when
+        List<ReservationAttemptResult> results =
+            executeConcurrentReservations(
+                request,
+                request
+            );
+
+        // then
+        assertSingleWinner(results);
+    }
+
+    @Test
+    @DisplayName(
+        "동일 객실의 숙박 기간이 일부 겹치는 동시 예약은 "
+            + "하나만 생성된다"
+    )
+    void partiallyOverlappingReservationsCreateOnlyOneReservation()
+        throws Exception {
+
+        // given
+        LocalDate firstCheckInDate =
+            LocalDate.now(TEST_ZONE_ID)
+                .plusDays(5);
+
+        ReservationCreateRequestDto firstRequest =
+            createRequest(
+                testData.firstRoomId(),
+                firstCheckInDate,
+                firstCheckInDate.plusDays(3)
+            );
+
+        ReservationCreateRequestDto secondRequest =
+            createRequest(
+                testData.firstRoomId(),
+                firstCheckInDate.plusDays(2),
+                firstCheckInDate.plusDays(5)
+            );
+
+        // when
+        List<ReservationAttemptResult> results =
+            executeConcurrentReservations(
+                firstRequest,
+                secondRequest
+            );
+
+        // then
+        assertSingleWinner(results);
+    }
+
+    @Test
+    @DisplayName(
+        "동일 객실의 두 번째 예약은 첫 트랜잭션이 "
+            + "락을 해제할 때까지 대기한다"
+    )
+    void secondReservationForSameRoomWaitsForFirstTransaction()
+        throws Exception {
+
+        // given
+        LocalDate checkInDate =
+            LocalDate.now(TEST_ZONE_ID)
+                .plusDays(5);
+
+        ReservationCreateRequestDto request =
+            createRequest(
+                testData.firstRoomId(),
+                checkInDate,
+                checkInDate.plusDays(2)
+            );
+
+        CountDownLatch firstTransactionHoldingLock =
+            new CountDownLatch(1);
+
+        CountDownLatch releaseFirstTransaction =
+            new CountDownLatch(1);
+
+        CountDownLatch secondRequestStarted =
+            new CountDownLatch(1);
+
+        ExecutorService executorService =
+            Executors.newFixedThreadPool(
+                CONCURRENT_REQUEST_COUNT
+            );
+
+        TransactionTemplate transactionTemplate =
+            new TransactionTemplate(
+                transactionManager
+            );
+
+        try {
+            Future<ReservationAttemptResult> firstFuture =
+                executorService.submit(() ->
+                    transactionTemplate.execute(status -> {
+                        ReservationAttemptResult result =
+                            executeReservation(
+                                testData.firstMemberId(),
+                                request
+                            );
+
+                        firstTransactionHoldingLock
+                            .countDown();
+
+                        awaitLatch(
+                            releaseFirstTransaction,
+                            ASYNC_TIMEOUT,
+                            "첫 번째 객실 락 해제 신호를 "
+                                + "기다리는 중 시간이 초과됐습니다."
+                        );
+
+                        return result;
+                    })
+                );
+
+            awaitLatch(
+                firstTransactionHoldingLock,
+                ASYNC_TIMEOUT,
+                "첫 번째 예약 트랜잭션이 객실 락을 "
+                    + "유지해야 합니다."
+            );
+
+            Future<ReservationAttemptResult> secondFuture =
+                executorService.submit(() -> {
+                    secondRequestStarted.countDown();
+
+                    return executeReservation(
+                        testData.secondMemberId(),
+                        request
+                    );
+                });
+
+            awaitLatch(
+                secondRequestStarted,
+                ASYNC_TIMEOUT,
+                "두 번째 예약 요청이 시작돼야 합니다."
+            );
+
+            /*
+             * 첫 트랜잭션이 락을 유지하는 동안에는
+             * 같은 객실의 두 번째 요청이 완료되면 안 됩니다.
+             */
+            assertThatThrownBy(() ->
+                secondFuture.get(
+                    500,
+                    TimeUnit.MILLISECONDS
+                )
+            ).isInstanceOf(
+                TimeoutException.class
+            );
+
+            releaseFirstTransaction.countDown();
+
+            ReservationAttemptResult firstResult =
+                firstFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            ReservationAttemptResult secondResult =
+                secondFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            assertThat(firstResult.success())
+                .isTrue();
+
+            assertThat(secondResult.success())
+                .isFalse();
+
+            assertThat(secondResult.errorCode())
+                .isEqualTo(
+                    ErrorCode.ROOM_NOT_AVAILABLE
+                );
+
+            assertThat(
+                reservationRepository.count()
+            ).isEqualTo(1L);
+        } finally {
+            releaseFirstTransaction.countDown();
+
+            executorService.shutdownNow();
+
+            executorService.awaitTermination(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+        }
+    }
+
+    @Test
+    @DisplayName(
+        "동일 객실의 숙박 기간이 겹치지 않는 동시 예약은 "
+            + "모두 생성된다"
+    )
+    void nonOverlappingReservationsForSameRoomBothSucceed()
+        throws Exception {
+
+        // given
+        LocalDate firstCheckInDate =
+            LocalDate.now(TEST_ZONE_ID)
+                .plusDays(5);
+
+        ReservationCreateRequestDto firstRequest =
+            createRequest(
+                testData.firstRoomId(),
+                firstCheckInDate,
+                firstCheckInDate.plusDays(2)
+            );
+
+        ReservationCreateRequestDto secondRequest =
+            createRequest(
+                testData.firstRoomId(),
+                firstCheckInDate.plusDays(2),
+                firstCheckInDate.plusDays(4)
+            );
+
+        // when
+        List<ReservationAttemptResult> results =
+            executeConcurrentReservations(
+                firstRequest,
+                secondRequest
+            );
+
+        // then
+        assertThat(results)
+            .allMatch(
+                ReservationAttemptResult::success
+            );
+
+        assertThat(
+            reservationRepository.count()
+        ).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName(
+        "서로 다른 객실의 예약은 한 객실의 락이 유지되는 동안에도 "
+            + "서로 대기하지 않는다"
+    )
+    void reservationsForDifferentRoomsDoNotBlockEachOther()
+        throws Exception {
+
+        // given
+        LocalDate checkInDate =
+            LocalDate.now(TEST_ZONE_ID)
+                .plusDays(5);
+
+        ReservationCreateRequestDto firstRequest =
+            createRequest(
+                testData.firstRoomId(),
+                checkInDate,
+                checkInDate.plusDays(2)
+            );
+
+        ReservationCreateRequestDto secondRequest =
+            createRequest(
+                testData.secondRoomId(),
+                checkInDate,
+                checkInDate.plusDays(2)
+            );
+
+        CountDownLatch firstTransactionHoldingLock =
+            new CountDownLatch(1);
+
+        CountDownLatch releaseFirstTransaction =
+            new CountDownLatch(1);
+
+        ExecutorService executorService =
+            Executors.newFixedThreadPool(
+                CONCURRENT_REQUEST_COUNT
+            );
+
+        TransactionTemplate transactionTemplate =
+            new TransactionTemplate(
+                transactionManager
+            );
+
+        try {
+            Future<ReservationAttemptResult> firstFuture =
+                executorService.submit(() ->
+                    transactionTemplate.execute(status -> {
+                        ReservationAttemptResult result =
+                            executeReservation(
+                                testData.firstMemberId(),
+                                firstRequest
+                            );
+
+                        firstTransactionHoldingLock
+                            .countDown();
+
+                        awaitLatch(
+                            releaseFirstTransaction,
+                            ASYNC_TIMEOUT,
+                            "첫 번째 객실 락 해제 신호를 "
+                                + "기다리는 중 시간이 초과됐습니다."
+                        );
+
+                        return result;
+                    })
+                );
+
+            awaitLatch(
+                firstTransactionHoldingLock,
+                ASYNC_TIMEOUT,
+                "첫 번째 예약 트랜잭션이 객실 락을 "
+                    + "유지해야 합니다."
+            );
+
+            Future<ReservationAttemptResult> secondFuture =
+                executorService.submit(() ->
+                    executeReservation(
+                        testData.secondMemberId(),
+                        secondRequest
+                    )
+                );
+
+            /*
+             * 첫 번째 트랜잭션을 해제하기 전에 두 번째 요청이
+             * 완료돼야 서로 다른 객실이 독립적으로 처리된 것입니다.
+             */
+            ReservationAttemptResult secondResult =
+                secondFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            assertThat(secondResult.success())
+                .isTrue();
+
+            releaseFirstTransaction.countDown();
+
+            ReservationAttemptResult firstResult =
+                firstFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                );
+
+            assertThat(firstResult.success())
+                .isTrue();
+
+            assertThat(
+                reservationRepository.count()
+            ).isEqualTo(2L);
+        } finally {
+            releaseFirstTransaction.countDown();
+
+            executorService.shutdownNow();
+
+            executorService.awaitTermination(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+        }
+    }
+
+    @Test
+    @DisplayName(
+        "예약 생성 중 예외로 트랜잭션이 롤백되면 "
+            + "다음 요청은 정상적으로 예약할 수 있다"
+    )
+    void rolledBackReservationReleasesRoomLock() {
+        // given
+        LocalDate today =
+            LocalDate.now(TEST_ZONE_ID);
+
+        ReservationCreateRequestDto invalidRequest =
+            createRequest(
+                testData.firstRoomId(),
+                today.minusDays(1),
+                today.plusDays(1)
+            );
+
+        ReservationCreateRequestDto validRequest =
+            createRequest(
+                testData.firstRoomId(),
+                today.plusDays(5),
+                today.plusDays(7)
+            );
+
+        // when
+        ReservationAttemptResult failedResult =
+            executeReservation(
+                testData.firstMemberId(),
+                invalidRequest
+            );
+
+        ReservationAttemptResult successfulResult =
+            executeReservation(
+                testData.secondMemberId(),
+                validRequest
+            );
+
+        // then
+        assertThat(failedResult.success())
+            .isFalse();
+
+        assertThat(failedResult.errorCode())
+            .isEqualTo(
+                ErrorCode.INVALID_STAY_PERIOD
+            );
+
+        assertThat(successfulResult.success())
+            .isTrue();
+
+        assertThat(
+            reservationRepository.count()
+        ).isEqualTo(1L);
+    }
+
+    private List<ReservationAttemptResult>
+    executeConcurrentReservations(
+        ReservationCreateRequestDto firstRequest,
+        ReservationCreateRequestDto secondRequest
+    ) throws Exception {
         CountDownLatch requestsReady =
             new CountDownLatch(
                 CONCURRENT_REQUEST_COUNT
@@ -225,7 +641,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 executorService.submit(() ->
                     attemptReservation(
                         testData.firstMemberId(),
-                        request,
+                        firstRequest,
                         requestsReady,
                         startRequests
                     )
@@ -235,121 +651,32 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 executorService.submit(() ->
                     attemptReservation(
                         testData.secondMemberId(),
-                        request,
+                        secondRequest,
                         requestsReady,
                         startRequests
                     )
                 );
 
-            boolean allRequestsReady =
-                requestsReady.await(
-                    ASYNC_TIMEOUT.toMillis(),
-                    TimeUnit.MILLISECONDS
-                );
-
-            assertThat(allRequestsReady)
-                .as(
-                    "두 예약 요청이 실행 준비를 "
-                        + "완료해야 합니다."
-                )
-                .isTrue();
+            awaitLatch(
+                requestsReady,
+                ASYNC_TIMEOUT,
+                "두 예약 요청이 실행 준비를 "
+                    + "완료해야 합니다."
+            );
 
             startRequests.countDown();
 
-            ReservationAttemptResult firstResult =
+            return List.of(
                 firstFuture.get(
                     ASYNC_TIMEOUT.toMillis(),
                     TimeUnit.MILLISECONDS
-                );
-
-            ReservationAttemptResult secondResult =
+                ),
                 secondFuture.get(
                     ASYNC_TIMEOUT.toMillis(),
                     TimeUnit.MILLISECONDS
-                );
-
-            // then
-            List<ReservationAttemptResult> results =
-                List.of(
-                    firstResult,
-                    secondResult
-                );
-
-            long successCount =
-                results.stream()
-                    .filter(
-                        ReservationAttemptResult::success
-                    )
-                    .count();
-
-            long failureCount =
-                results.stream()
-                    .filter(result ->
-                        !result.success()
-                    )
-                    .count();
-
-            assertThat(successCount)
-                .as(
-                    "동일 객실과 기간의 동시 예약 중 "
-                        + "하나의 요청만 성공해야 합니다."
                 )
-                .isEqualTo(1L);
-
-            assertThat(failureCount)
-                .as(
-                    "락을 나중에 획득한 요청은 "
-                        + "예약 불가로 거절되어야 합니다."
-                )
-                .isEqualTo(1L);
-
-            ReservationAttemptResult successfulResult =
-                results.stream()
-                    .filter(
-                        ReservationAttemptResult::success
-                    )
-                    .findFirst()
-                    .orElseThrow();
-
-            ReservationAttemptResult failedResult =
-                results.stream()
-                    .filter(result ->
-                        !result.success()
-                    )
-                    .findFirst()
-                    .orElseThrow();
-
-            assertThat(
-                successfulResult.reservationId()
-            ).isNotNull();
-
-            assertThat(
-                successfulResult.errorCode()
-            ).isNull();
-
-            assertThat(
-                failedResult.reservationId()
-            ).isNull();
-
-            assertThat(
-                failedResult.errorCode()
-            ).isEqualTo(
-                ErrorCode.ROOM_NOT_AVAILABLE
             );
-
-            assertThat(
-                reservationRepository.count()
-            )
-                .as(
-                    "동일 객실과 기간에는 예약이 "
-                        + "한 건만 저장되어야 합니다."
-                )
-                .isEqualTo(1L);
         } finally {
-            /*
-             * 준비 단계에서 예외가 발생하더라도
-             * 대기 중인 작업 스레드를 해제합니다.
-             */
             startRequests.countDown();
 
             executorService.shutdownNow();
@@ -359,6 +686,53 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 TimeUnit.MILLISECONDS
             );
         }
+    }
+
+    private void assertSingleWinner(
+        List<ReservationAttemptResult> results
+    ) {
+        ReservationAttemptResult successfulResult =
+            results.stream()
+                .filter(
+                    ReservationAttemptResult::success
+                )
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(successfulResult.reservationId())
+            .isNotNull();
+
+        assertThat(successfulResult.errorCode())
+            .isNull();
+
+        assertThat(results)
+            .filteredOn(result ->
+                !result.success()
+            )
+            .singleElement()
+            .extracting(
+                ReservationAttemptResult::errorCode
+            )
+            .isEqualTo(
+                ErrorCode.ROOM_NOT_AVAILABLE
+            );
+
+        assertThat(
+            reservationRepository.count()
+        ).isEqualTo(1L);
+    }
+
+    private ReservationCreateRequestDto createRequest(
+        Long roomId,
+        LocalDate checkInDate,
+        LocalDate checkOutDate
+    ) {
+        return new ReservationCreateRequestDto(
+            roomId,
+            checkInDate,
+            checkOutDate,
+            2
+        );
     }
 
     /**
@@ -382,6 +756,16 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 + "시간이 초과됐습니다."
         );
 
+        return executeReservation(
+            memberId,
+            request
+        );
+    }
+
+    private ReservationAttemptResult executeReservation(
+        Long memberId,
+        ReservationCreateRequestDto request
+    ) {
         try {
             ReservationCreateResponseDto response =
                 reservationFacade.createReservation(
@@ -442,28 +826,47 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 accommodation
             );
 
-        Room room =
+        Room firstRoom =
             Room.create(
                 savedAccommodation,
                 "101",
-                "예약 락 테스트 객실",
-                "예약 생성 동시성 통합 테스트용 객실",
+                "예약 락 테스트 객실 A",
+                "예약 생성 동시성 통합 테스트용 객실 A",
                 100_000L,
                 2,
                 2
             );
 
-        room.activate();
+        firstRoom.activate();
 
-        Room savedRoom =
+        Room savedFirstRoom =
             roomRepository.saveAndFlush(
-                room
+                firstRoom
+            );
+
+        Room secondRoom =
+            Room.create(
+                savedAccommodation,
+                "102",
+                "예약 락 테스트 객실 B",
+                "예약 생성 동시성 통합 테스트용 객실 B",
+                120_000L,
+                2,
+                2
+            );
+
+        secondRoom.activate();
+
+        Room savedSecondRoom =
+            roomRepository.saveAndFlush(
+                secondRoom
             );
 
         return new TestData(
             firstMember.getId(),
             secondMember.getId(),
-            savedRoom.getId()
+            savedFirstRoom.getId(),
+            savedSecondRoom.getId()
         );
     }
 
@@ -498,7 +901,8 @@ class ReservationConcurrencyMySqlIntegrationTest {
     private record TestData(
         Long firstMemberId,
         Long secondMemberId,
-        Long roomId
+        Long firstRoomId,
+        Long secondRoomId
     ) {
     }
 

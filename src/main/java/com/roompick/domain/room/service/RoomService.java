@@ -2,7 +2,9 @@ package com.roompick.domain.room.service;
 
 import java.util.List;
 
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -74,46 +76,42 @@ public class RoomService {
     }
 
     /**
-     * 일반적인 예약 생성 조회에 필요한 객실과 숙소를
-     * fetch join으로 함께 조회합니다.
-     */
-    @Transactional(readOnly = true)
-    public Room findReservableRoomWithAccommodation(
-        Long roomId,
-        int guestCount
-    ) {
-        Room room =
-            findRoomWithAccommodation(roomId);
-
-        validateRoomAndAccommodationStatus(room);
-        validateGuestCount(room, guestCount);
-
-        return room;
-    }
-
-    /**
      * 예약 생성 전에 객실 행에 비관적 쓰기 락을 획득하고
      * 객실·숙소 상태와 예약 인원을 검증합니다.
      *
      * ReservationFacade에서 시작한 트랜잭션에 참여하므로
      * 예약 중복 검사와 저장이 끝날 때까지 락이 유지됩니다.
+     * 기존 트랜잭션이 없으면 호출할 수 없습니다.
      *
      * 같은 객실의 다른 예약 요청은 현재 트랜잭션이
-     * 커밋되거나 롤백될 때까지 대기합니다.
+     * 커밋되거나 롤백될 때까지 대기하며, 락 대기 시간이
+     * 초과되면 예약 전용 충돌 예외로 변환합니다.
      */
-    @Transactional
+    @Transactional(
+        propagation = Propagation.MANDATORY
+    )
     public Room findReservableRoomForUpdate(
         Long roomId,
         int guestCount
     ) {
-        Room room =
-            roomRepository
-                .findByIdForUpdate(roomId)
-                .orElseThrow(() ->
-                    new BusinessException(
-                        ErrorCode.ROOM_NOT_FOUND
-                    )
-                );
+        Room room;
+
+        try {
+            room =
+                roomRepository
+                    .findByIdForUpdate(roomId)
+                    .orElseThrow(() ->
+                        new BusinessException(
+                            ErrorCode.ROOM_NOT_FOUND
+                        )
+                    );
+        } catch (
+            PessimisticLockingFailureException exception
+        ) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_LOCK_TIMEOUT
+            );
+        }
 
         /*
          * 숙소 상태를 조회하면서 LAZY 연관관계가 초기화됩니다.
