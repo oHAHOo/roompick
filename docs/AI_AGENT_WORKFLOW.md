@@ -433,3 +433,46 @@ Actions → General에서 **"Allow GitHub Actions to create and approve pull req
 수정된 워크플로우 전체는 [`docs/workflows/claude-implement.yml`](workflows/claude-implement.yml)에
 반영해뒀다. `.github/workflows/`는 GitHub App이 직접 수정할 수 없으므로(11.5-4) 사람이 이 파일
 내용을 `.github/workflows/claude-implement.yml`에 반영해야 한다.
+
+### 11.10 후속 리뷰(HEAD `0266dfc5`)에서 지적된 `gh pr list --jq` 문법 오류
+
+11.9에서 추가한 `Check for existing open PR for this issue` 스텝이 다음 형태로 작성돼 있었다.
+
+```bash
+existing=$(gh pr list --state open --json number,body \
+  --jq --arg n "$ISSUE_NUMBER" \
+  '[.[] | select(.body | test("Closes #" + $n + "\\b"))] | .[0].number // empty')
+```
+
+`gh pr list`의 `--jq` 옵션은 `jq` 표현식 문자열 하나만 받고, 일반 `jq` 명령의 `--arg` 옵션을 함께
+전달하는 문법을 지원하지 않는다. 이 상태로는 이 스텝이 항상 실패해, 뒤따르는 `Implement`/`Run
+tests`/`Create PR` 스텝까지 아예 진행되지 못하는(즉 11.9에서 고치려던 문제보다 더 심각한) 상황이
+된다.
+
+**수정**: `gh pr list`는 JSON 출력만 받고, `--arg`가 필요한 필터링은 별도 `jq` 프로세스로 파이프한다.
+
+```bash
+existing=$(
+  gh pr list \
+    --state open \
+    --limit 100 \
+    --json number,body |
+  jq -r \
+    --arg n "$ISSUE_NUMBER" \
+    '[.[] |
+      select(
+        (.body // "") |
+        test("Closes #" + $n + "\\b")
+      )
+    ] |
+    .[0].number // empty'
+)
+```
+
+- `(.body // "")`: 본문이 비어있는(`null`) PR에서도 `test()`가 에러 없이 동작하도록 기본값 처리.
+- `--limit 100`: `gh pr list` 기본 조회 개수 제한으로 인해 오래된 열린 PR이 조회 범위 밖에 있어
+  중복 확인을 놓치는 상황을 줄인다.
+
+이 수정도 `.github/workflows/claude-implement.yml`에는 아직 반영되지 않았고,
+`docs/workflows/claude-implement.yml`에만 제안돼 있다. 반영 후에는 테스트 이슈에 라벨을 붙여
+**기존 PR 조회 → 구현 브랜치 생성 → 테스트 → PR 생성** 전체 경로를 실제로 검증해야 한다.

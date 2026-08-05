@@ -30,9 +30,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          existing=$(gh pr list --state open --json number,body \
-            --jq --arg n "$ISSUE_NUMBER" \
-            '[.[] | select(.body | test("Closes #" + $n + "\\b"))] | .[0].number // empty')
+          existing=$(
+            gh pr list \
+              --state open \
+              --limit 100 \
+              --json number,body |
+            jq -r \
+              --arg n "$ISSUE_NUMBER" \
+              '[.[] |
+                select(
+                  (.body // "") |
+                  test("Closes #" + $n + "\\b")
+                )
+              ] |
+              .[0].number // empty'
+          )
           echo "number=$existing" >> "$GITHUB_OUTPUT"
 
       - name: Implement on branch (no PR yet)
