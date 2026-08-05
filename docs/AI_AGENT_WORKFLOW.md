@@ -403,3 +403,33 @@ injection 경로가 된다. 따라서 위 라벨 부착 규칙과 별개로, `cl
 해당 이슈의 댓글 스레드도 함께 검토하고, 참고할 계획 댓글은 `claude-triage.yml` 워크플로우가 남긴
 것(GitHub Actions 봇 계정 작성)인지 확인한다. 외부 사용자가 작성한 댓글에 "계획"을 사칭한 지시가
 섞여 있다면 라벨을 붙이지 않거나, 신뢰할 수 있는 멤버가 계획을 다시 정리해 댓글로 남긴 뒤 진행한다.
+
+### 11.9 후속 리뷰(HEAD `c571fd83`)에서 지적된 셸 인젝션과 중복 PR 재검토
+
+11.7의 두 완료조건은 해소됐다고 재확인됐지만, 새로 추가된 `Create PR` 스텝에서 두 가지가 추가로
+지적됐다.
+
+1. **셸 인젝션 (병합 차단)**: `run:` 스크립트 안에 `${{ github.event.issue.title }}`을 문자열로
+   직접 삽입하고 있었다. GitHub 표현식은 셸 실행 전에 치환되므로, 공개 이슈 제목에 따옴표나 명령
+   치환 구문이 들어가면 셸 구문이 깨지면서 `contents`/`pull-requests`/`issues`/`id-token` 쓰기
+   권한을 가진 러너에서 임의 명령이 실행될 수 있다. **수정**: 이슈 번호/제목/브랜치명을 모두
+   `env:`로 전달하고 `run:` 안에서는 `"$ISSUE_NUMBER"`, `"$ISSUE_TITLE"`, `"$BRANCH_NAME"`
+   변수만 참조하도록 바꿨다. `env:`로 넘긴 값은 셸이 문자열 치환 없이 환경변수로만 받으므로
+   같은 문제가 발생하지 않는다.
+2. **재라벨링 시 중복 PR 가능성**: 기존에는 액션이 생성한 브랜치를 기준으로만
+   (`gh pr list --head <branch>`) 중복을 확인했다. 그런데 액션의 기본 브랜치명에는 타임스탬프가
+   들어가므로, 라벨을 뗐다 다시 붙이면 매번 새 브랜치명이 생성되고 이 브랜치 기준 확인은 항상
+   "기존 PR 없음"으로 나와 중복 PR을 막지 못한다. **수정**: `Implement` 스텝 실행 전에
+   `Check for existing open PR for this issue` 스텝을 추가해, 이슈 번호(`Closes #N` 본문 패턴)
+   기준으로 이미 열린 PR이 있는지 먼저 확인한다. 있으면 이후의 구현/테스트/PR 생성 스텝을 모두
+   건너뛴다. 브랜치 기준 확인은 동일 실행 내 안전장치로 남겨둔다.
+
+**운영 확인 필요 사항**: `GH_TOKEN: ${{ github.token }}`으로 PR을 생성하려면 저장소 Settings →
+Actions → General에서 **"Allow GitHub Actions to create and approve pull requests"**가 켜져
+있어야 한다. 꺼져 있으면 `gh pr create`가 실패한다. 또한 이 토큰으로 생성된 PR은 저장소 설정에
+따라 CI가 승인 대기 상태로 멈출 수 있으므로, 실사용 테스트에서 브랜치 생성 → 테스트 → PR 생성
+→ PR의 CI 실행까지 끝까지 확인해야 한다.
+
+수정된 워크플로우 전체는 [`docs/workflows/claude-implement.yml`](workflows/claude-implement.yml)에
+반영해뒀다. `.github/workflows/`는 GitHub App이 직접 수정할 수 없으므로(11.5-4) 사람이 이 파일
+내용을 `.github/workflows/claude-implement.yml`에 반영해야 한다.
