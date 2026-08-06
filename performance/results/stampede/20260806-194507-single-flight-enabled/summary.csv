@@ -1,0 +1,4 @@
+scenario,run,redis_ranking_calls,mysql_selects,avg_ms,p95_ms,p99_ms,throughput_rps,error_rate
+single-flight-enabled,1,1,1,34.16709999999999,34.77305,34.97141,243.7775773384364,0
+single-flight-enabled,2,1,1,15.032599999999999,15.3636,15.49032,569.8005698005699,0
+single-flight-enabled,3,1,1,13.369800000000001,13.4678,13.48076,629.5643414756988,0

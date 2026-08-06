@@ -1,0 +1,4 @@
+scenario,run,redis_ranking_calls,mysql_selects,avg_ms,p95_ms,p99_ms,throughput_rps,error_rate
+before-single-flight,1,10,10,171.21359999999999,171.71745,171.78189,55.53241704845203,0
+before-single-flight,2,10,10,22.6913,23.7024,23.734080000000002,387.97284190106694,0
+before-single-flight,3,10,10,17.661,18.945749999999997,19.82595,447.2271914132379,0
