@@ -49,6 +49,7 @@ public enum ErrorCode {
     RESERVATION_NOT_CANCELABLE(HttpStatus.CONFLICT, "RESERVATION_NOT_CANCELABLE", "현재 상태에서는 예약을 취소할 수 없습니다."),
     RESERVATION_NOT_PAYABLE(HttpStatus.CONFLICT, "RESERVATION_NOT_PAYABLE", "현재 예약 상태에서는 결제를 진행할 수 없습니다."),
     RESERVATION_PAYMENT_EXPIRED(HttpStatus.CONFLICT, "RESERVATION_PAYMENT_EXPIRED", "예약의 결제 대기 시간이 만료되었습니다."),
+    RESERVATION_LOCK_TIMEOUT(HttpStatus.CONFLICT, "RESERVATION_LOCK_TIMEOUT", "예약 요청이 많습니다. 잠시 후 다시 시도해주세요."),
 
     // 결제 오류
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYMENT_NOT_FOUND", "결제 정보를 찾을 수 없습니다."),

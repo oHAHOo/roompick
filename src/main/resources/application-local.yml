@@ -4,6 +4,8 @@ spring:
     username: ${DB_USERNAME:roompick}
     password: ${DB_PASSWORD:roompick}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-init-sql: SET SESSION innodb_lock_wait_timeout = 3
   jpa:
     hibernate:
       ddl-auto: validate
