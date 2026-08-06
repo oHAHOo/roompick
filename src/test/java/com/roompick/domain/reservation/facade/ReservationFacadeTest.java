@@ -30,7 +30,9 @@ import com.roompick.domain.reservation.dto.ReservationDetailResponseDto;
 import com.roompick.domain.reservation.dto.ReservationListResponseDto;
 import com.roompick.domain.reservation.dto.ReservationPageResponseDto;
 import com.roompick.domain.reservation.entity.Reservation;
+import com.roompick.domain.reservation.entity.ReservationIdempotency;
 import com.roompick.domain.reservation.entity.ReservationStatus;
+import com.roompick.domain.reservation.service.ReservationIdempotencyService;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
@@ -44,11 +46,21 @@ import com.roompick.global.common.ErrorCode;
 @ExtendWith(MockitoExtension.class)
 class ReservationFacadeTest {
 
+    private static final String IDEMPOTENCY_KEY =
+        "reservation-create-20260810-0001";
+
     @Mock
     private RoomService roomService;
 
     @Mock
     private ReservationService reservationService;
+
+    @Mock
+    private ReservationIdempotencyService
+        reservationIdempotencyService;
+
+    @Mock
+    private ReservationIdempotency reservationIdempotency;
 
     @InjectMocks
     private ReservationFacade reservationFacade;
@@ -119,6 +131,19 @@ class ReservationFacadeTest {
         );
 
         given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        ).willReturn(reservationIdempotency);
+
+        given(
+            reservationIdempotency.isCompleted()
+        ).willReturn(false);
+
+        given(
             roomService
                 .findReservableRoomForUpdate(
                     roomId,
@@ -140,6 +165,7 @@ class ReservationFacadeTest {
         ReservationCreateResponseDto response =
             reservationFacade.createReservation(
                 memberId,
+                IDEMPOTENCY_KEY,
                 request
             );
 
@@ -195,6 +221,14 @@ class ReservationFacadeTest {
                 2
             );
 
+        then(reservationIdempotencyService)
+            .should()
+            .getOrCreate(
+                memberId,
+                IDEMPOTENCY_KEY,
+                request
+            );
+
         then(reservationService)
             .should()
             .createReservation(
@@ -204,6 +238,285 @@ class ReservationFacadeTest {
                 checkOutDate,
                 2
             );
+
+        then(reservationIdempotencyService)
+            .should()
+            .complete(
+                reservationIdempotency,
+                reservation
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "같은 멱등성 키와 요청이 다시 전달되면 "
+            + "기존 예약 결과를 반환한다"
+    )
+    void 동일한_멱등성_요청이면_기존_예약을_반환한다() {
+        // given
+        Long memberId = 1L;
+        Long reservationId = 30L;
+
+        LocalDate checkInDate =
+            LocalDate.of(2026, 8, 10);
+
+        LocalDate checkOutDate =
+            LocalDate.of(2026, 8, 12);
+
+        ReservationCreateRequestDto request =
+            new ReservationCreateRequestDto(
+                20L,
+                checkInDate,
+                checkOutDate,
+                2
+            );
+
+        Accommodation accommodation =
+            createAccommodation(10L);
+
+        Room room =
+            createRoom(
+                20L,
+                accommodation
+            );
+
+        Member member =
+            createMember(memberId);
+
+        Reservation reservation =
+            Reservation.create(
+                member,
+                room,
+                checkInDate,
+                checkOutDate,
+                2,
+                LocalDateTime.of(
+                    2026,
+                    8,
+                    1,
+                    12,
+                    10
+                )
+            );
+
+        ReflectionTestUtils.setField(
+            reservation,
+            "id",
+            reservationId
+        );
+
+        given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        ).willReturn(reservationIdempotency);
+
+        given(
+            reservationIdempotency.isCompleted()
+        ).willReturn(true);
+
+        given(
+            reservationIdempotency
+                .getCompletedReservation()
+        ).willReturn(reservation);
+
+        // when
+        ReservationCreateResponseDto response =
+            reservationFacade.createReservation(
+                memberId,
+                IDEMPOTENCY_KEY,
+                request
+            );
+
+        // then
+        assertThat(response.reservationId())
+            .isEqualTo(reservationId);
+
+        assertThat(response.memberId())
+            .isEqualTo(memberId);
+
+        then(reservationIdempotencyService)
+            .should()
+            .getOrCreate(
+                memberId,
+                IDEMPOTENCY_KEY,
+                request
+            );
+
+        then(reservationIdempotencyService)
+            .shouldHaveNoMoreInteractions();
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "같은 멱등성 키로 다른 요청을 전달하면 "
+            + "멱등성 충돌 예외를 반환한다"
+    )
+    void 같은_멱등성_키로_다른_요청을_전달하면_충돌한다() {
+        // given
+        Long memberId = 1L;
+
+        ReservationCreateRequestDto request =
+            new ReservationCreateRequestDto(
+                21L,
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2
+            );
+
+        given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode
+                    .RESERVATION_IDEMPOTENCY_CONFLICT
+            )
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            reservationFacade.createReservation(
+                memberId,
+                IDEMPOTENCY_KEY,
+                request
+            )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode
+                    .RESERVATION_IDEMPOTENCY_CONFLICT
+            );
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 키가 누락되면 예약을 생성하지 않는다"
+    )
+    void 멱등성_키가_누락되면_예약을_생성하지_않는다() {
+        // given
+        Long memberId = 1L;
+
+        ReservationCreateRequestDto request =
+            new ReservationCreateRequestDto(
+                20L,
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2
+            );
+
+        given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    null,
+                    request
+                )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            )
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            reservationFacade.createReservation(
+                memberId,
+                null,
+                request
+            )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 키가 비어 있으면 예약을 생성하지 않는다"
+    )
+    void 멱등성_키가_비어_있으면_예약을_생성하지_않는다() {
+        // given
+        Long memberId = 1L;
+        String blankIdempotencyKey = "   ";
+
+        ReservationCreateRequestDto request =
+            new ReservationCreateRequestDto(
+                20L,
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                2
+            );
+
+        given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    blankIdempotencyKey,
+                    request
+                )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            )
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            reservationFacade.createReservation(
+                memberId,
+                blankIdempotencyKey,
+                request
+            )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode.INVALID_INPUT_VALUE
+            );
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
     }
 
     @Test
@@ -225,6 +538,19 @@ class ReservationFacadeTest {
             );
 
         given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        ).willReturn(reservationIdempotency);
+
+        given(
+            reservationIdempotency.isCompleted()
+        ).willReturn(false);
+
+        given(
             roomService
                 .findReservableRoomForUpdate(
                     roomId,
@@ -240,6 +566,7 @@ class ReservationFacadeTest {
         assertThatThrownBy(() ->
             reservationFacade.createReservation(
                 memberId,
+                IDEMPOTENCY_KEY,
                 request
             )
         )
@@ -256,6 +583,17 @@ class ReservationFacadeTest {
 
         then(reservationService)
             .shouldHaveNoInteractions();
+
+        then(reservationIdempotencyService)
+            .should()
+            .getOrCreate(
+                memberId,
+                IDEMPOTENCY_KEY,
+                request
+            );
+
+        then(reservationIdempotencyService)
+            .shouldHaveNoMoreInteractions();
     }
 
     @Test

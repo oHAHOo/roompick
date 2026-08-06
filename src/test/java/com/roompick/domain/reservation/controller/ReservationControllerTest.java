@@ -3,6 +3,7 @@ package com.roompick.domain.reservation.controller;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -47,6 +48,12 @@ import com.roompick.global.security.JwtTokenProvider;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ReservationControllerTest {
+
+    private static final String IDEMPOTENCY_KEY_HEADER =
+        "Idempotency-Key";
+
+    private static final String VALID_IDEMPOTENCY_KEY =
+        "reservation-create-20260810-0001";
 
     @Autowired
     private MockMvc mockMvc;
@@ -103,6 +110,7 @@ class ReservationControllerTest {
         given(
             reservationFacade.createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             )
         ).willReturn(response);
@@ -122,6 +130,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -192,6 +204,254 @@ class ReservationControllerTest {
             .andExpect(
                 jsonPath("$.data.status")
                     .value("PENDING_PAYMENT")
+            );
+
+        verify(reservationFacade)
+            .createReservation(
+                eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
+                any(ReservationCreateRequestDto.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 키가 누락되면 예약 생성에 실패한다"
+    )
+    void 멱등성_키가_누락되면_예약_생성에_실패한다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.createReservation(
+                eq(memberId),
+                isNull(),
+                any(ReservationCreateRequestDto.class)
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            )
+        );
+
+        String requestBody = """
+            {
+              "roomId": 20,
+              "checkInDate": "2026-08-10",
+              "checkOutDate": "2026-08-12",
+              "guestCount": 2
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                post("/api/v1/reservations")
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.INVALID_INPUT_VALUE
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.INVALID_INPUT_VALUE
+                            .getMessage()
+                    )
+            );
+
+        verify(reservationFacade)
+            .createReservation(
+                eq(memberId),
+                isNull(),
+                any(ReservationCreateRequestDto.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 키가 비어 있으면 예약 생성에 실패한다"
+    )
+    void 멱등성_키가_비어_있으면_예약_생성에_실패한다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+        String blankIdempotencyKey = "   ";
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.createReservation(
+                eq(memberId),
+                eq(blankIdempotencyKey),
+                any(ReservationCreateRequestDto.class)
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            )
+        );
+
+        String requestBody = """
+            {
+              "roomId": 20,
+              "checkInDate": "2026-08-10",
+              "checkOutDate": "2026-08-12",
+              "guestCount": 2
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                post("/api/v1/reservations")
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        blankIdempotencyKey
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.INVALID_INPUT_VALUE
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode.INVALID_INPUT_VALUE
+                            .getMessage()
+                    )
+            );
+
+        verify(reservationFacade)
+            .createReservation(
+                eq(memberId),
+                eq(blankIdempotencyKey),
+                any(ReservationCreateRequestDto.class)
+            );
+    }
+
+    @Test
+    @DisplayName(
+        "같은 멱등성 키로 다른 예약 요청을 전달하면 충돌한다"
+    )
+    void 같은_멱등성_키로_다른_예약을_요청하면_충돌한다()
+        throws Exception {
+
+        // given
+        Long memberId = 1L;
+
+        String accessToken =
+            jwtTokenProvider.createAccessToken(
+                memberId,
+                MemberRole.USER
+            );
+
+        given(
+            reservationFacade.createReservation(
+                eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
+                any(ReservationCreateRequestDto.class)
+            )
+        ).willThrow(
+            new BusinessException(
+                ErrorCode
+                    .RESERVATION_IDEMPOTENCY_CONFLICT
+            )
+        );
+
+        String requestBody = """
+            {
+              "roomId": 21,
+              "checkInDate": "2026-08-10",
+              "checkOutDate": "2026-08-12",
+              "guestCount": 2
+            }
+            """;
+
+        // when & then
+        mockMvc.perform(
+                post("/api/v1/reservations")
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody)
+            )
+            .andExpect(status().isConflict())
+            .andExpect(
+                jsonPath("$.success")
+                    .value(false)
+            )
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode
+                            .RESERVATION_IDEMPOTENCY_CONFLICT
+                            .getCode()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.message")
+                    .value(
+                        ErrorCode
+                            .RESERVATION_IDEMPOTENCY_CONFLICT
+                            .getMessage()
+                    )
+            )
+            .andExpect(
+                jsonPath("$.errors.length()")
+                    .value(0)
+            );
+
+        verify(reservationFacade)
+            .createReservation(
+                eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
+                any(ReservationCreateRequestDto.class)
             );
     }
 
@@ -691,6 +951,10 @@ class ReservationControllerTest {
         // when & then
         mockMvc.perform(
                 post("/api/v1/reservations")
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -737,6 +1001,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1023,6 +1291,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1087,6 +1359,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1153,6 +1429,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1214,6 +1494,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1294,6 +1578,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1361,6 +1649,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1427,6 +1719,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1499,6 +1795,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1566,6 +1866,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1635,6 +1939,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1701,6 +2009,10 @@ class ReservationControllerTest {
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
                     )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
+                    )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
             )
@@ -1761,6 +2073,7 @@ class ReservationControllerTest {
         given(
             reservationFacade.createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             )
         ).willThrow(
@@ -1794,6 +2107,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1835,6 +2152,7 @@ class ReservationControllerTest {
         verify(reservationFacade)
             .createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             );
     }
@@ -1860,6 +2178,7 @@ class ReservationControllerTest {
         given(
             reservationFacade.createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             )
         ).willThrow(
@@ -1883,6 +2202,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1914,6 +2237,7 @@ class ReservationControllerTest {
         verify(reservationFacade)
             .createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             );
     }
@@ -1939,6 +2263,7 @@ class ReservationControllerTest {
         given(
             reservationFacade.createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             )
         ).willThrow(
@@ -1962,6 +2287,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -1993,6 +2322,7 @@ class ReservationControllerTest {
         verify(reservationFacade)
             .createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             );
     }
@@ -2018,6 +2348,7 @@ class ReservationControllerTest {
         given(
             reservationFacade.createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             )
         ).willThrow(
@@ -2041,6 +2372,10 @@ class ReservationControllerTest {
                     .header(
                         HttpHeaders.AUTHORIZATION,
                         "Bearer " + accessToken
+                    )
+                    .header(
+                        IDEMPOTENCY_KEY_HEADER,
+                        VALID_IDEMPOTENCY_KEY
                     )
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(requestBody)
@@ -2072,6 +2407,7 @@ class ReservationControllerTest {
         verify(reservationFacade)
             .createReservation(
                 eq(memberId),
+                eq(VALID_IDEMPOTENCY_KEY),
                 any(ReservationCreateRequestDto.class)
             );
     }

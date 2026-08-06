@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,19 +36,40 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/v1/reservations")
 public class ReservationController {
 
+    private static final String
+        IDEMPOTENCY_KEY_HEADER =
+        "Idempotency-Key";
+
     private final ReservationFacade reservationFacade;
 
     /**
-     * 인증된 회원의 예약을 결제 대기 상태로 생성합니다.
+     * 인증된 회원의 예약을 결제 대기 상태로
+     * 멱등하게 생성합니다.
+     *
+     * Idempotency-Key가 누락되거나 비어 있으면
+     * ReservationIdempotencyService에서
+     * INVALID_INPUT_VALUE로 처리합니다.
      */
     @PostMapping
-    public ResponseEntity<ApiResponseDto<ReservationCreateResponseDto>> createReservation(
-        @AuthenticationPrincipal AuthMember authMember,
-        @Valid @RequestBody ReservationCreateRequestDto request
+    public ResponseEntity<ApiResponseDto<ReservationCreateResponseDto>>
+    createReservation(
+        @AuthenticationPrincipal
+        AuthMember authMember,
+
+        @RequestHeader(
+            name = IDEMPOTENCY_KEY_HEADER,
+            required = false
+        )
+        String idempotencyKey,
+
+        @Valid
+        @RequestBody
+        ReservationCreateRequestDto request
     ) {
         ReservationCreateResponseDto response =
             reservationFacade.createReservation(
                 authMember.memberId(),
+                idempotencyKey,
                 request
             );
 
