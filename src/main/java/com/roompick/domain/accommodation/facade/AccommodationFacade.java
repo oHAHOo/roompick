@@ -14,6 +14,7 @@ import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
+import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
@@ -42,6 +43,9 @@ public class AccommodationFacade {
 
     private final PopularAccommodationSingleFlightService
         popularAccommodationSingleFlightService;
+
+    private final PopularAccommodationQueryService
+        popularAccommodationQueryService;
 
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
@@ -76,8 +80,26 @@ public class AccommodationFacade {
         PopularAccommodationPeriod period,
         int limit
     ) {
+        return popularAccommodationSingleFlightService.execute(
+            period,
+            limit,
+            () -> getPopularAccommodationsWithFallback(
+                period,
+                limit
+            )
+        );
+    }
+
+    /**
+     * 정상 인기 숙소 조회와 Redis 랭킹 장애 fallback을 하나의 최종 작업으로 조율합니다.
+     */
+    private List<PopularAccommodationResponseDto>
+    getPopularAccommodationsWithFallback(
+        PopularAccommodationPeriod period,
+        int limit
+    ) {
         try {
-            return popularAccommodationSingleFlightService
+            return popularAccommodationQueryService
                 .getPopularAccommodations(
                     period,
                     limit

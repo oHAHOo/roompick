@@ -30,6 +30,22 @@ public class BusinessException extends RuntimeException {
     }
 
     /**
+     * 원인이 있는 일반 비즈니스 오류를 생성합니다.
+     */
+    public BusinessException(
+        ErrorCode errorCode,
+        Throwable cause
+    ) {
+        super(
+            errorCode.getMessage(),
+            cause
+        );
+
+        this.errorCode = errorCode;
+        this.fieldErrors = List.of();
+    }
+
+    /**
      * 상단 에러 메시지보다 구체적인 필드 안내가 있는
      * 비즈니스 오류를 생성합니다.
      */
