@@ -473,7 +473,34 @@ Redis 장애가 복구된 뒤 다음 요청에서는
 
 ---
 
-## 14. 캐시 성능 확인 결과
+## 14. Cold cache Single Flight
+
+응답 캐시가 비어 있는 순간 같은 `period`, 기간 기준 날짜, `limit` 요청이 동시에
+들어오면 단일 애플리케이션 인스턴스의 Key 단위 Single Flight가 최종 조회 작업을
+한 번만 수행합니다. DAILY와 WEEKLY, 서로 다른 날짜 또는 limit은 서로 기다리지 않습니다.
+
+최종 작업에는 정상 랭킹 조회뿐 아니라 Redis 랭킹 장애 시 최신 ACTIVE 숙소 fallback도
+포함됩니다. 따라서 동일 Key 요청이 Redis 장애를 만났을 때도 랭킹 조회와 fallback DB
+조회는 각각 한 번만 수행하고 결과를 공유합니다. fallback 결과를 응답 캐시에 저장하지
+않는 기존 정책은 유지합니다.
+
+대기 요청의 기본 제한 시간은 5초이며 운영 환경변수
+`POPULAR_ACCOMMODATION_SINGLE_FLIGHT_WAIT_TIMEOUT`으로 조정합니다. 제한 시간 초과는
+HTTP 503으로 반환합니다. 대기 요청의 timeout 또는 interruption은 진행 중 작업을
+취소하거나 Map을 제거하지 않으며, 최초 작업이 실제로 완료되거나 실패했을 때만
+비교 제거 방식으로 정리합니다.
+
+Redis local/prod 연결·응답 제한은 300ms입니다. Single Flight 제한은 대기 HTTP 요청을
+보호하며 소유 작업의 Redis·MySQL I/O를 직접 취소하는 timeout은 아닙니다.
+
+현재 구현은 JVM 내부 Map을 사용하므로 단일 애플리케이션 인스턴스에서만 동작합니다.
+다중 인스턴스에서 실제 중복 조회가 유의미하게 측정되면 Redis 분산 락을 후속 검토합니다.
+실제 측정 조건과 결과는
+[`POPULAR_ACCOMMODATION_CACHE_STAMPEDE_RESULT.md`](performance/POPULAR_ACCOMMODATION_CACHE_STAMPEDE_RESULT.md)에 기록합니다.
+
+---
+
+## 15. 캐시 성능 확인 결과
 
 동일한 인기 숙소 요청을 반복하여
 캐시 적용 전후 DB 조회와 응답 시간을 확인했습니다.
@@ -513,7 +540,7 @@ Redis 장애가 복구된 뒤 다음 요청에서는
 
 ---
 
-## 15. 테스트 검증 항목
+## 16. 테스트 검증 항목
 
 다음 항목을 단위 테스트와 통합 테스트로 검증합니다.
 
@@ -560,6 +587,16 @@ Redis 장애가 복구된 뒤 다음 요청에서는
 - Redis 인기 점수 기록 실패 시 상세 조회 정상 응답
 - fallback 결과를 인기 숙소 캐시에 저장하지 않음
 - 숙소 DB `DataAccessException`은 fallback하지 않고 그대로 전달
+
+### Single Flight
+
+- 동일 Key 동시 요청의 정상 결과와 원본 예외 공유
+- DAILY/WEEKLY와 서로 다른 limit의 독립 실행
+- 캐시 비활성화 시 Single Flight 우회
+- Redis 랭킹 장애 fallback 조회 1회 공유
+- 대기 timeout 시 Map 유지와 소유 작업 완료 후 정리
+- interruption 상태 복구
+- 실제 Redis Sorted Set과 MySQL 데이터 기반 원본 조회 1회
 
 ### DB fallback
 
