@@ -1,0 +1,4 @@
+scenario,run,redis_ranking_calls,mysql_selects
+before-single-flight,1,10,10
+before-single-flight,2,10,10
+before-single-flight,3,10,10

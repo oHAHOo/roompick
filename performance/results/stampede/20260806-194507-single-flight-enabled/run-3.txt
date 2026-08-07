@@ -1,0 +1,53 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: performance/k6/popular-accommodation-stampede.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 1m0s max duration (incl. graceful stop):
+              * cold_cache_burst: 1 iterations for each of 10 VUs (maxDuration: 30s, gracefulStop: 30s)
+
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.99' rate=100.00%
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 10      629.564341/s
+    checks_succeeded...: 100.00% 10 out of 10
+    checks_failed......: 0.00%   0 out of 10
+
+    ✓ HTTP 상태가 200이다
+
+    HTTP
+    http_req_duration..............: avg=13.36ms min=13.29ms med=13.35ms p(95)=13.46ms p(99)=13.48ms max=13.48ms
+      { expected_response:true }...: avg=13.36ms min=13.29ms med=13.35ms p(95)=13.46ms p(99)=13.48ms max=13.48ms
+    http_req_failed................: 0.00%  0 out of 10
+    http_reqs......................: 10     629.564341/s
+
+    EXECUTION
+    iteration_duration.............: avg=15.51ms min=15.32ms med=15.46ms p(95)=15.78ms p(99)=15.78ms max=15.78ms
+    iterations.....................: 10     629.564341/s
+
+    NETWORK
+    data_received..................: 16 kB  979 kB/s
+    data_sent......................: 1.2 kB 76 kB/s
+
+
+
+
+running (0m00.0s), 00/10 VUs, 10 complete and 0 interrupted iterations
+cold_cache_burst ✓ [ 100% ] 10 VUs  00.0s/30s  10/10 iters, 1 per VU

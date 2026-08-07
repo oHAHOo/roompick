@@ -13,8 +13,9 @@ import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
+import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
+import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
@@ -22,16 +23,29 @@ import com.roompick.domain.room.service.RoomService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * 숙소와 객실 관련 API 흐름을 조율하는 Facade입니다.
+ *
+ * 여러 Service의 실행 순서를 조정하고,
+ * 도메인 조회 결과를 API 응답 DTO로 변환합니다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
+
     private final RoomService roomService;
+
     private final PopularAccommodationRankingService
         popularAccommodationRankingService;
-    private final PopularAccommodationQueryService popularAccommodationQueryService;
+
+    private final PopularAccommodationSingleFlightService
+        popularAccommodationSingleFlightService;
+
+    private final PopularAccommodationQueryService
+        popularAccommodationQueryService;
 
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
@@ -57,11 +71,30 @@ public class AccommodationFacade {
     /**
      * 인기 숙소 목록을 조회합니다.
      *
+     * 동일한 캐시 키의 동시 요청은 Single Flight로 하나의 조회를 공유합니다.
      * Redis 인기 랭킹을 정상적으로 조회하면 실제 인기 순위를 반환하고,
      * Redis 장애가 발생하면 최신 ACTIVE 숙소를 임시 fallback으로 반환합니다.
      */
     public List<PopularAccommodationResponseDto>
     getPopularAccommodations(
+        PopularAccommodationPeriod period,
+        int limit
+    ) {
+        return popularAccommodationSingleFlightService.execute(
+            period,
+            limit,
+            () -> getPopularAccommodationsWithFallback(
+                period,
+                limit
+            )
+        );
+    }
+
+    /**
+     * 정상 인기 숙소 조회와 Redis 랭킹 장애 fallback을 하나의 최종 작업으로 조율합니다.
+     */
+    private List<PopularAccommodationResponseDto>
+    getPopularAccommodationsWithFallback(
         PopularAccommodationPeriod period,
         int limit
     ) {
