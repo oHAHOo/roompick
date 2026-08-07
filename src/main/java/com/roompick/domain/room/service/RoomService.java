@@ -2,7 +2,9 @@ package com.roompick.domain.room.service;
 
 import java.util.List;
 
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -24,9 +26,6 @@ public class RoomService {
 
     /**
      * 객실 상세 조회에 필요한 객실만 조회합니다.
-     *
-     * 객실과 숙소가 모두 운영 중인 경우에만 공개합니다.
-     * 두 상태는 Repository의 단일 조회 조건으로 확인합니다.
      */
     @Transactional(readOnly = true)
     public Room findActiveById(Long roomId) {
@@ -37,18 +36,19 @@ public class RoomService {
                 AccommodationStatus.ACTIVE
             )
             .orElseThrow(() ->
-                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
             );
     }
 
     /**
-     * 특정 숙소에 소속된 운영 중인 객실 목록을 조회합니다.
-     *
-     * 객실 목록 화면에 필요한 필드만
-     * Repository에서 DTO로 직접 조회합니다.
+     * 특정 숙소에 소속된 운영 중인
+     * 객실 목록을 조회합니다.
      */
     @Transactional(readOnly = true)
-    public List<RoomListResponseDto> findAllActiveSummaryByAccommodationId(
+    public List<RoomListResponseDto>
+    findAllActiveSummaryByAccommodationId(
         Long accommodationId
     ) {
         return roomRepository
@@ -60,16 +60,14 @@ public class RoomService {
     /**
      * 예약 가능 여부 확인에 필요한 객실을 조회하고
      * 객실 상태와 요청 인원을 검증합니다.
-     *
-     * 숙소 상태 검증에 추가 조회가 발생하지 않도록
-     * 객실과 숙소를 fetch join으로 함께 조회합니다.
      */
     @Transactional(readOnly = true)
     public Room findReservableRoom(
         Long roomId,
         int guestCount
     ) {
-        Room room = findRoomWithAccommodation(roomId);
+        Room room =
+            findRoomWithAccommodation(roomId);
 
         validateRoomAndAccommodationStatus(room);
         validateGuestCount(room, guestCount);
@@ -78,19 +76,47 @@ public class RoomService {
     }
 
     /**
-     * 예약 생성에 필요한 객실과 소속 숙소를 함께 조회하고
-     * 객실 상태와 요청 인원을 검증합니다.
+     * 예약 생성 전에 객실 행에 비관적 쓰기 락을 획득하고
+     * 객실·숙소 상태와 예약 인원을 검증합니다.
      *
-     * 예약 생성 응답에 숙소 정보가 포함되므로
-     * fetch join을 사용해 추가 조회가 발생하지 않도록 합니다.
+     * ReservationFacade에서 시작한 트랜잭션에 참여하므로
+     * 예약 중복 검사와 저장이 끝날 때까지 락이 유지됩니다.
+     * 기존 트랜잭션이 없으면 호출할 수 없습니다.
+     *
+     * 같은 객실의 다른 예약 요청은 현재 트랜잭션이
+     * 커밋되거나 롤백될 때까지 대기하며, 락 대기 시간이
+     * 초과되면 예약 전용 충돌 예외로 변환합니다.
      */
-    @Transactional(readOnly = true)
-    public Room findReservableRoomWithAccommodation(
+    @Transactional(
+        propagation = Propagation.MANDATORY
+    )
+    public Room findReservableRoomForUpdate(
         Long roomId,
         int guestCount
     ) {
-        Room room = findRoomWithAccommodation(roomId);
+        Room room;
 
+        try {
+            room =
+                roomRepository
+                    .findByIdForUpdate(roomId)
+                    .orElseThrow(() ->
+                        new BusinessException(
+                            ErrorCode.ROOM_NOT_FOUND
+                        )
+                    );
+        } catch (
+            PessimisticLockingFailureException exception
+        ) {
+            throw new BusinessException(
+                ErrorCode.RESERVATION_LOCK_TIMEOUT
+            );
+        }
+
+        /*
+         * 숙소 상태를 조회하면서 LAZY 연관관계가 초기화됩니다.
+         * Facade 트랜잭션 안이므로 정상적으로 조회할 수 있습니다.
+         */
         validateRoomAndAccommodationStatus(room);
         validateGuestCount(room, guestCount);
 
@@ -111,57 +137,64 @@ public class RoomService {
         int maxCapacity
     ) {
         validateAccommodationActive(accommodation);
+
         validateRoomNumberNotDuplicated(
             accommodation.getId(),
             roomNumber
         );
 
-        Room room = Room.create(
-            accommodation,
-            roomNumber,
-            name,
-            description,
-            pricePerNight,
-            standardCapacity,
-            maxCapacity
-        );
+        Room room =
+            Room.create(
+                accommodation,
+                roomNumber,
+                name,
+                description,
+                pricePerNight,
+                standardCapacity,
+                maxCapacity
+            );
 
         return roomRepository.save(room);
     }
 
     /**
-     * 지정한 숙소에 실제로 소속된 객실을 사용자에게 공개합니다.
-     *
-     * 영속 상태의 Entity를 변경하므로 별도의 save 호출은 필요하지 않습니다.
+     * 지정한 숙소에 실제로 소속된 객실을
+     * 사용자에게 공개합니다.
      */
     @Transactional
     public Room activateRoom(
         Long accommodationId,
         Long roomId
     ) {
-        Room room = findByIdAndAccommodationIdWithAccommodation(
-            accommodationId,
-            roomId
+        Room room =
+            findByIdAndAccommodationIdWithAccommodation(
+                accommodationId,
+                roomId
+            );
+
+        validateAccommodationActive(
+            room.getAccommodation()
         );
 
-        validateAccommodationActive(room.getAccommodation());
         room.activate();
 
         return room;
     }
 
     /**
-     * 지정한 숙소에 실제로 소속된 객실을 사용자에게 비공개합니다.
+     * 지정한 숙소에 실제로 소속된 객실을
+     * 사용자에게 비공개합니다.
      */
     @Transactional
     public Room deactivateRoom(
         Long accommodationId,
         Long roomId
     ) {
-        Room room = findByIdAndAccommodationId(
-            accommodationId,
-            roomId
-        );
+        Room room =
+            findByIdAndAccommodationId(
+                accommodationId,
+                roomId
+            );
 
         room.deactivate();
 
@@ -178,11 +211,14 @@ public class RoomService {
                 accommodationId
             )
             .orElseThrow(() ->
-                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
             );
     }
 
-    private Room findByIdAndAccommodationIdWithAccommodation(
+    private Room
+    findByIdAndAccommodationIdWithAccommodation(
         Long accommodationId,
         Long roomId
     ) {
@@ -192,29 +228,34 @@ public class RoomService {
                 accommodationId
             )
             .orElseThrow(() ->
-                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
             );
     }
 
-    private Room findRoomWithAccommodation(Long roomId) {
+    private Room findRoomWithAccommodation(
+        Long roomId
+    ) {
         return roomRepository
             .findByIdWithAccommodation(roomId)
             .orElseThrow(() ->
-                new BusinessException(ErrorCode.ROOM_NOT_FOUND)
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
             );
     }
 
     /**
      * 객실과 소속 숙소가 모두 운영 중인지 확인합니다.
-     *
-     * 호출 전에 숙소가 fetch join으로 로딩되어 있으므로
-     * 상태 확인을 위한 추가 조회가 발생하지 않습니다.
      */
-    private void validateRoomAndAccommodationStatus(Room room) {
+    private void validateRoomAndAccommodationStatus(
+        Room room
+    ) {
         if (
             room.getStatus() != RoomStatus.ACTIVE
                 || room.getAccommodation().getStatus()
-                    != AccommodationStatus.ACTIVE
+                != AccommodationStatus.ACTIVE
         ) {
             throw new BusinessException(
                 ErrorCode.ROOM_INACTIVE
@@ -230,10 +271,6 @@ public class RoomService {
         Room room,
         int guestCount
     ) {
-        /*
-         * DTO 검증을 거치지 않고 Service가 직접 호출되는 경우를 대비한
-         * 방어 검증입니다.
-         */
         if (guestCount < 1) {
             throw new BusinessException(
                 ErrorCode.INVALID_GUEST_COUNT
@@ -244,10 +281,6 @@ public class RoomService {
             room.getMaxCapacity();
 
         if (guestCount > maxCapacity) {
-            /*
-             * 상단 메시지보다 구체적인 최대 허용 인원을 제공하므로
-             * guestCount 필드 상세 오류를 함께 전달합니다.
-             */
             throw new BusinessException(
                 ErrorCode.ROOM_CAPACITY_EXCEEDED,
                 List.of(
@@ -279,7 +312,8 @@ public class RoomService {
     }
 
     /**
-     * 같은 숙소에 동일한 객실 번호가 존재하는지 확인합니다.
+     * 같은 숙소에 동일한 객실 번호가
+     * 존재하는지 확인합니다.
      */
     private void validateRoomNumberNotDuplicated(
         Long accommodationId,
