@@ -39,6 +39,7 @@ import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.member.repository.MemberRepository;
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
+import com.roompick.domain.reservation.repository.ReservationIdempotencyRepository;
 import com.roompick.domain.reservation.repository.ReservationRepository;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
@@ -80,6 +81,12 @@ class ReservationConcurrencyMySqlIntegrationTest {
     private static final int MYSQL_PORT = 3306;
 
     private static final int CONCURRENT_REQUEST_COUNT = 2;
+
+    private static final String FIRST_IDEMPOTENCY_KEY =
+        "reservation-concurrency-request-1";
+
+    private static final String SECOND_IDEMPOTENCY_KEY =
+        "reservation-concurrency-request-2";
 
     private static final String DATABASE_NAME =
         "roompick_reservation_lock_test";
@@ -177,6 +184,10 @@ class ReservationConcurrencyMySqlIntegrationTest {
     private ReservationRepository reservationRepository;
 
     @Autowired
+    private ReservationIdempotencyRepository
+        reservationIdempotencyRepository;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @Autowired
@@ -191,6 +202,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        reservationIdempotencyRepository.deleteAllInBatch();
         reservationRepository.deleteAllInBatch();
         roomRepository.deleteAllInBatch();
         accommodationRepository.deleteAllInBatch();
@@ -329,6 +341,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                         ReservationAttemptResult result =
                             executeReservation(
                                 testData.firstMemberId(),
+                                FIRST_IDEMPOTENCY_KEY,
                                 request
                             );
 
@@ -361,6 +374,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                     ReservationAttemptResult result =
                         executeReservation(
                             testData.secondMemberId(),
+                            SECOND_IDEMPOTENCY_KEY,
                             request
                         );
 
@@ -527,6 +541,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                         ReservationAttemptResult result =
                             executeReservation(
                                 testData.firstMemberId(),
+                                FIRST_IDEMPOTENCY_KEY,
                                 firstRequest
                             );
 
@@ -555,6 +570,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 executorService.submit(() ->
                     executeReservation(
                         testData.secondMemberId(),
+                        SECOND_IDEMPOTENCY_KEY,
                         secondRequest
                     )
                 );
@@ -626,12 +642,14 @@ class ReservationConcurrencyMySqlIntegrationTest {
         ReservationAttemptResult failedResult =
             executeReservation(
                 testData.firstMemberId(),
+                FIRST_IDEMPOTENCY_KEY,
                 invalidRequest
             );
 
         ReservationAttemptResult successfulResult =
             executeReservation(
                 testData.secondMemberId(),
+                SECOND_IDEMPOTENCY_KEY,
                 validRequest
             );
 
@@ -675,6 +693,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 executorService.submit(() ->
                     attemptReservation(
                         testData.firstMemberId(),
+                        FIRST_IDEMPOTENCY_KEY,
                         firstRequest,
                         requestsReady,
                         startRequests
@@ -685,6 +704,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
                 executorService.submit(() ->
                     attemptReservation(
                         testData.secondMemberId(),
+                        SECOND_IDEMPOTENCY_KEY,
                         secondRequest,
                         requestsReady,
                         startRequests
@@ -777,6 +797,7 @@ class ReservationConcurrencyMySqlIntegrationTest {
      */
     private ReservationAttemptResult attemptReservation(
         Long memberId,
+        String idempotencyKey,
         ReservationCreateRequestDto request,
         CountDownLatch requestsReady,
         CountDownLatch startRequests
@@ -792,18 +813,21 @@ class ReservationConcurrencyMySqlIntegrationTest {
 
         return executeReservation(
             memberId,
+            idempotencyKey,
             request
         );
     }
 
     private ReservationAttemptResult executeReservation(
         Long memberId,
+        String idempotencyKey,
         ReservationCreateRequestDto request
     ) {
         try {
             ReservationCreateResponseDto response =
                 reservationFacade.createReservation(
                     memberId,
+                    idempotencyKey,
                     request
                 );
 
