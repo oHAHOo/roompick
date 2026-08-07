@@ -31,11 +31,11 @@ public interface ReservationIdempotencyRepository
      * 먼저 처리한 트랜잭션이 커밋되면 후속 요청은
      * 기존 행을 유지하고, 먼저 처리한 트랜잭션이
      * 롤백되면 후속 요청이 새로운 행을 생성합니다.
+     *
+     * 예약 생성 트랜잭션에서 이미 관리 중인 Entity가
+     * 분리되지 않도록 영속성 컨텍스트는 초기화하지 않습니다.
      */
-    @Modifying(
-        flushAutomatically = true,
-        clearAutomatically = true
-    )
+    @Modifying(flushAutomatically = true)
     @Query(
         value = """
             INSERT INTO reservation_idempotencies

@@ -19,6 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.PessimisticLockingFailureException;
 
 import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.entity.Reservation;
@@ -344,6 +345,134 @@ class ReservationIdempotencyServiceTest {
             )
             .hasMessage(
                 "예약 멱등성 처리 정보를 조회할 수 없습니다."
+            );
+
+        then(reservationIdempotency)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 처리 정보 생성 중 락 대기 시간이 초과되면 "
+            + "예약 락 타임아웃 예외를 반환한다"
+    )
+    void 처리_정보_생성_중_락_타임아웃을_변환한다() {
+        // given
+        Long memberId = 1L;
+
+        ReservationCreateRequestDto request =
+            createRequest();
+
+        given(
+            reservationRequestHasher.hash(request)
+        ).willReturn(REQUEST_HASH);
+
+        given(
+            reservationIdempotencyRepository
+                .insertProcessingIfAbsent(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    REQUEST_HASH
+                )
+        ).willThrow(
+            new PessimisticLockingFailureException(
+                "멱등성 처리 정보 생성 락 타임아웃"
+            )
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode.RESERVATION_LOCK_TIMEOUT
+            );
+
+        then(reservationIdempotencyRepository)
+            .should()
+            .insertProcessingIfAbsent(
+                memberId,
+                IDEMPOTENCY_KEY,
+                REQUEST_HASH
+            );
+
+        then(reservationIdempotencyRepository)
+            .shouldHaveNoMoreInteractions();
+
+        then(reservationIdempotency)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 처리 정보 잠금 조회 중 락 대기 시간이 초과되면 "
+            + "예약 락 타임아웃 예외를 반환한다"
+    )
+    void 처리_정보_잠금_조회_중_락_타임아웃을_변환한다() {
+        // given
+        Long memberId = 1L;
+
+        ReservationCreateRequestDto request =
+            createRequest();
+
+        given(
+            reservationRequestHasher.hash(request)
+        ).willReturn(REQUEST_HASH);
+
+        given(
+            reservationIdempotencyRepository
+                .insertProcessingIfAbsent(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    REQUEST_HASH
+                )
+        ).willReturn(0);
+
+        given(
+            reservationIdempotencyRepository
+                .findByMemberIdAndIdempotencyKeyForUpdate(
+                    memberId,
+                    IDEMPOTENCY_KEY
+                )
+        ).willThrow(
+            new PessimisticLockingFailureException(
+                "멱등성 처리 정보 조회 락 타임아웃"
+            )
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode.RESERVATION_LOCK_TIMEOUT
+            );
+
+        then(reservationIdempotencyRepository)
+            .should()
+            .findByMemberIdAndIdempotencyKeyForUpdate(
+                memberId,
+                IDEMPOTENCY_KEY
             );
 
         then(reservationIdempotency)

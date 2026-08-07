@@ -25,6 +25,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -39,10 +42,13 @@ import com.roompick.domain.reservation.dto.ReservationCreateRequestDto;
 import com.roompick.domain.reservation.dto.ReservationCreateResponseDto;
 import com.roompick.domain.reservation.repository.ReservationIdempotencyRepository;
 import com.roompick.domain.reservation.repository.ReservationRepository;
+import com.roompick.domain.reservation.service.ReservationIdempotencyService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+
+import jakarta.persistence.EntityManager;
 
 /**
  * 실제 MySQL 환경에서 예약 생성 요청의
@@ -64,7 +70,9 @@ import com.roompick.global.common.ErrorCode;
         "spring.jpa.open-in-view=false",
         "spring.jpa.show-sql=true",
         "spring.jpa.properties.hibernate.format_sql=true",
-        "spring.datasource.hikari.maximum-pool-size=5"
+        "spring.datasource.hikari.maximum-pool-size=5",
+        "spring.datasource.hikari.connection-init-sql="
+            + "SET SESSION innodb_lock_wait_timeout=1"
     }
 )
 @ActiveProfiles("test")
@@ -97,6 +105,12 @@ class ReservationIdempotencyMySqlIntegrationTest {
 
     private static final String RETRY_KEY =
         "reservation-idempotency-retry";
+
+    private static final String LOCK_TIMEOUT_KEY =
+        "reservation-idempotency-lock-timeout";
+
+    private static final String PERSISTENCE_CONTEXT_KEY =
+        "reservation-idempotency-persistence-context";
 
     private static final ZoneId TEST_ZONE_ID =
         ZoneId.of("Asia/Seoul");
@@ -155,6 +169,16 @@ class ReservationIdempotencyMySqlIntegrationTest {
 
     @Autowired
     private ReservationFacade reservationFacade;
+
+    @Autowired
+    private ReservationIdempotencyService
+        reservationIdempotencyService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -472,6 +496,164 @@ class ReservationIdempotencyMySqlIntegrationTest {
         assertThat(
             reservationIdempotencyRepository.count()
         ).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName(
+        "동일 멱등성 키의 선행 트랜잭션이 락을 점유하면 "
+            + "후속 요청은 예약 락 타임아웃 예외를 반환한다"
+    )
+    void idempotencyLockTimeoutReturnsReservationLockTimeout()
+        throws Exception {
+
+        // given
+        LocalDate checkInDate =
+            LocalDate.now(TEST_ZONE_ID)
+                .plusDays(5);
+
+        ReservationCreateRequestDto request =
+            createRequest(
+                testData.firstRoomId(),
+                checkInDate,
+                checkInDate.plusDays(2)
+            );
+
+        CountDownLatch firstLockAcquired =
+            new CountDownLatch(1);
+
+        CountDownLatch releaseFirstTransaction =
+            new CountDownLatch(1);
+
+        ExecutorService executorService =
+            Executors.newSingleThreadExecutor();
+
+        Future<?> firstFuture =
+            executorService.submit(() -> {
+                TransactionTemplate transactionTemplate =
+                    createNewTransactionTemplate();
+
+                transactionTemplate.executeWithoutResult(
+                    transactionStatus -> {
+                        reservationIdempotencyService
+                            .getOrCreate(
+                                testData.firstMemberId(),
+                                LOCK_TIMEOUT_KEY,
+                                request
+                            );
+
+                        firstLockAcquired.countDown();
+
+                        awaitLatch(
+                            releaseFirstTransaction,
+                            ASYNC_TIMEOUT,
+                            "선행 멱등성 트랜잭션 해제 신호를 "
+                                + "기다리는 중 시간이 초과됐습니다."
+                        );
+                    }
+                );
+            });
+
+        try {
+            awaitLatch(
+                firstLockAcquired,
+                ASYNC_TIMEOUT,
+                "선행 멱등성 트랜잭션이 락을 "
+                    + "획득해야 합니다."
+            );
+
+            // when & then
+            assertThatThrownBy(() ->
+                reservationFacade.createReservation(
+                    testData.firstMemberId(),
+                    LOCK_TIMEOUT_KEY,
+                    request
+                )
+            )
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception ->
+                    ((BusinessException) exception)
+                        .getErrorCode()
+                )
+                .isEqualTo(
+                    ErrorCode.RESERVATION_LOCK_TIMEOUT
+                );
+        } finally {
+            releaseFirstTransaction.countDown();
+
+            firstFuture.get(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+
+            executorService.shutdownNow();
+            executorService.awaitTermination(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+        }
+    }
+
+    @Test
+    @DisplayName(
+        "멱등성 처리 정보를 생성해도 기존 영속 엔티티는 "
+            + "영속성 컨텍스트에서 분리되지 않는다"
+    )
+    void idempotencyInsertDoesNotClearPersistenceContext() {
+        // given
+        LocalDate checkInDate =
+            LocalDate.now(TEST_ZONE_ID)
+                .plusDays(5);
+
+        ReservationCreateRequestDto request =
+            createRequest(
+                testData.firstRoomId(),
+                checkInDate,
+                checkInDate.plusDays(2)
+            );
+
+        TransactionTemplate transactionTemplate =
+            createNewTransactionTemplate();
+
+        // when & then
+        transactionTemplate.executeWithoutResult(
+            transactionStatus -> {
+                Room managedRoom =
+                    roomRepository
+                        .findById(
+                            testData.firstRoomId()
+                        )
+                        .orElseThrow();
+
+                assertThat(
+                    entityManager.contains(managedRoom)
+                ).isTrue();
+
+                reservationIdempotencyService
+                    .getOrCreate(
+                        testData.firstMemberId(),
+                        PERSISTENCE_CONTEXT_KEY,
+                        request
+                    );
+
+                assertThat(
+                    entityManager.contains(managedRoom)
+                ).isTrue();
+            }
+        );
+    }
+
+    private TransactionTemplate
+    createNewTransactionTemplate() {
+        TransactionTemplate transactionTemplate =
+            new TransactionTemplate(
+                transactionManager
+            );
+
+        transactionTemplate.setPropagationBehavior(
+            TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        );
+
+        return transactionTemplate;
     }
 
     private List<ReservationAttemptResult>
