@@ -136,6 +136,8 @@ jobs:
               -p 8080:8080 \
               -p 127.0.0.1:8081:8081 \
               --restart unless-stopped \
+              --log-opt max-size=10m \
+              --log-opt max-file=3 \
               ${{ env.IMAGE }}:${{ github.sha }}
             sudo docker image prune -af
 

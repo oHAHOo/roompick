@@ -107,8 +107,13 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
      -p 8080:8080 \
      -p 127.0.0.1:8081:8081 \
      --restart unless-stopped \
+     --log-opt max-size=10m \
+     --log-opt max-file=3 \
      roompick-backend
    ```
+
+   `--log-opt`는 컨테이너 로그(`docker logs`로 보는 stdout/stderr)가 무한정 쌓여 EC2 디스크를
+   채우는 것을 막기 위한 로테이션 설정입니다(파일당 최대 10MB, 최대 3개 = 총 30MB 제한).
 
    `8081`은 Actuator management 포트(`management.server.port`, prod 프로필 전용)입니다.
    `127.0.0.1`에만 바인딩하므로 EC2 로컬(SSH 세션)에서만 `curl`로 접근 가능하고, 외부에는
@@ -228,6 +233,8 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
      -p 8080:8080 \
      -p 127.0.0.1:8081:8081 \
      --restart unless-stopped \
+     --log-opt max-size=10m \
+     --log-opt max-file=3 \
      ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
    ```
 4. `curl http://127.0.0.1:8081/actuator/health`(EC2 로컬)로 정상 기동 확인
