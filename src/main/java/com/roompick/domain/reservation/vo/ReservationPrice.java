@@ -38,7 +38,7 @@ public record ReservationPrice(
                 checkInDate,
                 checkOutDate
             )
-        );
+        ) + 1;
 
         long totalAmount = Math.multiplyExact(
             pricePerNight,
