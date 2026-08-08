@@ -25,7 +25,7 @@ public class RoomService {
     private final RoomRepository roomRepository;
 
     /**
-     * 객실 상세 조회에 필요한 객실만 조회합니다.
+     * 객실 상세 조회에 필요한 객실만 조훼합니다.
      */
     @Transactional(readOnly = true)
     public Room findActiveById(Long roomId) {
