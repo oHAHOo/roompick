@@ -21,7 +21,7 @@ public class PopularAccommodationCacheEvictionService {
      */
     @CacheEvict(
         cacheNames = "popularAccommodations",
-        allEntries = false
+        allEntries = true
     )
     public void evictAll() {
         // 캐시 삭제는 @CacheEvict가 처리합니다.
