@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import java.util.List;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +21,7 @@ import com.roompick.domain.admin.room.dto.response.RoomCreateResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.global.common.s3.ImageUploader;
 
 @ExtendWith(MockitoExtension.class)
 class AdminRoomFacadeTest {
@@ -28,6 +31,9 @@ class AdminRoomFacadeTest {
 
     @Mock
     private RoomService roomService;
+
+    @Mock
+    private ImageUploader imageUploader;
 
     @Mock
     private Accommodation accommodation;
@@ -66,7 +72,8 @@ class AdminRoomFacadeTest {
                 request.description(),
                 request.pricePerNight(),
                 request.standardCapacity(),
-                request.maxCapacity()
+                request.maxCapacity(),
+                List.of()
             )
         ).willReturn(room);
 
@@ -90,12 +97,15 @@ class AdminRoomFacadeTest {
             .willReturn(request.maxCapacity());
         given(room.getStatus())
             .willReturn(RoomStatus.INACTIVE);
+        given(room.getImages())
+            .willReturn(List.of());
 
         // when
         RoomCreateResponseDto response =
             adminRoomFacade.createRoom(
                 accommodationId,
-                request
+                request,
+                null
             );
 
         // then
@@ -131,7 +141,8 @@ class AdminRoomFacadeTest {
                 request.description(),
                 request.pricePerNight(),
                 request.standardCapacity(),
-                request.maxCapacity()
+                request.maxCapacity(),
+                List.of()
             );
     }
 

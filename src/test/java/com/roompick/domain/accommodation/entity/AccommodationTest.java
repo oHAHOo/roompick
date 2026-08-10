@@ -169,4 +169,35 @@ class AccommodationTest {
                 AccommodationStatus.INACTIVE
             );
     }
+
+    @Test
+    @DisplayName("이미지를 추가하면 등록 순서대로 저장된다")
+    void addImages() {
+        // given
+        Accommodation accommodation = Accommodation.create(
+            "룸픽 호텔",
+            "서울특별시 강남구",
+            "숙소 설명",
+            LocalTime.of(15, 0),
+            LocalTime.of(11, 0)
+        );
+
+        // when
+        accommodation.addImages(
+            java.util.List.of(
+                "https://example.com/a.jpg",
+                "https://example.com/b.jpg"
+            )
+        );
+
+        // then
+        assertThat(accommodation.getImages())
+            .hasSize(2);
+        assertThat(accommodation.getImages().get(0).getImageUrl())
+            .isEqualTo("https://example.com/a.jpg");
+        assertThat(accommodation.getImages().get(0).getSortOrder())
+            .isZero();
+        assertThat(accommodation.getImages().get(1).getSortOrder())
+            .isEqualTo(1);
+    }
 }

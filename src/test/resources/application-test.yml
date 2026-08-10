@@ -33,3 +33,10 @@ portone:
     read-timeout: 1s
   store-id: test-store-id
   channel-key: test-channel-key
+
+aws:
+  s3:
+    bucket: test-bucket
+    region: ap-northeast-2
+    access-key: test-access-key
+    secret-key: test-secret-key

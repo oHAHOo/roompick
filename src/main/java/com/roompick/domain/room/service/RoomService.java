@@ -134,7 +134,8 @@ public class RoomService {
         String description,
         long pricePerNight,
         int standardCapacity,
-        int maxCapacity
+        int maxCapacity,
+        List<String> imageUrls
     ) {
         validateAccommodationActive(accommodation);
 
@@ -153,6 +154,8 @@ public class RoomService {
                 standardCapacity,
                 maxCapacity
             );
+
+        room.addImages(imageUrls);
 
         return roomRepository.save(room);
     }

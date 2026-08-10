@@ -28,6 +28,8 @@
 erDiagram
     MEMBERS ||--o{ RESERVATIONS : creates
     ACCOMMODATIONS ||--o{ ROOMS : contains
+    ACCOMMODATIONS ||--o{ ACCOMMODATION_IMAGES : has_images
+    ROOMS ||--o{ ROOM_IMAGES : has_images
     ROOMS ||--o{ RESERVATIONS : booked_for
     RESERVATIONS ||--o| PAYMENTS : has_payment
 
@@ -63,6 +65,24 @@ erDiagram
         INT standard_capacity
         INT max_capacity
         VARCHAR status
+        DATETIME created_at
+        DATETIME updated_at
+    }
+
+    ACCOMMODATION_IMAGES {
+        BIGINT accommodation_image_id PK
+        BIGINT accommodation_id FK
+        VARCHAR image_url
+        INT sort_order
+        DATETIME created_at
+        DATETIME updated_at
+    }
+
+    ROOM_IMAGES {
+        BIGINT room_image_id PK
+        BIGINT room_id FK
+        VARCHAR image_url
+        INT sort_order
         DATETIME created_at
         DATETIME updated_at
     }
@@ -104,6 +124,8 @@ erDiagram
 | --- | --- | --- | --- |
 | `MEMBERS` | `RESERVATIONS` | 1:N | 회원은 여러 예약을 생성할 수 있다. |
 | `ACCOMMODATIONS` | `ROOMS` | 1:N | 숙소는 여러 실제 객실을 가질 수 있다. MVP 시연에는 최소 1개를 등록한다. |
+| `ACCOMMODATIONS` | `ACCOMMODATION_IMAGES` | 1:N | 숙소는 여러 장의 이미지를 가질 수 있으며, `sort_order` 0번이 대표(썸네일) 이미지다. |
+| `ROOMS` | `ROOM_IMAGES` | 1:N | 객실은 여러 장의 이미지를 가질 수 있으며, `sort_order` 0번이 대표(썸네일) 이미지다. |
 | `ROOMS` | `RESERVATIONS` | 1:N | 객실은 날짜가 겹치지 않는 여러 예약 이력을 가질 수 있다. |
 | `RESERVATIONS` | `PAYMENTS` | 1:0..1 | MVP에서는 예약 1건에 결제 정보가 최대 1건 존재하며, `payments.reservation_id`의 Unique Constraint로 보장한다. |
 
@@ -187,6 +209,56 @@ erDiagram
 
 - MVP에서는 관리자가 등록한 실제 객실을 최소 1개 사용하되 개수를 DB에서 강제로 제한하지 않는다.
 - 객실 가격 변경이 과거 예약 금액에 영향을 주지 않도록 예약 생성 시 가격을 복사한다.
+
+---
+
+## 6-1. ACCOMMODATION_IMAGES
+
+숙소에 등록된 이미지를 저장한다.
+
+| 컬럼 | 타입 | Null | 키 | 설명 |
+| --- | --- | --- | --- | --- |
+| `accommodation_image_id` | `BIGINT` | N | PK | 숙소 이미지 식별자 |
+| `accommodation_id` | `BIGINT` | N | FK | 소속 숙소 ID |
+| `image_url` | `VARCHAR(500)` | N |  | S3에 업로드된 이미지 URL |
+| `sort_order` | `INT` | N |  | 등록 순서, 0번이 대표(썸네일) 이미지 |
+| `created_at` | `DATETIME(6)` | N |  | 생성 시각 |
+| `updated_at` | `DATETIME(6)` | N |  | 수정 시각 |
+
+### 제약·인덱스
+
+- `FK accommodation_id → accommodations.accommodation_id`, `ON DELETE CASCADE`
+- `UNIQUE(accommodation_id, sort_order)`
+
+### 정책
+
+- 이미지는 숙소 등록 시점에만 추가하며, 별도의 수정·삭제 API는 MVP 범위 밖이다.
+- 숙소가 삭제되면(물리 삭제 시) 이미지도 함께 삭제된다.
+
+---
+
+## 6-2. ROOM_IMAGES
+
+객실에 등록된 이미지를 저장한다.
+
+| 컬럼 | 타입 | Null | 키 | 설명 |
+| --- | --- | --- | --- | --- |
+| `room_image_id` | `BIGINT` | N | PK | 객실 이미지 식별자 |
+| `room_id` | `BIGINT` | N | FK | 소속 객실 ID |
+| `image_url` | `VARCHAR(500)` | N |  | S3에 업로드된 이미지 URL |
+| `sort_order` | `INT` | N |  | 등록 순서, 0번이 대표(썸네일) 이미지 |
+| `created_at` | `DATETIME(6)` | N |  | 생성 시각 |
+| `updated_at` | `DATETIME(6)` | N |  | 수정 시각 |
+
+### 제약·인덱스
+
+- `FK room_id → rooms.room_id`, `ON DELETE CASCADE`
+- `UNIQUE(room_id, sort_order)`
+
+### 정책
+
+- 이미지는 객실 등록 시점에만 추가하며, 별도의 수정·삭제 API는 MVP 범위 밖이다.
+- 객실이 삭제되면(물리 삭제 시) 이미지도 함께 삭제된다.
 - 객실을 운영 중지해도 기존 예약 이력은 유지한다.
 
 ---
@@ -325,7 +397,7 @@ REFUNDED
 
 | 담당자 | 담당 테이블 |
 | --- | --- |
-| 임선구 | `accommodations`, `rooms`, `reservations` |
+| 임선구 | `accommodations`, `rooms`, `accommodation_images`, `room_images`, `reservations` |
 | 조민재(minjae123123) | `payments` |
 | 회원·인증 담당자 | `members` |
 

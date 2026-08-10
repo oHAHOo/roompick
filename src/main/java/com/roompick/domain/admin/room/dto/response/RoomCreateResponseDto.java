@@ -1,6 +1,9 @@
 package com.roompick.domain.admin.room.dto.response;
 
+import java.util.List;
+
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.entity.RoomImage;
 import com.roompick.domain.room.entity.RoomStatus;
 
 public record RoomCreateResponseDto(
@@ -21,7 +24,9 @@ public record RoomCreateResponseDto(
 
     int maxCapacity,
 
-    RoomStatus status
+    RoomStatus status,
+
+    List<String> imageUrls
 
 ) {
 
@@ -35,7 +40,10 @@ public record RoomCreateResponseDto(
             room.getPricePerNight(),
             room.getStandardCapacity(),
             room.getMaxCapacity(),
-            room.getStatus()
+            room.getStatus(),
+            room.getImages().stream()
+                .map(RoomImage::getImageUrl)
+                .toList()
         );
     }
 }

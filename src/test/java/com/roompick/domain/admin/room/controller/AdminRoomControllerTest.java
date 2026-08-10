@@ -5,10 +5,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -56,36 +58,31 @@ class AdminRoomControllerTest {
                 150000L,
                 2,
                 4,
-                RoomStatus.INACTIVE
+                RoomStatus.INACTIVE,
+                List.of()
             );
 
         given(
             adminRoomFacade.createRoom(
                 eq(1L),
+                any(),
                 any()
             )
         ).willReturn(response);
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "디럭스 더블룸",
-              "description": "퀸사이즈 침대가 포함된 객실",
-              "pricePerNight": 150000,
-              "standardCapacity": 2,
-              "maxCapacity": 4
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "디럭스 더블룸")
+                    .param("description", "퀸사이즈 침대가 포함된 객실")
+                    .param("pricePerNight", "150000")
+                    .param("standardCapacity", "2")
+                    .param("maxCapacity", "4")
             )
             .andExpect(status().isCreated())
             .andExpect(
@@ -143,36 +140,31 @@ class AdminRoomControllerTest {
                 0L,
                 1,
                 2,
-                RoomStatus.INACTIVE
+                RoomStatus.INACTIVE,
+                List.of()
             );
 
         given(
             adminRoomFacade.createRoom(
                 eq(1L),
+                any(),
                 any()
             )
         ).willReturn(response);
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "이벤트 객실",
-              "description": "무료 이벤트 객실",
-              "pricePerNight": 0,
-              "standardCapacity": 1,
-              "maxCapacity": 2
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "이벤트 객실")
+                    .param("description", "무료 이벤트 객실")
+                    .param("pricePerNight", "0")
+                    .param("standardCapacity", "1")
+                    .param("maxCapacity", "2")
             )
             .andExpect(status().isCreated())
             .andExpect(
@@ -187,25 +179,18 @@ class AdminRoomControllerTest {
     void 일반_회원은_객실을_등록할_수_없다()
         throws Exception {
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "디럭스 더블룸",
-              "description": "객실 설명",
-              "pricePerNight": 150000,
-              "standardCapacity": 2,
-              "maxCapacity": 4
-            }
-            """;
-
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "디럭스 더블룸")
+                    .param("description", "객실 설명")
+                    .param("pricePerNight", "150000")
+                    .param("standardCapacity", "2")
+                    .param("maxCapacity", "4")
             )
             .andExpect(status().isForbidden())
             .andExpect(
@@ -223,25 +208,18 @@ class AdminRoomControllerTest {
     void 인증되지_않은_회원은_객실을_등록할_수_없다()
         throws Exception {
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "디럭스 더블룸",
-              "description": "객실 설명",
-              "pricePerNight": 150000,
-              "standardCapacity": 2,
-              "maxCapacity": 4
-            }
-            """;
-
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "디럭스 더블룸")
+                    .param("description", "객실 설명")
+                    .param("pricePerNight", "150000")
+                    .param("standardCapacity", "2")
+                    .param("maxCapacity", "4")
             )
             .andExpect(status().isUnauthorized())
             .andExpect(
@@ -260,25 +238,18 @@ class AdminRoomControllerTest {
     void 객실_가격이_음수이면_등록에_실패한다()
         throws Exception {
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "디럭스 더블룸",
-              "description": "객실 설명",
-              "pricePerNight": -1,
-              "standardCapacity": 2,
-              "maxCapacity": 4
-            }
-            """;
-
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "디럭스 더블룸")
+                    .param("description", "객실 설명")
+                    .param("pricePerNight", "-1")
+                    .param("standardCapacity", "2")
+                    .param("maxCapacity", "4")
             )
             .andExpect(status().isBadRequest())
             .andExpect(
@@ -301,6 +272,7 @@ class AdminRoomControllerTest {
         given(
             adminRoomFacade.createRoom(
                 eq(1L),
+                any(),
                 any()
             )
         ).willThrow(
@@ -309,26 +281,19 @@ class AdminRoomControllerTest {
             )
         );
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "디럭스 더블룸",
-              "description": "객실 설명",
-              "pricePerNight": 150000,
-              "standardCapacity": 2,
-              "maxCapacity": 4
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "디럭스 더블룸")
+                    .param("description", "객실 설명")
+                    .param("pricePerNight", "150000")
+                    .param("standardCapacity", "2")
+                    .param("maxCapacity", "4")
             )
             .andExpect(status().isConflict())
             .andExpect(
@@ -350,6 +315,7 @@ class AdminRoomControllerTest {
         given(
             adminRoomFacade.createRoom(
                 eq(1L),
+                any(),
                 any()
             )
         ).willThrow(
@@ -358,26 +324,19 @@ class AdminRoomControllerTest {
             )
         );
 
-        String requestBody = """
-            {
-              "roomNumber": "101",
-              "name": "디럭스 더블룸",
-              "description": "객실 설명",
-              "pricePerNight": 150000,
-              "standardCapacity": 2,
-              "maxCapacity": 4
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post(
+                multipart(
                     "/api/v1/admin/accommodations/{accommodationId}/rooms",
                     1L
                 )
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("roomNumber", "101")
+                    .param("name", "디럭스 더블룸")
+                    .param("description", "객실 설명")
+                    .param("pricePerNight", "150000")
+                    .param("standardCapacity", "2")
+                    .param("maxCapacity", "4")
             )
             .andExpect(status().isConflict())
             .andExpect(

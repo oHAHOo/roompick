@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -297,7 +298,8 @@ class RoomServiceTest {
             "퀸사이즈 침대가 포함된 객실",
             0L,
             2,
-            4
+            4,
+            List.of()
         );
 
         // then
@@ -339,7 +341,8 @@ class RoomServiceTest {
                     "객실 설명",
                     150000L,
                     2,
-                    4
+                    4,
+                    List.of()
                 )
             );
 
@@ -372,7 +375,8 @@ class RoomServiceTest {
                     "객실 설명",
                     150000L,
                     2,
-                    4
+                    4,
+                    List.of()
                 )
             );
 
