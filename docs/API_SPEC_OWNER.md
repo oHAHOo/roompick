@@ -161,7 +161,7 @@ GET /api/v1/accommodations?page=0&size=20
         "accommodationId": 1,
         "name": "룸픽 호텔",
         "address": "서울특별시 강남구 테헤란로 123",
-        "imageUrl": null
+        "imageUrl": "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
       }
     ],
     "pageNumber": 0,
@@ -185,7 +185,7 @@ GET /api/v1/accommodations?page=0&size=20
 - 숙소가 없으면 오류가 아닌 빈 `content`를 반환한다.
 - 숙소 ID 오름차순으로 고정 정렬한다.
 - 목록 화면에 필요한 `accommodationId`, `name`, `address`, `imageUrl`을 반환한다.
-- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- `imageUrl`은 등록된 이미지 중 대표(첫 번째) 이미지이며, 등록된 이미지가 없으면 `null`이다.
 - 검색·필터·사용자 지정 정렬은 W3 확장 범위에서 구현한다.
 
 ---
@@ -223,7 +223,7 @@ GET /api/v1/accommodations/popular?period=WEEKLY&limit=10
       "accommodationId": 3,
       "name": "룸픽 부산 호텔",
       "address": "부산광역시 해운대구",
-      "imageUrl": null
+      "imageUrl": "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
     },
     {
       "rank": 2,
@@ -254,7 +254,7 @@ GET /api/v1/accommodations/popular?period=WEEKLY&limit=10
 - 제외된 숙소가 있으면 최종 응답 목록을 기준으로 `rank`를 1부터 다시 계산한다.
 - 동일 점수에서는 Redis의 역방향 사전순 정렬 결과를 따른다.
 - 랭킹 데이터가 없으면 오류가 아닌 빈 배열을 반환한다.
-- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- `imageUrl`은 등록된 이미지 중 대표(첫 번째) 이미지이며, 등록된 이미지가 없으면 `null`이다.
 - Redis 랭킹 장애 시 기간과 무관하게 최신 ACTIVE 숙소를 임시 fallback으로 반환한다. 이 결과는 실제 기간별 인기 순위가 아니다.
 
 ---
@@ -288,7 +288,7 @@ GET /api/v1/accommodations/1/rooms
       "pricePerNight": 100000,
       "standardCapacity": 2,
       "maxCapacity": 2,
-      "imageUrl": null
+      "imageUrl": "https://roompick-images.s3.ap-northeast-2.amazonaws.com/rooms/....jpg"
     }
   ]
 }
@@ -308,7 +308,7 @@ GET /api/v1/accommodations/1/rooms
 - 객실이 없으면 오류가 아닌 빈 배열을 반환한다.
 - 객실 번호 오름차순, 동일한 객실 번호에서는 객실 ID 오름차순으로 정렬한다.
 - 목록 화면에 필요한 `roomId`, `name`, `pricePerNight`, `standardCapacity`, `maxCapacity`, `imageUrl`을 반환한다.
-- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- `imageUrl`은 등록된 이미지 중 대표(첫 번째) 이미지이며, 등록된 이미지가 없으면 `null`이다.
 
 ---
 
@@ -343,7 +343,9 @@ GET /api/v1/accommodations/1
     "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
     "checkInTime": "15:00:00",
     "checkOutTime": "11:00:00",
-    "imageUrl": null
+    "imageUrls": [
+      "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
+    ]
   }
 }
 ```
@@ -358,8 +360,8 @@ GET /api/v1/accommodations/1
 ### 구현 메모
 
 - `ACTIVE` 상태의 숙소만 공개 상세 조회를 허용한다.
-- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간, `imageUrl`을 반환한다.
-- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- 숙소명, 주소, 설명, 체크인 시간, 체크아웃 시간, `imageUrls`를 반환한다.
+- `imageUrls`는 등록 순서대로 정렬된 전체 이미지 URL 목록이며, 등록된 이미지가 없으면 빈 배열이다.
 - 객실 목록은 `/api/v1/accommodations/{accommodationId}/rooms` API에서 별도로 조회한다.
 - 숙소 상세 조회에서는 불필요한 객실 조회 쿼리를 실행하지 않는다.
 - 조회 전용 트랜잭션을 사용한다.
@@ -398,7 +400,9 @@ GET /api/v1/rooms/1
     "pricePerNight": 100000,
     "standardCapacity": 2,
     "maxCapacity": 2,
-    "imageUrl": null
+    "imageUrls": [
+      "https://roompick-images.s3.ap-northeast-2.amazonaws.com/rooms/....jpg"
+    ]
   }
 }
 ```
@@ -414,7 +418,7 @@ GET /api/v1/rooms/1
 - 객실 상세 화면에서 사용하는 객실 기본 정보만 반환한다.
 - 숙소명과 숙소 주소는 객실 상세 응답에 포함하지 않는다.
 - 객실 운영 상태는 공개 응답에 포함하지 않는다.
-- 이미지 기능은 아직 구현되지 않아 `imageUrl`은 `null`로 반환한다.
+- `imageUrls`는 등록 순서대로 정렬된 전체 이미지 URL 목록이며, 등록된 이미지가 없으면 빈 배열이다.
 - 현재 날짜의 예약 가능 여부는 객실 상세 응답에 포함하지 않는다.
 - 사용자가 선택한 날짜의 예약 가능 여부는 별도 API에서 확인한다.
 
