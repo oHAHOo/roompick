@@ -1,8 +1,6 @@
 package com.roompick.domain.room.service;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -13,9 +11,7 @@ import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
-import com.roompick.domain.room.entity.RoomImage;
 import com.roompick.domain.room.entity.RoomStatus;
-import com.roompick.domain.room.repository.RoomImageRepository;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
@@ -27,7 +23,6 @@ import lombok.RequiredArgsConstructor;
 public class RoomService {
 
     private final RoomRepository roomRepository;
-    private final RoomImageRepository roomImageRepository;
 
     /**
      * 객실 상세 조회에 필요한 객실만 조회합니다.
@@ -56,13 +51,10 @@ public class RoomService {
     findAllActiveSummaryByAccommodationId(
         Long accommodationId
     ) {
-        List<RoomListResponseDto> rooms =
-            roomRepository
-                .findAllActiveSummaryByAccommodationId(
-                    accommodationId
-                );
-
-        return withThumbnails(rooms);
+        return roomRepository
+            .findAllActiveSummaryByAccommodationId(
+                accommodationId
+            );
     }
 
     /**
@@ -304,42 +296,6 @@ public class RoomService {
                 )
             );
         }
-    }
-
-    /**
-     * 목록 DTO에 배치 조회한 대표(썸네일) 이미지 URL을 채웁니다.
-     */
-    private List<RoomListResponseDto> withThumbnails(
-        List<RoomListResponseDto> rooms
-    ) {
-        List<Long> roomIds =
-            rooms.stream()
-                .map(RoomListResponseDto::roomId)
-                .toList();
-
-        if (roomIds.isEmpty()) {
-            return rooms;
-        }
-
-        Map<Long, String> thumbnailsById = new HashMap<>();
-
-        for (
-            RoomImage image
-            : roomImageRepository.findThumbnailsByRoomIdIn(roomIds)
-        ) {
-            thumbnailsById.put(
-                image.getRoom().getId(),
-                image.getImageUrl()
-            );
-        }
-
-        return rooms.stream()
-            .map(room ->
-                room.withImageUrl(
-                    thumbnailsById.get(room.roomId())
-                )
-            )
-            .toList();
     }
 
     /**

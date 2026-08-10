@@ -80,12 +80,16 @@ public class Room extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private RoomStatus status;
 
-    // 등록 순서(sortOrder) 오름차순이며, 첫 번째가 대표(썸네일) 이미지입니다.
+    /*
+     * 등록 순서(sortOrder) 오름차순이며, 첫 번째가 대표(썸네일) 이미지입니다.
+     * LAZY이므로 전체 이미지가 필요한 상세 조회는
+     * RoomRepository.findPublicById()의 fetch join으로 초기화한다.
+     */
     @OneToMany(
         mappedBy = "room",
         cascade = CascadeType.ALL,
         orphanRemoval = true,
-        fetch = FetchType.EAGER
+        fetch = FetchType.LAZY
     )
     @OrderBy("sortOrder ASC")
     private List<RoomImage> images = new ArrayList<>();

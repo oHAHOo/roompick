@@ -87,7 +87,7 @@ class AccommodationFacadeTest {
             checkInTime,
             checkOutTime
         );
-        given(accommodationService.findActiveById(accommodationId))
+        given(accommodationService.findActiveByIdWithImages(accommodationId))
             .willReturn(accommodation);
 
         AccommodationDetailResponseDto response =
@@ -99,7 +99,9 @@ class AccommodationFacadeTest {
             .isEqualTo("인기 숙소 랭킹 테스트용 숙소");
         assertThat(response.checkInTime()).isEqualTo(checkInTime);
         assertThat(response.checkOutTime()).isEqualTo(checkOutTime);
-        then(accommodationService).should().findActiveById(accommodationId);
+        then(accommodationService)
+            .should()
+            .findActiveByIdWithImages(accommodationId);
         then(popularAccommodationRankingService)
             .should()
             .recordView(accommodationId);
@@ -110,7 +112,7 @@ class AccommodationFacadeTest {
     void 숙소_상세_조회에_실패하면_인기_점수를_기록하지_않는다() {
         Long accommodationId = 999L;
         RuntimeException exception = new RuntimeException("숙소 조회 실패");
-        given(accommodationService.findActiveById(accommodationId))
+        given(accommodationService.findActiveByIdWithImages(accommodationId))
             .willThrow(exception);
 
         assertThatThrownBy(

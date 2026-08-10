@@ -38,18 +38,25 @@ public class AdminRoomFacade {
         List<String> imageUrls =
             uploadImages(images);
 
-        Room room = roomService.createRoom(
-            accommodation,
-            request.roomNumber(),
-            request.name(),
-            request.description(),
-            request.pricePerNight(),
-            request.standardCapacity(),
-            request.maxCapacity(),
-            imageUrls
-        );
+        try {
+            Room room = roomService.createRoom(
+                accommodation,
+                request.roomNumber(),
+                request.name(),
+                request.description(),
+                request.pricePerNight(),
+                request.standardCapacity(),
+                request.maxCapacity(),
+                imageUrls
+            );
 
-        return RoomCreateResponseDto.from(room);
+            return RoomCreateResponseDto.from(room);
+        } catch (RuntimeException e) {
+            // S3는 DB 트랜잭션에 참여하지 않으므로, 업로드 이후 단계가
+            // 실패하면 이미 올라간 이미지를 직접 정리해 orphan object를 남기지 않는다.
+            imageUploader.deleteAll(imageUrls);
+            throw e;
+        }
     }
 
     private List<String> uploadImages(

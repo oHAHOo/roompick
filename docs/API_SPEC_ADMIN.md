@@ -98,7 +98,7 @@ Content-Type: multipart/form-data
 | `description` | `String` | X | 숙소 설명 |
 | `checkInTime` | `LocalTime` | O | `HH:mm:ss` |
 | `checkOutTime` | `LocalTime` | O | `HH:mm:ss` |
-| `images` | `File[]` | X | jpg/png/webp, 파일당 최대 10MB |
+| `images` | `File[]` | X | jpg/png/webp, 파일당 최대 10MB, 최대 10장 |
 
 `status`와 관리자 ID는 Request로 받지 않는다. 숙소 상태는 서버에서 `ACTIVE`로 정하고 관리자 여부는 인증 정보로 검증한다.
 
@@ -132,6 +132,7 @@ Content-Type: multipart/form-data
 | `400` | `ACCOMMODATION_TIME_REQUIRED` | 체크인 또는 체크아웃 시간이 없음 |
 | `400` | `UNSUPPORTED_IMAGE_TYPE` | 첨부한 이미지 형식이 jpg/png/webp가 아님 |
 | `400` | `IMAGE_SIZE_EXCEEDED` | 이미지 파일 용량이 10MB를 초과함 |
+| `400` | `IMAGE_COUNT_EXCEEDED` | 첨부한 이미지가 10장을 초과함 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
 | `403` | `FORBIDDEN` | `ADMIN` 권한이 없는 회원의 요청 |
 | `502` | `IMAGE_UPLOAD_FAILED` | S3 이미지 업로드 중 오류가 발생함 |
@@ -146,6 +147,8 @@ Content-Type: multipart/form-data
 → 숙소 저장
 → 생성 결과 반환
 ```
+
+S3는 DB 트랜잭션에 참여하지 않으므로, 이미지 업로드 이후 단계(숙소 생성·저장)가 실패하면 이미 업로드된 이미지를 서버가 직접 정리해 orphan object가 남지 않도록 한다.
 
 ---
 
@@ -179,7 +182,7 @@ Content-Type: multipart/form-data
 | `pricePerNight` | `long` | O | 0원 이상 |
 | `standardCapacity` | `int` | O | 1명 이상 |
 | `maxCapacity` | `int` | O | 기준 인원 이상 |
-| `images` | `File[]` | X | jpg/png/webp, 파일당 최대 10MB |
+| `images` | `File[]` | X | jpg/png/webp, 파일당 최대 10MB, 최대 10장 |
 
 `status`는 Request로 받지 않고 서버에서 `INACTIVE`로 정한다. 관리자가 `SOLD_OUT`을 요청 값으로 전달할 수 없다.
 
@@ -216,6 +219,7 @@ Content-Type: multipart/form-data
 | `400` | `INVALID_ROOM_CAPACITY` | 기준·최대 인원 조건이 올바르지 않음 |
 | `400` | `UNSUPPORTED_IMAGE_TYPE` | 첨부한 이미지 형식이 jpg/png/webp가 아님 |
 | `400` | `IMAGE_SIZE_EXCEEDED` | 이미지 파일 용량이 10MB를 초과함 |
+| `400` | `IMAGE_COUNT_EXCEEDED` | 첨부한 이미지가 10장을 초과함 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
 | `403` | `FORBIDDEN` | `ADMIN` 권한이 없는 회원의 요청 |
 | `404` | `ACCOMMODATION_NOT_FOUND` | 숙소가 존재하지 않음 |
@@ -227,13 +231,16 @@ Content-Type: multipart/form-data
 
 ```text
 인증 회원의 ADMIN 권한 확인
-→ 숙소 조회 및 운영 상태 확인
 → 요청 값 검증
-→ 같은 숙소의 객실 번호 중복 확인
+→ 숙소 조회
 → 첨부 이미지 S3 업로드
+→ 숙소 운영 상태 확인
+→ 같은 숙소의 객실 번호 중복 확인
 → INACTIVE 상태의 객실 생성 및 이미지 URL 저장
 → 생성 결과 반환
 ```
+
+S3는 DB 트랜잭션에 참여하지 않으므로, 이미지 업로드 이후 단계(숙소 상태 확인, 객실 번호 중복 확인, 객실 생성·저장)가 실패하면 이미 업로드된 이미지를 서버가 직접 정리해 orphan object가 남지 않도록 한다.
 
 ### 등록 이후 상태 정책
 

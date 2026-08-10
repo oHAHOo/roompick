@@ -59,12 +59,16 @@ public class Accommodation extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private AccommodationStatus status;
 
-    // 등록 순서(sortOrder) 오름차순이며, 첫 번째가 대표(썸네일) 이미지입니다.
+    /*
+     * 등록 순서(sortOrder) 오름차순이며, 첫 번째가 대표(썸네일) 이미지입니다.
+     * LAZY이므로 전체 이미지가 필요한 상세 조회는
+     * AccommodationRepository.findByIdWithImages()의 fetch join으로 초기화한다.
+     */
     @OneToMany(
         mappedBy = "accommodation",
         cascade = CascadeType.ALL,
         orphanRemoval = true,
-        fetch = FetchType.EAGER
+        fetch = FetchType.LAZY
     )
     @OrderBy("sortOrder ASC")
     private List<AccommodationImage> images = new ArrayList<>();

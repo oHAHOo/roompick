@@ -79,7 +79,8 @@ public enum ErrorCode {
     INVALID_IMAGE_FILE(HttpStatus.BAD_REQUEST, "IMAGE_001", "업로드할 이미지 파일이 없습니다."),
     UNSUPPORTED_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "IMAGE_002", "지원하지 않는 이미지 형식입니다. (jpg, png, webp만 가능)"),
     IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_003", "이미지 파일 용량이 허용 범위를 초과했습니다."),
-    IMAGE_UPLOAD_FAILED(HttpStatus.BAD_GATEWAY, "IMAGE_004", "이미지 업로드 중 오류가 발생했습니다.");
+    IMAGE_UPLOAD_FAILED(HttpStatus.BAD_GATEWAY, "IMAGE_004", "이미지 업로드 중 오류가 발생했습니다."),
+    IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_005", "이미지는 최대 10장까지 등록할 수 있습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

@@ -76,11 +76,14 @@ public interface RoomRepository
 
     /**
      * 사용자 상세 조회에서 공개 중인 객실만 조회합니다.
+     *
+     * 상세 응답에 이미지 전체 목록이 필요하므로 fetch join으로 함께 가져옵니다.
      */
     @Query("""
         SELECT room
         FROM Room room
         JOIN room.accommodation accommodation
+        LEFT JOIN FETCH room.images
         WHERE room.id = :roomId
           AND room.status = :roomStatus
           AND accommodation.status = :accommodationStatus
@@ -117,6 +120,10 @@ public interface RoomRepository
 
     /**
      * 특정 숙소의 운영 중인 객실을 목록 DTO로 직접 조회합니다.
+     *
+     * 대표(썸네일) 이미지는 room_images의 (room_id, sort_order) UNIQUE 제약으로
+     * sort_order = 0인 행이 최대 1건만 존재함이 보장되므로,
+     * LEFT JOIN으로 조회해도 행이 늘어나지 않습니다.
      */
     @Query("""
         SELECT new com.roompick.domain.room.dto.RoomListResponseDto(
@@ -124,9 +131,12 @@ public interface RoomRepository
             room.name,
             room.pricePerNight,
             room.standardCapacity,
-            room.maxCapacity
+            room.maxCapacity,
+            image.imageUrl
         )
         FROM Room room
+        LEFT JOIN room.images image
+            ON image.sortOrder = 0
         WHERE room.accommodation.id = :accommodationId
           AND room.status =
               com.roompick.domain.room.entity.RoomStatus.ACTIVE

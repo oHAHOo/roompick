@@ -140,7 +140,7 @@ public class AccommodationFacade {
         Long accommodationId
     ) {
         Accommodation accommodation =
-            accommodationService.findActiveById(
+            accommodationService.findActiveByIdWithImages(
                 accommodationId
             );
 

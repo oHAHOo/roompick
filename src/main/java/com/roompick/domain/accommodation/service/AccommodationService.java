@@ -1,9 +1,7 @@
 package com.roompick.domain.accommodation.service;
 
 import java.time.LocalTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -13,9 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
-import com.roompick.domain.accommodation.entity.AccommodationImage;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
-import com.roompick.domain.accommodation.repository.AccommodationImageRepository;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
@@ -27,7 +23,6 @@ import lombok.RequiredArgsConstructor;
 public class AccommodationService {
 
     private final AccommodationRepository accommodationRepository;
-    private final AccommodationImageRepository accommodationImageRepository;
     private final PopularAccommodationCacheEvictionService
         popularAccommodationCacheEvictionService;
 
@@ -67,6 +62,38 @@ public class AccommodationService {
     }
 
     /**
+     * 운영 중인 숙소를 이미지 전체 목록과 함께 조회합니다.
+     *
+     * 숙소 상세 조회에서만 이미지가 필요하므로
+     * fetch join 전용 쿼리로 조회해 다른 조회 경로의
+     * 이미지 로딩을 강제하지 않습니다.
+     */
+    @Transactional(readOnly = true)
+    public Accommodation findActiveByIdWithImages(
+        Long accommodationId
+    ) {
+        Accommodation accommodation =
+            accommodationRepository
+                .findByIdWithImages(accommodationId)
+                .orElseThrow(() ->
+                    new BusinessException(
+                        ErrorCode.ACCOMMODATION_NOT_FOUND
+                    )
+                );
+
+        if (
+            accommodation.getStatus()
+                != AccommodationStatus.ACTIVE
+        ) {
+            throw new BusinessException(
+                ErrorCode.ACCOMMODATION_INACTIVE
+            );
+        }
+
+        return accommodation;
+    }
+
+    /**
      * 운영 중인 숙소 목록을 페이지 단위로 조회합니다.
      *
      * 페이지 요청값을 검증한 뒤 목록 화면에 필요한 필드만
@@ -84,10 +111,7 @@ public class AccommodationService {
             size
         );
 
-        Page<AccommodationListResponseDto> accommodations =
-            accommodationRepository.findAllActive(pageable);
-
-        return withThumbnails(accommodations);
+        return accommodationRepository.findAllActive(pageable);
     }
 
     /**
@@ -111,13 +135,10 @@ public class AccommodationService {
             return List.of();
         }
 
-        List<AccommodationListResponseDto> accommodations =
-            accommodationRepository
-                .findAllActiveSummaryByIdIn(
-                    accommodationIds
-                );
-
-        return withThumbnails(accommodations);
+        return accommodationRepository
+            .findAllActiveSummaryByIdIn(
+                accommodationIds
+            );
     }
 
     /**
@@ -135,12 +156,9 @@ public class AccommodationService {
             limit
         );
 
-        List<AccommodationListResponseDto> accommodations =
-            accommodationRepository.findLatestActive(
-                pageable
-            );
-
-        return withThumbnails(accommodations);
+        return accommodationRepository.findLatestActive(
+            pageable
+        );
     }
 
     /**
@@ -214,68 +232,6 @@ public class AccommodationService {
         accommodation.addImages(imageUrls);
 
         return accommodationRepository.save(accommodation);
-    }
-
-    /**
-     * 목록 DTO에 배치 조회한 대표(썸네일) 이미지 URL을 채웁니다.
-     */
-    private Page<AccommodationListResponseDto> withThumbnails(
-        Page<AccommodationListResponseDto> accommodations
-    ) {
-        Map<Long, String> thumbnailsById =
-            findThumbnailsById(accommodations.getContent());
-
-        return accommodations.map(accommodation ->
-            accommodation.withImageUrl(
-                thumbnailsById.get(accommodation.accommodationId())
-            )
-        );
-    }
-
-    /**
-     * 목록 DTO에 배치 조회한 대표(썸네일) 이미지 URL을 채웁니다.
-     */
-    private List<AccommodationListResponseDto> withThumbnails(
-        List<AccommodationListResponseDto> accommodations
-    ) {
-        Map<Long, String> thumbnailsById =
-            findThumbnailsById(accommodations);
-
-        return accommodations.stream()
-            .map(accommodation ->
-                accommodation.withImageUrl(
-                    thumbnailsById.get(accommodation.accommodationId())
-                )
-            )
-            .toList();
-    }
-
-    private Map<Long, String> findThumbnailsById(
-        List<AccommodationListResponseDto> accommodations
-    ) {
-        List<Long> accommodationIds =
-            accommodations.stream()
-                .map(AccommodationListResponseDto::accommodationId)
-                .toList();
-
-        if (accommodationIds.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<Long, String> thumbnailsById = new HashMap<>();
-
-        for (
-            AccommodationImage image
-            : accommodationImageRepository
-                .findThumbnailsByAccommodationIdIn(accommodationIds)
-        ) {
-            thumbnailsById.put(
-                image.getAccommodation().getId(),
-                image.getImageUrl()
-            );
-        }
-
-        return thumbnailsById;
     }
 
     /**

@@ -7,7 +7,7 @@ package com.roompick.domain.room.dto;
  * 최소한의 정보만 반환합니다.
  *
  * imageUrl은 등록된 이미지 중 대표(첫 번째) 이미지이며,
- * Repository 조회 직후 Service에서 별도 배치 조회로 채워집니다.
+ * Repository 조회 쿼리의 LEFT JOIN으로 함께 채워집니다.
  */
 public record RoomListResponseDto(
 
@@ -26,9 +26,7 @@ public record RoomListResponseDto(
 ) {
 
     /**
-     * Repository의 DTO 직접 조회에서 사용합니다.
-     *
-     * 대표 이미지는 이 시점에 알 수 없으므로 imageUrl은 null로 설정합니다.
+     * 대표 이미지 조회가 필요 없는 테스트 등에서 사용합니다.
      */
     public RoomListResponseDto(
         Long roomId,
@@ -44,20 +42,6 @@ public record RoomListResponseDto(
             standardCapacity,
             maxCapacity,
             null
-        );
-    }
-
-    /**
-     * 배치 조회한 대표 이미지 URL을 채운 새 DTO를 반환합니다.
-     */
-    public RoomListResponseDto withImageUrl(String imageUrl) {
-        return new RoomListResponseDto(
-            roomId,
-            name,
-            pricePerNight,
-            standardCapacity,
-            maxCapacity,
-            imageUrl
         );
     }
 }

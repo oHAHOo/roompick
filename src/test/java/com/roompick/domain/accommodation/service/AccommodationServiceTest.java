@@ -22,7 +22,6 @@ import org.springframework.data.domain.PageRequest;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
-import com.roompick.domain.accommodation.repository.AccommodationImageRepository;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
@@ -32,9 +31,6 @@ class AccommodationServiceTest {
 
     @Mock
     private AccommodationRepository accommodationRepository;
-
-    @Mock
-    private AccommodationImageRepository accommodationImageRepository;
 
     @Mock
     private PopularAccommodationCacheEvictionService
@@ -186,10 +182,6 @@ class AccommodationServiceTest {
 
         given(accommodationRepository.findAllActive(pageable))
             .willReturn(accommodationPage);
-        given(
-            accommodationImageRepository
-                .findThumbnailsByAccommodationIdIn(List.of(1L))
-        ).willReturn(List.of());
 
         // when: 운영 중인 숙소 목록을 조회합니다.
         Page<AccommodationListResponseDto> result =
