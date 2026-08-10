@@ -1,10 +1,14 @@
 package com.roompick.domain.room.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.global.common.BaseTimeEntity;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -15,6 +19,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
@@ -74,6 +80,16 @@ public class Room extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private RoomStatus status;
 
+    // 등록 순서(sortOrder) 오름차순이며, 첫 번째가 대표(썸네일) 이미지입니다.
+    @OneToMany(
+        mappedBy = "room",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true,
+        fetch = FetchType.EAGER
+    )
+    @OrderBy("sortOrder ASC")
+    private List<RoomImage> images = new ArrayList<>();
+
     /**
      * 새로운 객실을 생성합니다.
      *
@@ -118,6 +134,25 @@ public class Room extends BaseTimeEntity {
      */
     public void deactivate() {
         this.status = RoomStatus.INACTIVE;
+    }
+
+    /**
+     * 등록 시점에 업로드된 이미지 URL을 순서대로 추가합니다.
+     */
+    public void addImages(List<String> imageUrls) {
+        if (imageUrls == null) {
+            return;
+        }
+
+        for (String imageUrl : imageUrls) {
+            images.add(
+                RoomImage.create(
+                    this,
+                    imageUrl,
+                    images.size()
+                )
+            );
+        }
     }
 
     private Room(
