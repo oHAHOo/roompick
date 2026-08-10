@@ -7,7 +7,7 @@ import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
 /**
- * 예약의 숙박 일수와 가격 계산 결과를 나타내는 값 객체입니다.
+ * 예약의 숙박 일수와 가격 게산 결과를 나타내는 값 객체입니다.
  *
  * 예약 생성과 예약 가능 여부 조회에서 동일한 계산 규칙을 사용합니다.
  */
