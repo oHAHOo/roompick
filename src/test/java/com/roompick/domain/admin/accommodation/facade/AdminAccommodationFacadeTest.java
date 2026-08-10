@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 import java.time.LocalTime;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,12 +19,16 @@ import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
 import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
+import com.roompick.global.common.s3.ImageUploader;
 
 @ExtendWith(MockitoExtension.class)
 class AdminAccommodationFacadeTest {
 
     @Mock
     private AccommodationService accommodationService;
+
+    @Mock
+    private ImageUploader imageUploader;
 
     @InjectMocks
     private AdminAccommodationFacade adminAccommodationFacade;
@@ -59,13 +64,14 @@ class AdminAccommodationFacadeTest {
                 request.address(),
                 request.description(),
                 checkInTime,
-                checkOutTime
+                checkOutTime,
+                List.of()
             )
         ).willReturn(accommodation);
 
         // when
         AccommodationCreateResponseDto response =
-            adminAccommodationFacade.createAccommodation(request);
+            adminAccommodationFacade.createAccommodation(request, null);
 
         // then
         assertThat(response.name())
@@ -93,7 +99,8 @@ class AdminAccommodationFacadeTest {
                 request.address(),
                 request.description(),
                 checkInTime,
-                checkOutTime
+                checkOutTime,
+                List.of()
             );
     }
 }
