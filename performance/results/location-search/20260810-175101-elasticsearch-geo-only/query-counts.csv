@@ -1,0 +1,4 @@
+search_engine,scenario,run,mysql_selects
+elasticsearch,geo-only,1,0
+elasticsearch,geo-only,2,0
+elasticsearch,geo-only,3,0
