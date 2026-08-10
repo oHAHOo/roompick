@@ -109,7 +109,7 @@ public class Payment extends BaseTimeEntity {
     private LocalDateTime failedAt;
 
     /**
-     * 예약을 기준으로 결제 준미 정보를 생성합니다.
+     * 예약을 기준으로 결제 준비 정보를 생성합니다.
      *
      * 결제 금액은 외부 요청값이 아니라
      * 예약에 저장된 총액을 사용합니다.
