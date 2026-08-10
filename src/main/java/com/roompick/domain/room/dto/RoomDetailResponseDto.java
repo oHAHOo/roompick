@@ -1,13 +1,15 @@
 package com.roompick.domain.room.dto;
 
+import java.util.List;
+
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.entity.RoomImage;
 
 /**
  * 객실 상세·예약 가능 여부 화면에 필요한
  * 객실 기본 정보를 반환하는 응답 DTO입니다.
  *
  * 숙소명과 주소는 화면에서 사용하지 않으므로 반환하지 않습니다.
- * 이미지 기능은 아직 구현되지 않아 imageUrl은 null로 반환합니다.
  */
 public record RoomDetailResponseDto(
 
@@ -25,7 +27,7 @@ public record RoomDetailResponseDto(
 
     int maxCapacity,
 
-    String imageUrl
+    List<String> imageUrls
 
 ) {
 
@@ -43,7 +45,9 @@ public record RoomDetailResponseDto(
             room.getPricePerNight(),
             room.getStandardCapacity(),
             room.getMaxCapacity(),
-            null
+            room.getImages().stream()
+                .map(RoomImage::getImageUrl)
+                .toList()
         );
     }
 }
