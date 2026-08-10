@@ -8,13 +8,15 @@ import org.springframework.stereotype.Component;
 
 import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
+import com.roompick.domain.accommodation.dto.AccommodationLocationSearchResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
+import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
+import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
@@ -35,6 +37,9 @@ import lombok.extern.slf4j.Slf4j;
 public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
+
+    private final AccommodationLocationSearchService
+        accommodationLocationSearchService;
 
     private final RoomService roomService;
 
@@ -69,6 +74,32 @@ public class AccommodationFacade {
     }
 
     /**
+     * 사용자 위치를 기준으로 주변 숙소를 검색합니다.
+     *
+     * 현재는 Elasticsearch 도입 전 기준 성능을 측정하기 위해
+     * MySQL 위치 검색 Service를 사용합니다.
+     *
+     * Elasticsearch 검색 경로가 추가된 뒤에도
+     * Controller는 Facade만 호출하도록 유지합니다.
+     */
+    public List<AccommodationLocationSearchResponseDto>
+    searchNearbyAccommodations(
+        String keyword,
+        double latitude,
+        double longitude,
+        double radiusKm,
+        int limit
+    ) {
+        return accommodationLocationSearchService.searchNearby(
+            keyword,
+            latitude,
+            longitude,
+            radiusKm,
+            limit
+        );
+    }
+
+    /**
      * 인기 숙소 목록을 조회합니다.
      *
      * 동일한 캐시 키의 동시 요청은 Single Flight로 하나의 조회를 공유합니다.
@@ -91,7 +122,8 @@ public class AccommodationFacade {
     }
 
     /**
-     * 정상 인기 숙소 조회와 Redis 랭킹 장애 fallback을 하나의 최종 작업으로 조율합니다.
+     * 정상 인기 숙소 조회와 Redis 랭킹 장애 fallback을
+     * 하나의 최종 작업으로 조율합니다.
      */
     private List<PopularAccommodationResponseDto>
     getPopularAccommodationsWithFallback(
@@ -105,8 +137,7 @@ public class AccommodationFacade {
                     limit
                 );
         } catch (
-            PopularAccommodationRankingUnavailableException
-                exception
+            PopularAccommodationRankingUnavailableException exception
         ) {
             log.warn(
                 "Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. period={}, limit={}",
@@ -183,8 +214,7 @@ public class AccommodationFacade {
      */
     private List<PopularAccommodationResponseDto>
     createFallbackPopularAccommodations(
-        List<AccommodationListResponseDto>
-            accommodations
+        List<AccommodationListResponseDto> accommodations
     ) {
         List<PopularAccommodationResponseDto> result =
             new ArrayList<>();

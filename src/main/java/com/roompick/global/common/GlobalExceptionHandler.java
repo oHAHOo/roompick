@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -105,6 +106,40 @@ public class GlobalExceptionHandler {
 
         ValidationErrorDto validationError =
             toMessageNotReadableError(exception);
+
+        ErrorResponseDto body =
+            ErrorResponseDto.of(
+                errorCode,
+                List.of(validationError)
+            );
+
+        ResponseEntity<ErrorResponseDto> response =
+            ResponseEntity
+                .status(errorCode.getHttpStatus())
+                .body(body);
+
+        return response;
+    }
+
+    /**
+     * 필수 Query Parameter가 누락된 경우를 처리합니다.
+     *
+     * Controller 메서드가 실행되기 전에 발생하는 요청 바인딩 오류이므로,
+     * 잘못된 클라이언트 요청인 400 응답으로 변환합니다.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponseDto>
+    handleMissingServletRequestParameterException(
+        MissingServletRequestParameterException exception
+    ) {
+        ErrorCode errorCode =
+            ErrorCode.INVALID_INPUT_VALUE;
+
+        ValidationErrorDto validationError =
+            new ValidationErrorDto(
+                exception.getParameterName(),
+                "필수 요청 값입니다."
+            );
 
         ErrorResponseDto body =
             ErrorResponseDto.of(

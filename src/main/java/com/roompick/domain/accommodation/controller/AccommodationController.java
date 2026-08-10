@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
+import com.roompick.domain.accommodation.dto.AccommodationLocationSearchResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.facade.AccommodationFacade;
@@ -20,6 +21,12 @@ import com.roompick.global.common.ApiResponseDto;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * 숙소 관련 공개 조회 API를 제공하는 Controller입니다.
+ *
+ * 숙소 목록, 위치 검색, 인기 숙소, 상세 조회와
+ * 숙소별 객실 목록 조회 요청을 Facade에 전달합니다.
+ */
 @RestController
 @RequestMapping("/api/v1/accommodations")
 @RequiredArgsConstructor
@@ -57,6 +64,63 @@ public class AccommodationController {
                 .body(
                     ApiResponseDto.success(
                         "숙소 목록 조회에 성공했습니다.",
+                        result
+                    )
+                );
+
+        return response;
+    }
+
+    /**
+     * 사용자 위치를 기준으로 주변의 운영 중인 숙소를 검색합니다.
+     *
+     * 현재는 Elasticsearch 도입 전 MySQL 검색 기준선으로 사용합니다.
+     *
+     * keyword는 선택값이며,
+     * latitude, longitude는 검색 중심 좌표입니다.
+     * radiusKm는 검색 반경,
+     * limit은 최대 반환 숙소 수를 의미합니다.
+     */
+    @GetMapping("/search")
+    public ResponseEntity<
+        ApiResponseDto<List<AccommodationLocationSearchResponseDto>>
+        > searchNearbyAccommodations(
+        @RequestParam(
+            name = "keyword",
+            required = false
+        ) String keyword,
+        @RequestParam(
+            name = "latitude"
+        ) double latitude,
+        @RequestParam(
+            name = "longitude"
+        ) double longitude,
+        @RequestParam(
+            name = "radiusKm",
+            defaultValue = "5"
+        ) double radiusKm,
+        @RequestParam(
+            name = "limit",
+            defaultValue = "20"
+        ) int limit
+    ) {
+        List<AccommodationLocationSearchResponseDto> result =
+            accommodationFacade.searchNearbyAccommodations(
+                keyword,
+                latitude,
+                longitude,
+                radiusKm,
+                limit
+            );
+
+        ResponseEntity<
+            ApiResponseDto<List<AccommodationLocationSearchResponseDto>>
+            > response =
+            ResponseEntity
+                .status(HttpStatus.OK)
+                .body(
+                    ApiResponseDto.success(
+                        "주변 숙소 검색에 성공했습니다.",
                         result
                     )
                 );
@@ -140,18 +204,24 @@ public class AccommodationController {
      * 별도로 제공합니다.
      */
     @GetMapping("/{accommodationId}")
-    public ResponseEntity<ApiResponseDto<AccommodationDetailResponseDto>> getAccommodationDetail(
+    public ResponseEntity<ApiResponseDto<AccommodationDetailResponseDto>>
+    getAccommodationDetail(
         @PathVariable Long accommodationId
     ) {
-        AccommodationDetailResponseDto result = accommodationFacade.getAccommodationDetail(accommodationId);
+        AccommodationDetailResponseDto result =
+            accommodationFacade.getAccommodationDetail(
+                accommodationId
+            );
 
         ResponseEntity<ApiResponseDto<AccommodationDetailResponseDto>> response =
             ResponseEntity
                 .status(HttpStatus.OK)
-                .body(ApiResponseDto.success(
-                    "숙소 상세 조회에 성공했습니다.",
-                    result
-                ));
+                .body(
+                    ApiResponseDto.success(
+                        "숙소 상세 조회에 성공했습니다.",
+                        result
+                    )
+                );
 
         return response;
     }
