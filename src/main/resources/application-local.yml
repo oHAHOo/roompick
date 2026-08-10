@@ -36,3 +36,7 @@ portone:
     read-timeout: ${PORTONE_READ_TIMEOUT:5s}
     store-id: ${PORTONE_STORE_ID}
     channel-key: ${PORTONE_CHANNEL_KEY}
+
+roompick:
+  search:
+    reindex-enabled: ${ACCOMMODATION_SEARCH_REINDEX_ENABLED:false}

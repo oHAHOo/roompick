@@ -13,7 +13,7 @@ import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
-import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
+import com.roompick.domain.accommodation.service.AccommodationElasticsearchLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
@@ -38,8 +38,8 @@ public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
 
-    private final AccommodationLocationSearchService
-        accommodationLocationSearchService;
+    private final AccommodationElasticsearchLocationSearchService
+        accommodationElasticsearchLocationSearchService;
 
     private final RoomService roomService;
 
@@ -90,7 +90,7 @@ public class AccommodationFacade {
         double radiusKm,
         int limit
     ) {
-        return accommodationLocationSearchService.searchNearby(
+        return accommodationElasticsearchLocationSearchService.searchNearby(
             keyword,
             latitude,
             longitude,
