@@ -6,6 +6,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       connection-init-sql: SET SESSION innodb_lock_wait_timeout = 3
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -13,12 +14,17 @@ spring:
       hibernate:
         format_sql: true
     show-sql: false
+
   data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
       connect-timeout: ${REDIS_CONNECT_TIMEOUT:300ms}
       timeout: ${REDIS_TIMEOUT:300ms}
+
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://127.0.0.1:9200}
+
   flyway:
     locations: classpath:db/migration,classpath:db/dev-migration
 
@@ -28,5 +34,5 @@ portone:
     secret: ${PORTONE_API_SECRET}
     connect-timeout: ${PORTONE_CONNECT_TIMEOUT:3s}
     read-timeout: ${PORTONE_READ_TIMEOUT:5s}
-  store-id: ${PORTONE_STORE_ID}
-  channel-key: ${PORTONE_CHANNEL_KEY}
+    store-id: ${PORTONE_STORE_ID}
+    channel-key: ${PORTONE_CHANNEL_KEY}
