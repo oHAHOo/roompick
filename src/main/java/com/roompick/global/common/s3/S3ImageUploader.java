@@ -17,6 +17,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.cloudfront.CloudFrontClient;
+import software.amazon.awssdk.services.cloudfront.model.CreateInvalidationRequest;
+import software.amazon.awssdk.services.cloudfront.model.InvalidationBatch;
+import software.amazon.awssdk.services.cloudfront.model.Paths;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
@@ -43,6 +47,7 @@ public class S3ImageUploader implements ImageUploader {
 
     private final S3Client s3Client;
     private final S3Properties properties;
+    private final CloudFrontClient cloudFrontClient;
 
     @Override
     public String upload(MultipartFile file, String directory) {
@@ -81,13 +86,15 @@ public class S3ImageUploader implements ImageUploader {
 
     @Override
     public void delete(String imageUrl) {
+        String key = extractKey(imageUrl);
         try {
             s3Client.deleteObject(builder -> builder
                 .bucket(properties.bucket())
-                .key(extractKey(imageUrl)));
+                .key(key));
         } catch (SdkException e) {
             log.warn("S3 이미지 삭제에 실패했습니다. imageUrl={}", imageUrl, e);
         }
+        invalidateCache(List.of(key));
     }
 
     @Override
@@ -96,22 +103,24 @@ public class S3ImageUploader implements ImageUploader {
             return;
         }
 
-        List<ObjectIdentifier> objectIdentifiers = imageUrls.stream()
-            .map(imageUrl -> ObjectIdentifier.builder()
-                .key(extractKey(imageUrl))
-                .build())
+        List<String> keys = imageUrls.stream()
+            .map(this::extractKey)
             .toList();
 
         try {
             s3Client.deleteObjects(
                 DeleteObjectsRequest.builder()
                     .bucket(properties.bucket())
-                    .delete(Delete.builder().objects(objectIdentifiers).build())
+                    .delete(Delete.builder()
+                        .objects(keys.stream().map(key ->
+                            ObjectIdentifier.builder().key(key).build()).toList())
+                        .build())
                     .build()
             );
         } catch (SdkException e) {
             log.warn("S3 이미지 일괄 삭제에 실패했습니다. imageUrls={}", imageUrls, e);
         }
+        invalidateCache(keys);
     }
 
     private byte[] readValidated(MultipartFile file) {
@@ -219,5 +228,31 @@ public class S3ImageUploader implements ImageUploader {
         return imageUrl.startsWith(prefix)
             ? imageUrl.substring(prefix.length())
             : imageUrl;
+    }
+
+    private void invalidateCache(List<String> keys) {
+        if (properties.cdnDistributionId() == null ||
+            properties.cdnDistributionId().isBlank()) {
+            return;
+        }
+
+        List<String> paths = keys.stream().map(key -> "/" + key).toList();
+        try {
+            cloudFrontClient.createInvalidation(
+                CreateInvalidationRequest.builder()
+                    .distributionId(properties.cdnDistributionId())
+                    .invalidationBatch(
+                        InvalidationBatch.builder()
+                            .callerReference(UUID.randomUUID().toString())
+                            .paths(Paths.builder()
+                                .quantity(paths.size())
+                                .items(paths)
+                                .build())
+                            .build()
+                    ).build()
+            );
+        } catch (SdkException e) {
+            log.warn("CloudFront 캐시 무효화에 실패했습니다. paths={}", paths, e);
+        }
     }
 }

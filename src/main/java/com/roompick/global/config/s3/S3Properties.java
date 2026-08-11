@@ -8,6 +8,7 @@ public record S3Properties(
     String region,
     String accessKey,
     String secretKey,
-    String cdnDomain
+    String cdnDomain,
+    String cdnDistributionId
 ) {
 }
