@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Component;
@@ -36,8 +35,8 @@ public class S3ImageUploader implements ImageUploader {
     // MultipartFile의 Content-Type은 요청자가 임의로 지정할 수 있으므로,
     // 실제 파일 내용의 시그니처까지 함께 확인합니다.
     private static final Map<String, byte[]> MAGIC_NUMBERS_BY_CONTENT_TYPE = Map.of(
-        "image/jpeg", new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF},
-        "image/png", new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+        "image/jpeg", new byte[] {(byte)0xFF, (byte)0xD8, (byte)0xFF},
+        "image/png", new byte[] {(byte)0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
     );
     private static final byte[] WEBP_RIFF_SIGNATURE = {0x52, 0x49, 0x46, 0x46};
     private static final byte[] WEBP_FORMAT_SIGNATURE = {0x57, 0x45, 0x42, 0x50};
@@ -201,11 +200,20 @@ public class S3ImageUploader implements ImageUploader {
     }
 
     private String buildUrl(String key) {
+        if (properties.cdnDomain() != null && !properties.cdnDomain().isBlank()) {
+            return "https://%s/%s".formatted(properties.cdnDomain(), key);
+        }
         return "https://%s.s3.%s.amazonaws.com/%s"
             .formatted(properties.bucket(), properties.region(), key);
     }
 
     private String extractKey(String imageUrl) {
+        if (properties.cdnDomain() != null && !properties.cdnDomain().isBlank()) {
+            String cdnPrefix = "https://%s/".formatted(properties.cdnDomain());
+            if (imageUrl.startsWith(cdnPrefix)) {
+                return imageUrl.substring(cdnPrefix.length());
+            }
+        }
         String prefix = "https://%s.s3.%s.amazonaws.com/"
             .formatted(properties.bucket(), properties.region());
         return imageUrl.startsWith(prefix)

@@ -42,7 +42,10 @@ class S3ImageUploaderTest {
     private S3Client s3Client;
 
     private final S3Properties properties =
-        new S3Properties("test-bucket", "ap-northeast-2", "access-key", "secret-key");
+        new S3Properties("test-bucket", "ap-northeast-2", "access-key", "secret-key", null);
+
+    private final S3Properties cdnProperties =
+        new S3Properties("test-bucket", "ap-northeast-2", "access-key", "secret-key", "images.roompick.ina3700.click");
 
     private S3ImageUploader sut;
 
@@ -60,6 +63,21 @@ class S3ImageUploaderTest {
         assertThat(url).startsWith("https://test-bucket.s3.ap-northeast-2.amazonaws.com/rooms/");
         assertThat(url).endsWith(".jpg");
         verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void CDN_도메인이_설정되어_있으면_CDN_URL을_반환한다() {
+        sut = new S3ImageUploader(s3Client, cdnProperties);
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+            .thenReturn(PutObjectResponse.builder().build());
+
+        MockMultipartFile file =
+            new MockMultipartFile("file", "room.jpg", "image/jpeg", JPEG_BYTES);
+
+        String url = sut.upload(file, "rooms");
+
+        assertThat(url).startsWith("https://images.roompick.ina3700.click/rooms/");
+        assertThat(url).endsWith(".jpg");
     }
 
     @Test
@@ -183,6 +201,18 @@ class S3ImageUploaderTest {
         sut.delete("https://test-bucket.s3.ap-northeast-2.amazonaws.com/rooms/a.jpg");
 
         verify(s3Client).deleteObject(
+            any(java.util.function.Consumer.class)
+        );
+    }
+
+    @Test
+    void CDN_도메인_설정_시_기존_S3_원본_URL도_삭제할_수_있다() {
+        sut = new S3ImageUploader(s3Client, cdnProperties);
+
+        sut.delete("https://test-bucket.s3.ap-northeast-2.amazonaws.com/rooms/legacy.jpg");
+        sut.delete("https://images.roompick.ina3700.click/rooms/new.jpg");
+
+        verify(s3Client, times(2)).deleteObject(
             any(java.util.function.Consumer.class)
         );
     }

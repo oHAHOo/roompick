@@ -117,7 +117,7 @@ Content-Type: multipart/form-data
     "checkOutTime": "11:00:00",
     "status": "ACTIVE",
     "imageUrls": [
-      "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
+      "https://images.roompick.ina3700.click/accommodations/....jpg"
     ]
   }
 }
@@ -203,7 +203,7 @@ Content-Type: multipart/form-data
     "maxCapacity": 2,
     "status": "INACTIVE",
     "imageUrls": [
-      "https://roompick-images.s3.ap-northeast-2.amazonaws.com/rooms/....jpg"
+      "https://images.roompick.ina3700.click/rooms/....jpg"
     ]
   }
 }
