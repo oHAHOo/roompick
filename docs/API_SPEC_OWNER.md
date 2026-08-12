@@ -161,7 +161,7 @@ GET /api/v1/accommodations?page=0&size=20
         "accommodationId": 1,
         "name": "룸픽 호텔",
         "address": "서울특별시 강남구 테헤란로 123",
-        "imageUrl": "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
+        "imageUrl": "https://images.roompick.ina3700.click/accommodations/....jpg"
       }
     ],
     "pageNumber": 0,
@@ -223,7 +223,7 @@ GET /api/v1/accommodations/popular?period=WEEKLY&limit=10
       "accommodationId": 3,
       "name": "룸픽 부산 호텔",
       "address": "부산광역시 해운대구",
-      "imageUrl": "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
+      "imageUrl": "https://images.roompick.ina3700.click/accommodations/....jpg"
     },
     {
       "rank": 2,
@@ -288,7 +288,7 @@ GET /api/v1/accommodations/1/rooms
       "pricePerNight": 100000,
       "standardCapacity": 2,
       "maxCapacity": 2,
-      "imageUrl": "https://roompick-images.s3.ap-northeast-2.amazonaws.com/rooms/....jpg"
+      "imageUrl": "https://images.roompick.ina3700.click/rooms/....jpg"
     }
   ]
 }
@@ -344,7 +344,7 @@ GET /api/v1/accommodations/1
     "checkInTime": "15:00:00",
     "checkOutTime": "11:00:00",
     "imageUrls": [
-      "https://roompick-images.s3.ap-northeast-2.amazonaws.com/accommodations/....jpg"
+      "https://images.roompick.ina3700.click/accommodations/....jpg"
     ]
   }
 }
@@ -401,7 +401,7 @@ GET /api/v1/rooms/1
     "standardCapacity": 2,
     "maxCapacity": 2,
     "imageUrls": [
-      "https://roompick-images.s3.ap-northeast-2.amazonaws.com/rooms/....jpg"
+      "https://images.roompick.ina3700.click/rooms/....jpg"
     ]
   }
 }

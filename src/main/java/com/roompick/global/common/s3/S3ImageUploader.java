@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,11 +19,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.cloudfront.CloudFrontClient;
+import software.amazon.awssdk.services.cloudfront.model.CreateInvalidationRequest;
+import software.amazon.awssdk.services.cloudfront.model.InvalidationBatch;
+import software.amazon.awssdk.services.cloudfront.model.Paths;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Error;
 
 @Slf4j
 @Component
@@ -36,14 +43,15 @@ public class S3ImageUploader implements ImageUploader {
     // MultipartFile의 Content-Type은 요청자가 임의로 지정할 수 있으므로,
     // 실제 파일 내용의 시그니처까지 함께 확인합니다.
     private static final Map<String, byte[]> MAGIC_NUMBERS_BY_CONTENT_TYPE = Map.of(
-        "image/jpeg", new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF},
-        "image/png", new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+        "image/jpeg", new byte[] {(byte)0xFF, (byte)0xD8, (byte)0xFF},
+        "image/png", new byte[] {(byte)0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
     );
     private static final byte[] WEBP_RIFF_SIGNATURE = {0x52, 0x49, 0x46, 0x46};
     private static final byte[] WEBP_FORMAT_SIGNATURE = {0x57, 0x45, 0x42, 0x50};
 
     private final S3Client s3Client;
     private final S3Properties properties;
+    private final CloudFrontClient cloudFrontClient;
 
     @Override
     public String upload(MultipartFile file, String directory) {
@@ -82,13 +90,16 @@ public class S3ImageUploader implements ImageUploader {
 
     @Override
     public void delete(String imageUrl) {
+        String key = extractKey(imageUrl);
         try {
             s3Client.deleteObject(builder -> builder
                 .bucket(properties.bucket())
-                .key(extractKey(imageUrl)));
+                .key(key));
         } catch (SdkException e) {
             log.warn("S3 이미지 삭제에 실패했습니다. imageUrl={}", imageUrl, e);
+            return;
         }
+        invalidateCache(List.of(key));
     }
 
     @Override
@@ -97,22 +108,37 @@ public class S3ImageUploader implements ImageUploader {
             return;
         }
 
-        List<ObjectIdentifier> objectIdentifiers = imageUrls.stream()
-            .map(imageUrl -> ObjectIdentifier.builder()
-                .key(extractKey(imageUrl))
-                .build())
+        List<String> keys = imageUrls.stream()
+            .map(this::extractKey)
             .toList();
 
+        DeleteObjectsResponse response;
         try {
-            s3Client.deleteObjects(
+            response = s3Client.deleteObjects(
                 DeleteObjectsRequest.builder()
                     .bucket(properties.bucket())
-                    .delete(Delete.builder().objects(objectIdentifiers).build())
+                    .delete(Delete.builder()
+                        .objects(keys.stream().map(key ->
+                            ObjectIdentifier.builder().key(key).build()).toList())
+                        .build())
                     .build()
             );
         } catch (SdkException e) {
             log.warn("S3 이미지 일괄 삭제에 실패했습니다. imageUrls={}", imageUrls, e);
+            return;
         }
+
+        Set<String> failedKeys = response.errors().stream()
+            .map(S3Error::key)
+            .collect(Collectors.toSet());
+        if (!failedKeys.isEmpty()) {
+            log.warn("S3 이미지 일부 삭제에 실패했습니다. failedKeys={}", failedKeys);
+        }
+
+        List<String> deletedKeys = keys.stream()
+            .filter(key -> !failedKeys.contains(key))
+            .toList();
+        invalidateCache(deletedKeys);
     }
 
     private byte[] readValidated(MultipartFile file) {
@@ -201,15 +227,53 @@ public class S3ImageUploader implements ImageUploader {
     }
 
     private String buildUrl(String key) {
+        if (properties.cdnDomain() != null && !properties.cdnDomain().isBlank()) {
+            return "https://%s/%s".formatted(properties.cdnDomain(), key);
+        }
         return "https://%s.s3.%s.amazonaws.com/%s"
             .formatted(properties.bucket(), properties.region(), key);
     }
 
     private String extractKey(String imageUrl) {
+        if (properties.cdnDomain() != null && !properties.cdnDomain().isBlank()) {
+            String cdnPrefix = "https://%s/".formatted(properties.cdnDomain());
+            if (imageUrl.startsWith(cdnPrefix)) {
+                return imageUrl.substring(cdnPrefix.length());
+            }
+        }
         String prefix = "https://%s.s3.%s.amazonaws.com/"
             .formatted(properties.bucket(), properties.region());
         return imageUrl.startsWith(prefix)
             ? imageUrl.substring(prefix.length())
             : imageUrl;
+    }
+
+    private void invalidateCache(List<String> keys) {
+        if (keys.isEmpty()) {
+            return;
+        }
+        if (properties.cdnDistributionId() == null ||
+            properties.cdnDistributionId().isBlank()) {
+            return;
+        }
+
+        List<String> paths = keys.stream().map(key -> "/" + key).toList();
+        try {
+            cloudFrontClient.createInvalidation(
+                CreateInvalidationRequest.builder()
+                    .distributionId(properties.cdnDistributionId())
+                    .invalidationBatch(
+                        InvalidationBatch.builder()
+                            .callerReference(UUID.randomUUID().toString())
+                            .paths(Paths.builder()
+                                .quantity(paths.size())
+                                .items(paths)
+                                .build())
+                            .build()
+                    ).build()
+            );
+        } catch (SdkException e) {
+            log.warn("CloudFront 캐시 무효화에 실패했습니다. paths={}", paths, e);
+        }
     }
 }

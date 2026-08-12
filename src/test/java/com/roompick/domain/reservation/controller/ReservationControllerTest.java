@@ -91,8 +91,8 @@ class ReservationControllerTest {
                     "디럭스 더블룸",
                     "101"
                 ),
-                LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2099, 8, 10),
+                LocalDate.of(2099, 8, 12),
                 2,
                 2,
                 100_000L,
@@ -118,8 +118,8 @@ class ReservationControllerTest {
         String requestBody = """
             {
               "roomId": 20,
-              "checkInDate": "2026-08-10",
-              "checkOutDate": "2026-08-12",
+              "checkInDate": "2099-08-10",
+              "checkOutDate": "2099-08-12",
               "guestCount": 2
             }
             """;
@@ -179,11 +179,11 @@ class ReservationControllerTest {
             )
             .andExpect(
                 jsonPath("$.data.checkInDate")
-                    .value("2026-08-10")
+                    .value("2099-08-10")
             )
             .andExpect(
                 jsonPath("$.data.checkOutDate")
-                    .value("2026-08-12")
+                    .value("2099-08-12")
             )
             .andExpect(
                 jsonPath("$.data.guestCount")
@@ -245,8 +245,8 @@ class ReservationControllerTest {
         String requestBody = """
             {
               "roomId": 20,
-              "checkInDate": "2026-08-10",
-              "checkOutDate": "2026-08-12",
+              "checkInDate": "2099-08-10",
+              "checkOutDate": "2099-08-12",
               "guestCount": 2
             }
             """;
@@ -321,8 +321,8 @@ class ReservationControllerTest {
         String requestBody = """
             {
               "roomId": 20,
-              "checkInDate": "2026-08-10",
-              "checkOutDate": "2026-08-12",
+              "checkInDate": "2099-08-10",
+              "checkOutDate": "2099-08-12",
               "guestCount": 2
             }
             """;
@@ -401,8 +401,8 @@ class ReservationControllerTest {
         String requestBody = """
             {
               "roomId": 21,
-              "checkInDate": "2026-08-10",
-              "checkOutDate": "2026-08-12",
+              "checkInDate": "2099-08-10",
+              "checkOutDate": "2099-08-12",
               "guestCount": 2
             }
             """;
@@ -477,8 +477,8 @@ class ReservationControllerTest {
                 30L,
                 "룸픽 호텔",
                 "디럭스 더블룸",
-                LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2099, 8, 10),
+                LocalDate.of(2099, 8, 12),
                 2,
                 200_000L,
                 ReservationStatus.PENDING_PAYMENT,
@@ -552,12 +552,12 @@ class ReservationControllerTest {
             .andExpect(
                 jsonPath(
                     "$.data.content[0].checkInDate"
-                ).value("2026-08-10")
+                ).value("2099-08-10")
             )
             .andExpect(
                 jsonPath(
                     "$.data.content[0].checkOutDate"
-                ).value("2026-08-12")
+                ).value("2099-08-12")
             )
             .andExpect(
                 jsonPath(
@@ -663,8 +663,8 @@ class ReservationControllerTest {
                     "디럭스 더블룸",
                     "101"
                 ),
-                LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2099, 8, 10),
+                LocalDate.of(2099, 8, 12),
                 2,
                 2,
                 100_000L,
@@ -747,11 +747,11 @@ class ReservationControllerTest {
             )
             .andExpect(
                 jsonPath("$.data.checkInDate")
-                    .value("2026-08-10")
+                    .value("2099-08-10")
             )
             .andExpect(
                 jsonPath("$.data.checkOutDate")
-                    .value("2026-08-12")
+                    .value("2099-08-12")
             )
             .andExpect(
                 jsonPath("$.data.guestCount")
@@ -942,8 +942,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": 2
         }
         """;
@@ -989,8 +989,8 @@ class ReservationControllerTest {
         // 필수값인 roomId를 누락한 요청입니다.
         String requestBody = """
         {
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": 2
         }
         """;
@@ -1279,8 +1279,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12"
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12"
         }
         """;
 
@@ -1347,8 +1347,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": 0
         }
         """;
@@ -1416,8 +1416,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": -1
         }
         """;
@@ -1636,8 +1636,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-10",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-10",
           "guestCount": 2
         }
         """;
@@ -1707,8 +1707,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-12",
-          "checkOutDate": "2026-08-10",
+          "checkInDate": "2099-08-12",
+          "checkOutDate": "2099-08-10",
           "guestCount": 2
         }
         """;
@@ -1783,7 +1783,7 @@ class ReservationControllerTest {
         {
           "roomId": 20,
           "checkInDate": "2026/08/10",
-          "checkOutDate": "2026-08-12",
+          "checkOutDate": "2099-08-12",
           "guestCount": 2
         }
         """;
@@ -1854,8 +1854,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": "room-20",
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": 2
         }
         """;
@@ -1926,8 +1926,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20,
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": "two"
         }
         """;
@@ -1996,8 +1996,8 @@ class ReservationControllerTest {
         String requestBody = """
         {
           "roomId": 20
-          "checkInDate": "2026-08-10",
-          "checkOutDate": "2026-08-12",
+          "checkInDate": "2099-08-10",
+          "checkOutDate": "2099-08-12",
           "guestCount": 2
         }
         """;
