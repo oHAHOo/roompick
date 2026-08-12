@@ -22,7 +22,7 @@ public record AccommodationLocationBoundingBox(
      * Bounding Box 계산에만 사용하며,
      * 최종 거리 판정은 MySQL ST_Distance_Sphere()가 담당합니다.
      */
-    private static final double EARTH_RADIUS_KM = 6371.0088;
+    private static final double EARTH_RADIUS_KM = 6370.986;
 
     private static final double MIN_LATITUDE_RADIAN = -Math.PI / 2.0;
     private static final double MAX_LATITUDE_RADIAN = Math.PI / 2.0;

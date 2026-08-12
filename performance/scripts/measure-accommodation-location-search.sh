@@ -16,7 +16,7 @@ MYSQL_CONTAINER="${MYSQL_CONTAINER:-roompick-mysql}"
 ELASTICSEARCH_CONTAINER="${ELASTICSEARCH_CONTAINER:-roompick-elasticsearch}"
 DATABASE_NAME="${DATABASE_NAME:-roompick}"
 
-SEARCH_ENGINE="${SEARCH_ENGINE:-mysql}"
+SEARCH_ENGINE="${SEARCH_ENGINE:-mysql-bounding-box}"
 KEYWORD="${KEYWORD:-}"
 
 LATITUDE="${LATITUDE:-37.5665}"
@@ -35,17 +35,19 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-performance/results/location-search}"
 # 성능 결과에 사용할 검색 엔진 구분값을 검증하고,
 # 실제 애플리케이션이 사용해야 할 검색 엔진을 결정합니다.
 case "$SEARCH_ENGINE" in
-    mysql)
-        EXPECTED_LOCATION_ENGINE="MYSQL"
-        ;;
     mysql-bounding-box)
         EXPECTED_LOCATION_ENGINE="MYSQL"
         ;;
     elasticsearch)
         EXPECTED_LOCATION_ENGINE="ELASTICSEARCH"
         ;;
+    mysql)
+        echo "현재 코드에서는 MySQL Baseline을 새로 측정할 수 없습니다."
+        echo "기존 공식 Baseline 결과를 사용하거나 Bounding Box 적용 전 커밋에서 측정하세요."
+        exit 1
+        ;;
     *)
-        echo "SEARCH_ENGINE은 mysql, mysql-bounding-box 또는 elasticsearch여야 합니다: $SEARCH_ENGINE"
+        echo "SEARCH_ENGINE은 mysql-bounding-box 또는 elasticsearch여야 합니다: $SEARCH_ENGINE"
         exit 1
         ;;
 esac
