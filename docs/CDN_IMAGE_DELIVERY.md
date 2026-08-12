@@ -45,7 +45,7 @@ Default TTL(1일) 기준으로 캐시됩니다.
 없으면 S3 원본 URL을 반환합니다.
 
 ```yaml
-roompick:
+aws:
   s3:
     cdn-domain: images.roompick.ina3700.click
     cdn-distribution-id: E3PAC8MQVLGDZQ
