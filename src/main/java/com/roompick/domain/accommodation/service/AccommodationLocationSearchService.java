@@ -16,8 +16,10 @@ import lombok.RequiredArgsConstructor;
 /**
  * MySQL을 사용한 위치 기반 숙소 검색을 담당하는 Service입니다.
  *
- * Elasticsearch 도입 전 기준 검색 경로로 사용하며,
- * 검색 조건 검증과 Repository 결과의 응답 DTO 변환을 담당합니다.
+ * Bounding Box로 검색 후보를 먼저 줄인 뒤,
+ * MySQL ST_Distance_Sphere()를 이용해 정확한 반경을 검증합니다.
+ *
+ * 검색 조건 검증과 Repository 결과의 응답 DTO 변환도 담당합니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -30,7 +32,7 @@ public class AccommodationLocationSearchService {
 
     /**
      * 위치 검색이 지나치게 넓은 범위의 DB 연산으로 이어지는 것을 막기 위한
-     * 초기 검색 반경 상한입니다.
+     * 검색 반경 상한입니다.
      */
     private static final double MAX_RADIUS_KM = 100.0;
 
@@ -45,11 +47,15 @@ public class AccommodationLocationSearchService {
     /**
      * 사용자 위치를 기준으로 반경 안의 ACTIVE 숙소를 검색합니다.
      *
+     * 1. 요청값 검증
+     * 2. keyword 정규화
+     * 3. Bounding Box 계산
+     * 4. Bounding Box로 후보군 선필터링
+     * 5. ST_Distance_Sphere()로 정확한 거리 검증
+     * 6. 거리순 정렬 및 DTO 반환
+     *
      * keyword가 null이거나 공백인 경우 위치 조건만 사용하고,
      * 값이 존재하면 숙소명 또는 주소 조건을 함께 적용합니다.
-     *
-     * 거리 계산과 정렬은 MySQL에서 수행하며,
-     * Entity 전체를 조회하지 않고 Projection 결과만 응답 DTO로 변환합니다.
      */
     @Transactional(readOnly = true)
     public List<AccommodationLocationSearchResponseDto> searchNearby(
@@ -69,12 +75,27 @@ public class AccommodationLocationSearchService {
         String normalizedKeyword =
             normalizeKeyword(keyword);
 
+        /*
+         * 정확한 거리 계산 전에 값싼 위도/경도 범위 조건으로
+         * 검색 후보를 줄이기 위한 Bounding Box를 계산합니다.
+         */
+        AccommodationLocationBoundingBox boundingBox =
+            AccommodationLocationBoundingBox.calculate(
+                latitude,
+                longitude,
+                radiusKm
+            );
+
         List<AccommodationLocationSearchProjection> results =
             accommodationLocationSearchRepository.searchNearby(
                 normalizedKeyword,
                 latitude,
                 longitude,
                 radiusKm,
+                boundingBox.minLatitude(),
+                boundingBox.maxLatitude(),
+                boundingBox.minLongitude(),
+                boundingBox.maxLongitude(),
                 limit
             );
 
@@ -120,7 +141,8 @@ public class AccommodationLocationSearchService {
      * 위치 검색 요청값이 허용 범위인지 검증합니다.
      *
      * NaN과 무한대 값도 사전에 차단하여
-     * 잘못된 값이 거리 계산 쿼리까지 전달되지 않도록 합니다.
+     * 잘못된 값이 Bounding Box 계산이나 거리 계산 쿼리까지
+     * 전달되지 않도록 합니다.
      */
     private void validateSearchCondition(
         double latitude,

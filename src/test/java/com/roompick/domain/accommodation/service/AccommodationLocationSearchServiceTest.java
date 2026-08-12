@@ -23,7 +23,8 @@ import com.roompick.global.common.ErrorCode;
 
 /**
  * AccommodationLocationSearchService의
- * 위치 검색 조건 검증과 DTO 변환을 검증하는 단위 테스트입니다.
+ * 위치 검색 조건 검증과 Bounding Box 계산,
+ * DTO 변환을 검증하는 단위 테스트입니다.
  */
 @ExtendWith(MockitoExtension.class)
 class AccommodationLocationSearchServiceTest {
@@ -46,7 +47,7 @@ class AccommodationLocationSearchServiceTest {
 
     @Test
     void 위치_기반_숙소_검색에_성공한다() {
-        // given: MySQL 위치 검색 결과가 존재합니다.
+        // given
         String keyword = "룸픽";
 
         given(projection.getAccommodationId())
@@ -62,19 +63,16 @@ class AccommodationLocationSearchServiceTest {
         given(projection.getDistanceMeters())
             .willReturn(850.0);
 
-        given(
-            accommodationLocationSearchRepository.searchNearby(
-                keyword,
-                LATITUDE,
-                LONGITUDE,
-                RADIUS_KM,
-                LIMIT
-            )
-        ).willReturn(
+        givenRepositoryResult(
+            keyword,
+            LATITUDE,
+            LONGITUDE,
+            RADIUS_KM,
+            LIMIT,
             List.of(projection)
         );
 
-        // when: 위치와 keyword 조건으로 숙소를 검색합니다.
+        // when
         List<AccommodationLocationSearchResponseDto> result =
             accommodationLocationSearchService.searchNearby(
                 keyword,
@@ -84,7 +82,7 @@ class AccommodationLocationSearchServiceTest {
                 LIMIT
             );
 
-        // then: Projection 결과가 응답 DTO로 변환됩니다.
+        // then
         assertThat(result)
             .hasSize(1);
 
@@ -101,34 +99,38 @@ class AccommodationLocationSearchServiceTest {
             .isEqualTo(37.565800);
         assertThat(response.longitude())
             .isEqualTo(126.978500);
-
-        /*
-         * Repository가 반환한 거리는 미터 단위이고,
-         * API 응답에서는 킬로미터 단위로 변환됩니다.
-         */
         assertThat(response.distanceKm())
             .isEqualTo(0.85);
+
+        /*
+         * Service가 검색 중심과 반경으로 Bounding Box를 계산한 뒤
+         * Repository에 전달하는지도 함께 검증합니다.
+         */
+        thenRepositorySearched(
+            keyword,
+            LATITUDE,
+            LONGITUDE,
+            RADIUS_KM,
+            LIMIT
+        );
     }
 
     @Test
     void 검색어의_앞뒤_공백을_제거한_뒤_검색한다() {
-        // given: 앞뒤 공백이 포함된 검색어를 전달합니다.
+        // given
         String keyword = "  룸픽  ";
         String normalizedKeyword = "룸픽";
 
-        given(
-            accommodationLocationSearchRepository.searchNearby(
-                normalizedKeyword,
-                LATITUDE,
-                LONGITUDE,
-                RADIUS_KM,
-                LIMIT
-            )
-        ).willReturn(
+        givenRepositoryResult(
+            normalizedKeyword,
+            LATITUDE,
+            LONGITUDE,
+            RADIUS_KM,
+            LIMIT,
             List.of()
         );
 
-        // when: 위치 검색을 수행합니다.
+        // when
         List<AccommodationLocationSearchResponseDto> result =
             accommodationLocationSearchService.searchNearby(
                 keyword,
@@ -138,39 +140,34 @@ class AccommodationLocationSearchServiceTest {
                 LIMIT
             );
 
-        // then: 검색어의 앞뒤 공백을 제거하여 Repository에 전달합니다.
+        // then
         assertThat(result)
             .isEmpty();
 
-        then(accommodationLocationSearchRepository)
-            .should()
-            .searchNearby(
-                normalizedKeyword,
-                LATITUDE,
-                LONGITUDE,
-                RADIUS_KM,
-                LIMIT
-            );
+        thenRepositorySearched(
+            normalizedKeyword,
+            LATITUDE,
+            LONGITUDE,
+            RADIUS_KM,
+            LIMIT
+        );
     }
 
     @Test
     void 검색어가_공백이면_keyword_조건을_사용하지_않는다() {
-        // given: 검색어가 공백 문자열입니다.
+        // given
         String keyword = "   ";
 
-        given(
-            accommodationLocationSearchRepository.searchNearby(
-                null,
-                LATITUDE,
-                LONGITUDE,
-                RADIUS_KM,
-                LIMIT
-            )
-        ).willReturn(
+        givenRepositoryResult(
+            null,
+            LATITUDE,
+            LONGITUDE,
+            RADIUS_KM,
+            LIMIT,
             List.of()
         );
 
-        // when: 위치 검색을 수행합니다.
+        // when
         List<AccommodationLocationSearchResponseDto> result =
             accommodationLocationSearchService.searchNearby(
                 keyword,
@@ -180,19 +177,17 @@ class AccommodationLocationSearchServiceTest {
                 LIMIT
             );
 
-        // then: Repository에는 keyword가 null로 전달됩니다.
+        // then
         assertThat(result)
             .isEmpty();
 
-        then(accommodationLocationSearchRepository)
-            .should()
-            .searchNearby(
-                null,
-                LATITUDE,
-                LONGITUDE,
-                RADIUS_KM,
-                LIMIT
-            );
+        thenRepositorySearched(
+            null,
+            LATITUDE,
+            LONGITUDE,
+            RADIUS_KM,
+            LIMIT
+        );
     }
 
     @ParameterizedTest
@@ -208,7 +203,6 @@ class AccommodationLocationSearchServiceTest {
     void 위도가_허용_범위를_벗어나면_예외가_발생한다(
         double latitude
     ) {
-        // when & then: 잘못된 위도는 Repository 조회 전에 차단됩니다.
         assertThatThrownBy(
             () -> accommodationLocationSearchService.searchNearby(
                 null,
@@ -243,7 +237,6 @@ class AccommodationLocationSearchServiceTest {
     void 경도가_허용_범위를_벗어나면_예외가_발생한다(
         double longitude
     ) {
-        // when & then: 잘못된 경도는 Repository 조회 전에 차단됩니다.
         assertThatThrownBy(
             () -> accommodationLocationSearchService.searchNearby(
                 null,
@@ -279,7 +272,6 @@ class AccommodationLocationSearchServiceTest {
     void 검색_반경이_허용_범위를_벗어나면_예외가_발생한다(
         double radiusKm
     ) {
-        // when & then: 잘못된 반경은 DB 쿼리 실행 전에 차단됩니다.
         assertThatThrownBy(
             () -> accommodationLocationSearchService.searchNearby(
                 null,
@@ -306,7 +298,6 @@ class AccommodationLocationSearchServiceTest {
     void 검색_limit이_허용_범위를_벗어나면_예외가_발생한다(
         int limit
     ) {
-        // when & then: 잘못된 limit은 DB 조회 전에 차단됩니다.
         assertThatThrownBy(
             () -> accommodationLocationSearchService.searchNearby(
                 null,
@@ -330,23 +321,20 @@ class AccommodationLocationSearchServiceTest {
 
     @Test
     void 위도와_경도의_경계값은_검색할_수_있다() {
-        // given: 위도와 경도의 최대 경계값을 사용합니다.
+        // given
         double latitude = 90.0;
         double longitude = 180.0;
 
-        given(
-            accommodationLocationSearchRepository.searchNearby(
-                null,
-                latitude,
-                longitude,
-                RADIUS_KM,
-                LIMIT
-            )
-        ).willReturn(
+        givenRepositoryResult(
+            null,
+            latitude,
+            longitude,
+            RADIUS_KM,
+            LIMIT,
             List.of()
         );
 
-        // when: 허용된 좌표 경계값으로 검색합니다.
+        // when
         List<AccommodationLocationSearchResponseDto> result =
             accommodationLocationSearchService.searchNearby(
                 null,
@@ -356,40 +344,35 @@ class AccommodationLocationSearchServiceTest {
                 LIMIT
             );
 
-        // then: 입력 검증을 통과하고 Repository가 호출됩니다.
+        // then
         assertThat(result)
             .isEmpty();
 
-        then(accommodationLocationSearchRepository)
-            .should()
-            .searchNearby(
-                null,
-                latitude,
-                longitude,
-                RADIUS_KM,
-                LIMIT
-            );
+        thenRepositorySearched(
+            null,
+            latitude,
+            longitude,
+            RADIUS_KM,
+            LIMIT
+        );
     }
 
     @Test
     void 검색_반경과_limit의_최대값은_허용한다() {
-        // given: 현재 정책의 최대 검색 조건을 사용합니다.
+        // given
         double radiusKm = 100.0;
         int limit = 100;
 
-        given(
-            accommodationLocationSearchRepository.searchNearby(
-                null,
-                LATITUDE,
-                LONGITUDE,
-                radiusKm,
-                limit
-            )
-        ).willReturn(
+        givenRepositoryResult(
+            null,
+            LATITUDE,
+            LONGITUDE,
+            radiusKm,
+            limit,
             List.of()
         );
 
-        // when: 최대 허용값으로 검색합니다.
+        // when
         List<AccommodationLocationSearchResponseDto> result =
             accommodationLocationSearchService.searchNearby(
                 null,
@@ -399,17 +382,82 @@ class AccommodationLocationSearchServiceTest {
                 limit
             );
 
-        // then: 검증을 통과하고 Repository가 호출됩니다.
+        // then
         assertThat(result)
             .isEmpty();
+
+        thenRepositorySearched(
+            null,
+            LATITUDE,
+            LONGITUDE,
+            radiusKm,
+            limit
+        );
+    }
+
+    /**
+     * Service가 계산할 것과 동일한 Bounding Box를 이용해
+     * Repository Mock 반환값을 설정합니다.
+     */
+    private void givenRepositoryResult(
+        String keyword,
+        double latitude,
+        double longitude,
+        double radiusKm,
+        int limit,
+        List<AccommodationLocationSearchProjection> results
+    ) {
+        AccommodationLocationBoundingBox boundingBox =
+            AccommodationLocationBoundingBox.calculate(
+                latitude,
+                longitude,
+                radiusKm
+            );
+
+        given(
+            accommodationLocationSearchRepository.searchNearby(
+                keyword,
+                latitude,
+                longitude,
+                radiusKm,
+                boundingBox.minLatitude(),
+                boundingBox.maxLatitude(),
+                boundingBox.minLongitude(),
+                boundingBox.maxLongitude(),
+                limit
+            )
+        ).willReturn(results);
+    }
+
+    /**
+     * Service가 계산한 Bounding Box가 Repository까지
+     * 정확하게 전달됐는지 검증합니다.
+     */
+    private void thenRepositorySearched(
+        String keyword,
+        double latitude,
+        double longitude,
+        double radiusKm,
+        int limit
+    ) {
+        AccommodationLocationBoundingBox boundingBox =
+            AccommodationLocationBoundingBox.calculate(
+                latitude,
+                longitude,
+                radiusKm
+            );
 
         then(accommodationLocationSearchRepository)
             .should()
             .searchNearby(
-                null,
-                LATITUDE,
-                LONGITUDE,
+                keyword,
+                latitude,
+                longitude,
                 radiusKm,
+                boundingBox.minLatitude(),
+                boundingBox.maxLatitude(),
+                boundingBox.minLongitude(),
+                boundingBox.maxLongitude(),
                 limit
             );
     }

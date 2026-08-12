@@ -21,23 +21,32 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.service.AccommodationLocationBoundingBox;
 import com.roompick.global.config.JpaConfig;
 
 import jakarta.persistence.EntityManager;
 
 /**
  * 실제 MySQL의 공간 함수를 사용해
- * 위치 기반 숙소 검색 쿼리를 검증하는 통합 테스트입니다.
+ * Bounding Box 기반 위치 검색 쿼리를 검증하는 통합 테스트입니다.
  *
- * H2가 아닌 MySQL 8.4에서 ST_Distance_Sphere()와 POINT()를 실행하여
- * 실제 운영 DB와 같은 거리 계산 동작을 확인합니다.
+ * H2가 아닌 MySQL 8.4에서
+ * 위도/경도 Bounding Box 선필터링과
+ * ST_Distance_Sphere() 정확 거리 계산을 함께 검증합니다.
  */
 @Tag("integration")
 @Testcontainers
 @DataJpaTest(
     properties = {
-        "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.flyway.enabled=false"
+        /*
+         * 실제 운영 스키마와 동일하게 Flyway V1~V11을 적용합니다.
+         *
+         * 위치 검색 Repository는 V11에서 생성한
+         * latitude / longitude 복합 인덱스를 사용하므로
+         * Hibernate가 테스트 스키마를 임의 생성하지 않도록 합니다.
+         */
+        "spring.jpa.hibernate.ddl-auto=validate",
+        "spring.flyway.enabled=true"
     }
 )
 @AutoConfigureTestDatabase(
@@ -72,10 +81,10 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
 
     @Test
     @DisplayName(
-        "지정 반경 안의 ACTIVE 숙소만 거리순으로 조회한다"
+        "Bounding Box 후보 중 실제 반경 안의 ACTIVE 숙소만 거리순으로 조회한다"
     )
     void searchNearbyByRadiusAndDistance() {
-        // given: 서울시청과 가까운 숙소를 저장합니다.
+        // given
         Accommodation nearbyAccommodation =
             saveAccommodation(
                 "시청 룸픽 호텔",
@@ -84,10 +93,6 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 "126.978500"
             );
 
-        /*
-         * 첫 번째 숙소보다 조금 더 떨어진 위치의
-         * 운영 중인 숙소를 저장합니다.
-         */
         Accommodation fartherAccommodation =
             saveAccommodation(
                 "명동 룸픽 호텔",
@@ -97,10 +102,22 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
             );
 
         /*
-         * 검색 반경 밖에 위치한 숙소를 저장합니다.
+         * Bounding Box의 사각형 안에는 포함되지만
+         * 실제 2km 원형 검색 반경 밖에 위치하도록 생성합니다.
          *
-         * 위치 좌표는 존재하지만 반경 조건 때문에
-         * 검색 결과에서 제외되어야 합니다.
+         * 따라서 Bounding Box만으로 검색을 끝내면 잘못 포함되지만,
+         * ST_Distance_Sphere() 최종 검증에서는 제외되어야 합니다.
+         */
+        Accommodation boundingBoxCornerAccommodation =
+            saveAccommodation(
+                "바운딩 박스 모서리 호텔",
+                "서울특별시 중구",
+                "37.581500",
+                "126.997000"
+            );
+
+        /*
+         * Bounding Box 자체에서도 벗어나는 먼 숙소입니다.
          */
         Accommodation outsideAccommodation =
             saveAccommodation(
@@ -110,10 +127,6 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 "127.027600"
             );
 
-        /*
-         * 검색 중심과 가까운 위치지만 INACTIVE 상태인 숙소를
-         * 저장하여 상태 조건도 함께 검증합니다.
-         */
         Accommodation inactiveAccommodation =
             saveAccommodation(
                 "비공개 시청 호텔",
@@ -124,12 +137,6 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
 
         inactiveAccommodation.inactivate();
 
-        /*
-         * 위치 정보가 없는 기존 숙소도 저장합니다.
-         *
-         * latitude와 longitude가 null인 숙소는
-         * 위치 검색 대상에서 제외되어야 합니다.
-         */
         Accommodation noLocationAccommodation =
             accommodationRepository.save(
                 Accommodation.create(
@@ -144,9 +151,9 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
         entityManager.flush();
         entityManager.clear();
 
-        // when: 서울시청 기준 반경 2km 안의 숙소를 검색합니다.
+        // when
         List<AccommodationLocationSearchProjection> result =
-            accommodationLocationSearchRepository.searchNearby(
+            searchNearby(
                 null,
                 SEOUL_CITY_HALL_LATITUDE,
                 SEOUL_CITY_HALL_LONGITUDE,
@@ -154,14 +161,10 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 10
             );
 
-        // then: 반경 안의 ACTIVE 숙소 두 건만 반환됩니다.
+        // then
         assertThat(result)
             .hasSize(2);
 
-        /*
-         * 검색 중심과 가까운 숙소부터
-         * 거리 오름차순으로 반환되어야 합니다.
-         */
         assertThat(result)
             .extracting(
                 AccommodationLocationSearchProjection::getAccommodationId
@@ -171,10 +174,6 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 fartherAccommodation.getId()
             );
 
-        /*
-         * 각 결과에는 MySQL이 계산한 실제 거리 값이
-         * 함께 반환되어야 합니다.
-         */
         assertThat(result.get(0).getDistanceMeters())
             .isPositive();
 
@@ -183,15 +182,12 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 result.get(0).getDistanceMeters()
             );
 
-        /*
-         * 반경 밖 숙소, 비공개 숙소,
-         * 좌표가 없는 숙소는 모두 제외됩니다.
-         */
         assertThat(result)
             .extracting(
                 AccommodationLocationSearchProjection::getAccommodationId
             )
             .doesNotContain(
+                boundingBoxCornerAccommodation.getId(),
                 outsideAccommodation.getId(),
                 inactiveAccommodation.getId(),
                 noLocationAccommodation.getId()
@@ -203,7 +199,7 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
         "위치 조건과 숙소명 또는 주소 keyword 조건을 함께 적용한다"
     )
     void searchNearbyWithKeyword() {
-        // given: 검색어가 숙소명에 포함되는 숙소를 저장합니다.
+        // given
         Accommodation nameMatchedAccommodation =
             saveAccommodation(
                 "룸픽 시청 호텔",
@@ -212,10 +208,6 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 "126.978500"
             );
 
-        /*
-         * 숙소명에는 검색어가 없지만
-         * 주소에 검색어가 포함되는 숙소를 저장합니다.
-         */
         Accommodation addressMatchedAccommodation =
             saveAccommodation(
                 "서울 중앙 숙소",
@@ -224,10 +216,6 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 "126.982000"
             );
 
-        /*
-         * 같은 검색 반경 안에 있지만
-         * 숙소명과 주소 어디에도 keyword가 없는 숙소입니다.
-         */
         Accommodation unmatchedAccommodation =
             saveAccommodation(
                 "서울 일반 호텔",
@@ -239,9 +227,9 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
         entityManager.flush();
         entityManager.clear();
 
-        // when: 위치 조건과 "룸픽" keyword를 함께 검색합니다.
+        // when
         List<AccommodationLocationSearchProjection> result =
-            accommodationLocationSearchRepository.searchNearby(
+            searchNearby(
                 "룸픽",
                 SEOUL_CITY_HALL_LATITUDE,
                 SEOUL_CITY_HALL_LONGITUDE,
@@ -249,7 +237,7 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 10
             );
 
-        // then: 이름 또는 주소에 keyword가 포함된 숙소만 반환됩니다.
+        // then
         assertThat(result)
             .extracting(
                 AccommodationLocationSearchProjection::getAccommodationId
@@ -273,7 +261,7 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
         "위치 검색 결과는 요청한 limit만큼만 반환한다"
     )
     void searchNearbyWithLimit() {
-        // given: 모두 검색 반경 안에 있는 숙소 세 건을 저장합니다.
+        // given
         Accommodation firstAccommodation =
             saveAccommodation(
                 "첫 번째 호텔",
@@ -303,9 +291,9 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
 
         int limit = 2;
 
-        // when: 결과를 두 건으로 제한하여 검색합니다.
+        // when
         List<AccommodationLocationSearchProjection> result =
-            accommodationLocationSearchRepository.searchNearby(
+            searchNearby(
                 null,
                 SEOUL_CITY_HALL_LATITUDE,
                 SEOUL_CITY_HALL_LONGITUDE,
@@ -313,7 +301,7 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
                 limit
             );
 
-        // then: 가까운 숙소부터 두 건만 반환됩니다.
+        // then
         assertThat(result)
             .hasSize(limit);
 
@@ -333,6 +321,37 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
             .doesNotContain(
                 thirdAccommodation.getId()
             );
+    }
+
+    /**
+     * 실제 Service와 동일한 방식으로 Bounding Box를 계산한 뒤
+     * Repository 위치 검색 쿼리를 실행합니다.
+     */
+    private List<AccommodationLocationSearchProjection> searchNearby(
+        String keyword,
+        double latitude,
+        double longitude,
+        double radiusKm,
+        int limit
+    ) {
+        AccommodationLocationBoundingBox boundingBox =
+            AccommodationLocationBoundingBox.calculate(
+                latitude,
+                longitude,
+                radiusKm
+            );
+
+        return accommodationLocationSearchRepository.searchNearby(
+            keyword,
+            latitude,
+            longitude,
+            radiusKm,
+            boundingBox.minLatitude(),
+            boundingBox.maxLatitude(),
+            boundingBox.minLongitude(),
+            boundingBox.maxLongitude(),
+            limit
+        );
     }
 
     /**
