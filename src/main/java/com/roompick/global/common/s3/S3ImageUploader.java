@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,8 +26,10 @@ import software.amazon.awssdk.services.cloudfront.model.Paths;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Error;
 
 @Slf4j
 @Component
@@ -93,6 +97,7 @@ public class S3ImageUploader implements ImageUploader {
                 .key(key));
         } catch (SdkException e) {
             log.warn("S3 이미지 삭제에 실패했습니다. imageUrl={}", imageUrl, e);
+            return;
         }
         invalidateCache(List.of(key));
     }
@@ -107,8 +112,9 @@ public class S3ImageUploader implements ImageUploader {
             .map(this::extractKey)
             .toList();
 
+        DeleteObjectsResponse response;
         try {
-            s3Client.deleteObjects(
+            response = s3Client.deleteObjects(
                 DeleteObjectsRequest.builder()
                     .bucket(properties.bucket())
                     .delete(Delete.builder()
@@ -119,8 +125,20 @@ public class S3ImageUploader implements ImageUploader {
             );
         } catch (SdkException e) {
             log.warn("S3 이미지 일괄 삭제에 실패했습니다. imageUrls={}", imageUrls, e);
+            return;
         }
-        invalidateCache(keys);
+
+        Set<String> failedKeys = response.errors().stream()
+            .map(S3Error::key)
+            .collect(Collectors.toSet());
+        if (!failedKeys.isEmpty()) {
+            log.warn("S3 이미지 일부 삭제에 실패했습니다. failedKeys={}", failedKeys);
+        }
+
+        List<String> deletedKeys = keys.stream()
+            .filter(key -> !failedKeys.contains(key))
+            .toList();
+        invalidateCache(deletedKeys);
     }
 
     private byte[] readValidated(MultipartFile file) {
@@ -231,6 +249,9 @@ public class S3ImageUploader implements ImageUploader {
     }
 
     private void invalidateCache(List<String> keys) {
+        if (keys.isEmpty()) {
+            return;
+        }
         if (properties.cdnDistributionId() == null ||
             properties.cdnDistributionId().isBlank()) {
             return;

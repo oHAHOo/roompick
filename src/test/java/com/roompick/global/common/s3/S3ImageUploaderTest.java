@@ -28,9 +28,12 @@ import software.amazon.awssdk.services.cloudfront.CloudFrontClient;
 import software.amazon.awssdk.services.cloudfront.model.CreateInvalidationRequest;
 import software.amazon.awssdk.services.cloudfront.model.CreateInvalidationResponse;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Error;
 
 @ExtendWith(MockitoExtension.class)
 class S3ImageUploaderTest {
@@ -196,6 +199,8 @@ class S3ImageUploaderTest {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
             .thenReturn(PutObjectResponse.builder().build())
             .thenThrow(SdkClientException.create("network error"));
+        when(s3Client.deleteObjects(any(DeleteObjectsRequest.class)))
+            .thenReturn(DeleteObjectsResponse.builder().build());
 
         assertThatThrownBy(() -> sut.uploadAll(List.of(file1, file2), "rooms"))
             .isInstanceOf(BusinessException.class)
@@ -224,9 +229,29 @@ class S3ImageUploaderTest {
         sut.delete("https://test-bucket.s3.ap-northeast-2.amazonaws.com/rooms/legacy.jpg");
         sut.delete("https://images.roompick.ina3700.click/rooms/new.jpg");
 
-        verify(s3Client, times(2)).deleteObject(
-            any(java.util.function.Consumer.class)
-        );
+        ArgumentCaptor<java.util.function.Consumer<DeleteObjectRequest.Builder>> captor =
+            ArgumentCaptor.forClass(java.util.function.Consumer.class);
+        verify(s3Client, times(2)).deleteObject(captor.capture());
+
+        List<String> deletedKeys = captor.getAllValues().stream()
+            .map(consumer -> {
+                DeleteObjectRequest.Builder builder = DeleteObjectRequest.builder();
+                consumer.accept(builder);
+                return builder.build().key();
+            })
+            .toList();
+        assertThat(deletedKeys).containsExactly("rooms/legacy.jpg", "rooms/new.jpg");
+    }
+
+    @Test
+    void S3_삭제가_실패하면_캐시_무효화를_호출하지_않는다() {
+        sut = new S3ImageUploader(s3Client, cdnWithInvalidationProperties, cloudFrontClient);
+        when(s3Client.deleteObject(any(java.util.function.Consumer.class)))
+            .thenThrow(SdkClientException.create("network error"));
+
+        sut.delete("https://images.roompick.ina3700.click/rooms/a.jpg");
+
+        verify(cloudFrontClient, never()).createInvalidation(any(CreateInvalidationRequest.class));
     }
 
     @Test
@@ -255,6 +280,8 @@ class S3ImageUploaderTest {
     @Test
     void 일괄_삭제_시_CDN_캐시도_한번에_무효화한다() {
         sut = new S3ImageUploader(s3Client, cdnWithInvalidationProperties, cloudFrontClient);
+        when(s3Client.deleteObjects(any(DeleteObjectsRequest.class)))
+            .thenReturn(DeleteObjectsResponse.builder().build());
         when(cloudFrontClient.createInvalidation(any(CreateInvalidationRequest.class)))
             .thenReturn(CreateInvalidationResponse.builder().build());
 
@@ -267,5 +294,40 @@ class S3ImageUploaderTest {
         verify(cloudFrontClient).createInvalidation(captor.capture());
         assertThat(captor.getValue().invalidationBatch().paths().items())
             .containsExactly("/rooms/a.jpg", "/rooms/b.jpg");
+    }
+
+    @Test
+    void 일괄_삭제_요청_자체가_실패하면_캐시_무효화를_호출하지_않는다() {
+        sut = new S3ImageUploader(s3Client, cdnWithInvalidationProperties, cloudFrontClient);
+        when(s3Client.deleteObjects(any(DeleteObjectsRequest.class)))
+            .thenThrow(SdkClientException.create("network error"));
+
+        sut.deleteAll(List.of(
+            "https://images.roompick.ina3700.click/rooms/a.jpg",
+            "https://images.roompick.ina3700.click/rooms/b.jpg"
+        ));
+
+        verify(cloudFrontClient, never()).createInvalidation(any(CreateInvalidationRequest.class));
+    }
+
+    @Test
+    void 일괄_삭제_중_일부가_실패하면_실패한_key는_캐시_무효화_대상에서_제외한다() {
+        sut = new S3ImageUploader(s3Client, cdnWithInvalidationProperties, cloudFrontClient);
+        when(s3Client.deleteObjects(any(DeleteObjectsRequest.class)))
+            .thenReturn(DeleteObjectsResponse.builder()
+                .errors(S3Error.builder().key("rooms/b.jpg").build())
+                .build());
+        when(cloudFrontClient.createInvalidation(any(CreateInvalidationRequest.class)))
+            .thenReturn(CreateInvalidationResponse.builder().build());
+
+        sut.deleteAll(List.of(
+            "https://images.roompick.ina3700.click/rooms/a.jpg",
+            "https://images.roompick.ina3700.click/rooms/b.jpg"
+        ));
+
+        ArgumentCaptor<CreateInvalidationRequest> captor = ArgumentCaptor.forClass(CreateInvalidationRequest.class);
+        verify(cloudFrontClient).createInvalidation(captor.capture());
+        assertThat(captor.getValue().invalidationBatch().paths().items())
+            .containsExactly("/rooms/a.jpg");
     }
 }
