@@ -40,3 +40,14 @@ portone:
 roompick:
   search:
     reindex-enabled: ${ACCOMMODATION_SEARCH_REINDEX_ENABLED:false}
+    location-engine: ${ACCOMMODATION_LOCATION_SEARCH_ENGINE:ELASTICSEARCH}
+
+management:
+  info:
+    env:
+      enabled: true
+
+info:
+  roompick:
+    search:
+      location-engine: ${ACCOMMODATION_LOCATION_SEARCH_ENGINE:ELASTICSEARCH}

@@ -3,6 +3,7 @@ package com.roompick.domain.accommodation.facade;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
@@ -14,10 +15,12 @@ import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
 import com.roompick.domain.accommodation.service.AccommodationElasticsearchLocationSearchService;
+import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
 import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
+import com.roompick.domain.accommodation.type.AccommodationLocationSearchEngine;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
@@ -38,6 +41,15 @@ public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
 
+    /**
+     * MySQL Bounding Box 기반 위치 검색을 담당합니다.
+     */
+    private final AccommodationLocationSearchService
+        accommodationLocationSearchService;
+
+    /**
+     * Elasticsearch 기반 위치 검색을 담당합니다.
+     */
     private final AccommodationElasticsearchLocationSearchService
         accommodationElasticsearchLocationSearchService;
 
@@ -51,6 +63,15 @@ public class AccommodationFacade {
 
     private final PopularAccommodationQueryService
         popularAccommodationQueryService;
+
+    /**
+     * 위치 기반 숙소 검색에서 사용할 검색 엔진입니다.
+     *
+     * application 설정에 따라
+     * MySQL 또는 Elasticsearch 검색 경로를 선택합니다.
+     */
+    @Value("${roompick.search.location-engine:ELASTICSEARCH}")
+    private AccommodationLocationSearchEngine locationSearchEngine;
 
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
@@ -76,11 +97,11 @@ public class AccommodationFacade {
     /**
      * 사용자 위치를 기준으로 주변 숙소를 검색합니다.
      *
-     * 현재는 Elasticsearch 도입 전 기준 성능을 측정하기 위해
-     * MySQL 위치 검색 Service를 사용합니다.
+     * roompick.search.location-engine 설정에 따라
+     * MySQL Bounding Box 검색 또는 Elasticsearch 검색을 선택합니다.
      *
-     * Elasticsearch 검색 경로가 추가된 뒤에도
-     * Controller는 Facade만 호출하도록 유지합니다.
+     * Controller는 실제 검색 엔진 구현을 알 필요 없이
+     * 항상 동일한 Facade 메서드만 호출합니다.
      */
     public List<AccommodationLocationSearchResponseDto>
     searchNearbyAccommodations(
@@ -90,13 +111,25 @@ public class AccommodationFacade {
         double radiusKm,
         int limit
     ) {
-        return accommodationElasticsearchLocationSearchService.searchNearby(
-            keyword,
-            latitude,
-            longitude,
-            radiusKm,
-            limit
-        );
+        return switch (locationSearchEngine) {
+            case MYSQL ->
+                accommodationLocationSearchService.searchNearby(
+                    keyword,
+                    latitude,
+                    longitude,
+                    radiusKm,
+                    limit
+                );
+
+            case ELASTICSEARCH ->
+                accommodationElasticsearchLocationSearchService.searchNearby(
+                    keyword,
+                    latitude,
+                    longitude,
+                    radiusKm,
+                    limit
+                );
+        };
     }
 
     /**
