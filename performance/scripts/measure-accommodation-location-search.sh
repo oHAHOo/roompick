@@ -32,12 +32,23 @@ RUNS="${RUNS:-3}"
 
 OUTPUT_ROOT="${OUTPUT_ROOT:-performance/results/location-search}"
 
-# 검색 엔진 구분값을 검증합니다.
-if [ "$SEARCH_ENGINE" != "mysql" ] \
-    && [ "$SEARCH_ENGINE" != "elasticsearch" ]; then
-    echo "SEARCH_ENGINE은 mysql 또는 elasticsearch여야 합니다: $SEARCH_ENGINE"
-    exit 1
-fi
+# 성능 결과에 사용할 검색 엔진 구분값을 검증하고,
+# 실제 애플리케이션이 사용해야 할 검색 엔진을 결정합니다.
+case "$SEARCH_ENGINE" in
+    mysql)
+        EXPECTED_LOCATION_ENGINE="MYSQL"
+        ;;
+    mysql-bounding-box)
+        EXPECTED_LOCATION_ENGINE="MYSQL"
+        ;;
+    elasticsearch)
+        EXPECTED_LOCATION_ENGINE="ELASTICSEARCH"
+        ;;
+    *)
+        echo "SEARCH_ENGINE은 mysql, mysql-bounding-box 또는 elasticsearch여야 합니다: $SEARCH_ENGINE"
+        exit 1
+        ;;
+esac
 
 # 정수형 측정 조건을 검증합니다.
 for value_name in LIMIT VUS RUNS; do
@@ -61,7 +72,7 @@ if ! command -v k6 > /dev/null 2>&1; then
     exit 1
 fi
 
-echo "[1/6] 애플리케이션 상태 확인"
+echo "[1/6] 애플리케이션 상태 및 위치 검색 엔진 확인"
 
 if ! curl -fsS \
     "${BASE_URL}/actuator/health" \
@@ -70,6 +81,43 @@ if ! curl -fsS \
     echo "RoomPick 애플리케이션 상태를 확인할 수 없습니다: $BASE_URL"
     exit 1
 fi
+
+# 성능 결과에 기록할 SEARCH_ENGINE과
+# 실제 실행 중인 Spring 애플리케이션의 검색 엔진이
+# 일치하는지 측정 전에 검증합니다.
+APPLICATION_LOCATION_ENGINE=$(
+    curl -fsS \
+        "${BASE_URL}/actuator/info" \
+    | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+
+print(
+    data
+    .get("roompick", {})
+    .get("search", {})
+    .get("location-engine", "")
+)
+'
+)
+
+if [ -z "$APPLICATION_LOCATION_ENGINE" ]; then
+    echo "현재 애플리케이션의 위치 검색 엔진을 확인할 수 없습니다."
+    echo "확인 경로: ${BASE_URL}/actuator/info"
+    exit 1
+fi
+
+if [ "$APPLICATION_LOCATION_ENGINE" != "$EXPECTED_LOCATION_ENGINE" ]; then
+    echo "성능 측정 검색 엔진과 실제 애플리케이션 검색 엔진이 일치하지 않습니다."
+    echo "SEARCH_ENGINE=$SEARCH_ENGINE"
+    echo "expected_application_engine=$EXPECTED_LOCATION_ENGINE"
+    echo "actual_application_engine=$APPLICATION_LOCATION_ENGINE"
+    exit 1
+fi
+
+echo "위치 검색 엔진 확인 완료: $APPLICATION_LOCATION_ENGINE"
 
 echo "[2/6] 필수 컨테이너 상태 확인"
 
@@ -131,6 +179,7 @@ mkdir -p "$OUTPUT_DIR"
 # 실제 측정 조건을 결과와 함께 보관합니다.
 cat > "${OUTPUT_DIR}/conditions.txt" <<EOF
 search_engine=${SEARCH_ENGINE}
+application_location_engine=${APPLICATION_LOCATION_ENGINE}
 scenario=${SCENARIO}
 keyword=${KEYWORD}
 latitude=${LATITUDE}

@@ -84,10 +84,12 @@ if (!Number.isInteger(VUS) || VUS < 1) {
 
 if (
     SEARCH_ENGINE !== 'mysql'
+    && SEARCH_ENGINE !== 'mysql-bounding-box'
     && SEARCH_ENGINE !== 'elasticsearch'
 ) {
     throw new Error(
-        `SEARCH_ENGINE은 mysql 또는 elasticsearch여야 합니다: ${SEARCH_ENGINE}`
+        'SEARCH_ENGINE은 mysql, mysql-bounding-box 또는 '
+        + `elasticsearch여야 합니다: ${SEARCH_ENGINE}`
     );
 }
 
