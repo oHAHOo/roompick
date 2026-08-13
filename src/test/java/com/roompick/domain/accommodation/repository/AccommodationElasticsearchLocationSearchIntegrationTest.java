@@ -7,12 +7,15 @@ import java.time.Duration;
 import java.time.LocalTime;
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
@@ -23,6 +26,7 @@ import com.roompick.domain.accommodation.dto.AccommodationLocationSearchResponse
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.accommodation.service.AccommodationElasticsearchLocationSearchService;
+import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationSearchReindexService;
 
 /**
@@ -34,6 +38,7 @@ import com.roompick.domain.accommodation.service.AccommodationSearchReindexServi
  */
 @Tag("integration")
 @Testcontainers
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @SpringBootTest(
     properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -96,6 +101,25 @@ class AccommodationElasticsearchLocationSearchIntegrationTest {
     @Autowired
     private AccommodationElasticsearchLocationSearchService
         accommodationElasticsearchLocationSearchService;
+
+    @Autowired
+    private AccommodationLocationSearchService
+        accommodationLocationSearchService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @BeforeAll
+    void createLocationSearchIndex() {
+        /*
+         * 이 통합 테스트는 Hibernate create-drop을 사용하므로
+         * MySQL 위치 검색 쿼리의 FORCE INDEX 대상만 테스트 DB에 생성합니다.
+         */
+        jdbcTemplate.execute(
+            "CREATE INDEX idx_accommodations_latitude_longitude " +
+                "ON accommodations (latitude, longitude)"
+        );
+    }
 
     @BeforeEach
     void setUp() {
@@ -315,6 +339,108 @@ class AccommodationElasticsearchLocationSearchIntegrationTest {
                 first.getId(),
                 second.getId()
             );
+    }
+
+    @Test
+    void keyword_없는_동일_조건에서_MySQL과_Elasticsearch_결과가_같다() {
+        // given: 검색 중심과 거리가 겹치지 않는 반경 내부 숙소입니다.
+        Accommodation nearest =
+            createAccommodationWithLocation(
+                "가장 가까운 숙소",
+                "서울특별시 중구",
+                37.566000,
+                126.978000
+            );
+
+        Accommodation second =
+            createAccommodationWithLocation(
+                "두 번째 숙소",
+                "서울특별시 중구",
+                37.564000,
+                126.978000
+            );
+
+        createAccommodationWithLocation(
+            "세 번째 숙소",
+            "서울특별시 중구",
+            37.560000,
+            126.978000
+        );
+
+        // 반경 밖 숙소는 두 엔진 모두 검색 결과에서 제외되어야 합니다.
+        createAccommodationWithLocation(
+            "반경 밖 숙소",
+            "서울특별시 강남구",
+            37.497900,
+            127.027600
+        );
+
+        // 좌표 없는 기존 숙소는 MySQL 검색과 재색인 대상에서 제외됩니다.
+        accommodationRepository.save(
+            Accommodation.create(
+                "좌표 없는 숙소",
+                "서울특별시 중구",
+                "위치 검색 parity 테스트 숙소",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0)
+            )
+        );
+
+        Accommodation inactive =
+            createAccommodationWithLocation(
+                "비활성 숙소",
+                "서울특별시 중구",
+                37.565000,
+                126.978000
+            );
+
+        inactive.inactivate();
+        accommodationRepository.save(inactive);
+
+        accommodationSearchReindexService.reindexAll();
+
+        int limit = 2;
+
+        // when: keyword 없는 동일한 검색 조건을 두 엔진에 전달합니다.
+        List<Long> mysqlAccommodationIds =
+            accommodationLocationSearchService
+                .searchNearby(
+                    null,
+                    SEOUL_CITY_HALL_LATITUDE,
+                    SEOUL_CITY_HALL_LONGITUDE,
+                    2.0,
+                    limit
+                )
+                .stream()
+                .map(
+                    AccommodationLocationSearchResponseDto::accommodationId
+                )
+                .toList();
+
+        List<Long> elasticsearchAccommodationIds =
+            accommodationElasticsearchLocationSearchService
+                .searchNearby(
+                    null,
+                    SEOUL_CITY_HALL_LATITUDE,
+                    SEOUL_CITY_HALL_LONGITUDE,
+                    2.0,
+                    limit
+                )
+                .stream()
+                .map(
+                    AccommodationLocationSearchResponseDto::accommodationId
+                )
+                .toList();
+
+        // then: 포함 대상, 거리순 정렬과 limit 적용 결과가 모두 같아야 합니다.
+        assertThat(mysqlAccommodationIds)
+            .containsExactly(
+                nearest.getId(),
+                second.getId()
+            );
+
+        assertThat(elasticsearchAccommodationIds)
+            .containsExactlyElementsOf(mysqlAccommodationIds);
     }
 
     /**

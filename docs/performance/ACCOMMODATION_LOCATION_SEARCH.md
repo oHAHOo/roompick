@@ -1628,7 +1628,34 @@ MySQL 숙소 저장
 
 통합 테스트는 정상 통과했다.
 
-### 20.8 실행 결과
+### 20.8 MySQL·Elasticsearch geo-only 결과 동등성 검증
+
+성능 비교가 서로 다른 검색 결과를 대상으로 수행되는 문제를 방지하기 위해, MySQL과 Elasticsearch를 한
+Testcontainers 통합 테스트에서 함께 실행하고 결과 동등성을 검증한다. 동일한 MySQL fixture를 Elasticsearch에
+전체 재색인한 뒤 다음 조건을 두 엔진에 동일하게 전달한다.
+
+```text
+keyword 없음
+동일 latitude / longitude
+동일 radiusKm
+동일 limit
+```
+
+fixture에는 반경 내부의 서로 다른 거리인 ACTIVE 숙소, 반경 밖 숙소, 좌표 없는 숙소와 INACTIVE 숙소를
+포함한다. 두 검색 결과에서 `accommodationId` 목록을 추출하여 포함 대상뿐 아니라 distance ASC 순서와 limit
+적용 결과까지 직접 비교한다. MySQL과 Elasticsearch의 거리 계산값에는 미세한 차이가 있을 수 있으므로
+`distanceKm`의 완전 일치는 parity 조건으로 사용하지 않는다.
+
+이 검증은 검색어 의미 차이가 개입하지 않는 geo-only 조건을 대상으로 한다. MySQL keyword 검색은 `LIKE`
+substring 방식이고 Elasticsearch는 analyzer와 `multi_match`를 사용하므로 keyword 결과의 완전한 동등성을
+보장하지 않는다. 따라서 geo-only 성능 수치가 가장 직접적인 동일 workload 비교이며, geo-keyword 성능 수치는
+각 검색 엔진의 검색 semantics를 포함한 비교로 해석해야 한다.
+
+이번 parity 테스트 추가 과정에서는 기존 k6 성능 측정을 다시 실행하지 않았고 공식 측정 결과도 변경하지
+않았다. 성능 수치만으로 운영 엔진을 결정한 것이 아니며 production 검색 엔진은 계속 MySQL Bounding Box를
+사용한다.
+
+### 20.9 실행 결과
 
 이번 Bounding Box 고도화 과정에서 다음 테스트를 각각 실행해 정상 통과를 확인했다.
 
