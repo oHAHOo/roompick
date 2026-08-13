@@ -74,7 +74,9 @@ public class AccommodationController {
     /**
      * 사용자 위치를 기준으로 주변의 운영 중인 숙소를 검색합니다.
      *
-     * 현재는 Elasticsearch 도입 전 MySQL 검색 기준선으로 사용합니다.
+     * latitude와 longitude를 검색 중심 좌표로 사용하며,
+     * 설정된 위치 검색 엔진에 따라 MySQL Bounding Box 또는
+     * Elasticsearch를 통해 주변 숙소를 조회합니다.
      *
      * keyword는 선택값이며,
      * latitude, longitude는 검색 중심 좌표입니다.

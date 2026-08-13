@@ -89,7 +89,25 @@ GET /api/v1/accommodations/search
 → 주변 숙소 검색
 ```
 
-이번 작업에서는 장소명 자체를 좌표로 변환하는 Geocoding 기능은 범위에서 제외하고, **좌표가 주어졌을 때 주변 숙소를 검색하는 검색 경로의 성능과 구조**에 집중한다.
+현재 사용자 입력 해석과 숙소 검색 엔진은 다음처럼 분리되어 있다.
+
+```text
+사용자 입력 해석
+장소명
+→ GET /api/v1/places/search
+→ Kakao Local API
+→ 장소 후보 + latitude / longitude
+
+숙소 검색 엔진
+사용자가 선택한 latitude / longitude
+→ GET /api/v1/accommodations/search
+→ MySQL Bounding Box 또는 Elasticsearch
+→ 주변 숙소
+```
+
+장소명 검색과 좌표 변환은 현재 구현되어 있지만, 이 문서의 성능 비교 대상은 두 번째 영역인
+**좌표가 주어졌을 때 주변 숙소를 검색하는 검색 엔진**이다. Kakao Local API 호출 시간과 네트워크
+지연은 MySQL Baseline, MySQL Bounding Box, Elasticsearch 측정값에 포함되지 않았다.
 
 초기 구현은 MySQL `ST_Distance_Sphere()`를 사용했다. 이후 50,000건 성능 테스트에서 전체 후보에 대한 정확 거리 계산 비용이 크게 나타나 MySQL 내부 최적화 가능성을 먼저 검토했다.
 
@@ -2228,21 +2246,25 @@ vs
 
 이번 API는 사용자가 위도와 경도를 직접 입력해야 한다는 UX를 의미하지 않는다.
 
-실제 서비스에서는 다음처럼 좌표를 전달할 수 있다.
+현재 서비스에서는 다음처럼 장소명으로 후보 좌표를 조회한 뒤 선택된 좌표를 숙소 검색 API에 전달한다.
 
 ```text
-현재 위치 버튼
-→ 브라우저 GPS
-→ 좌표
-→ 위치 검색
-
-"서울역" 검색
-→ 장소 검색 / Geocoding
-→ 서울역 좌표
-→ 위치 검색
+"서울역" 입력
+→ GET /api/v1/places/search?query=서울역&limit=5
+→ Kakao Local API
+→ 장소 후보 목록
+→ 사용자가 후보 선택
+→ 선택한 latitude / longitude
+→ GET /api/v1/accommodations/search
+→ MySQL Bounding Box 또는 Elasticsearch 위치 검색
 ```
 
-`서울역 → latitude / longitude` 변환은 이번 위치 검색 엔진 비교와 별도의 후속 기능이다.
+장소 검색 API와 숙소 위치 검색 API는 별도 요청으로 유지한다. 따라서 사용자가 후보를 선택하기 전에
+숙소 DB나 Elasticsearch를 조회하지 않으며, 장소 후보가 여러 개인 경우 서버가 임의로 하나를 선택하지 않는다.
+
+이 절의 Kakao 연계는 현재 완료된 사용자 입력 흐름을 설명한다. 다만 Kakao 응답시간은 이 문서의
+MySQL·Elasticsearch 성능 비교에 포함되지 않으므로, 아래 측정 수치를 장소 검색부터 숙소 검색까지의
+end-to-end 응답시간으로 해석하면 안 된다.
 
 ---
 
@@ -2253,6 +2275,7 @@ vs
 * 애플리케이션과 k6가 동일한 로컬 macOS 장비에서 실행됐다.
 * MySQL과 Elasticsearch 모두 로컬 Docker 환경이다.
 * 실제 운영 네트워크 지연이 포함되지 않았다.
+* Kakao Local API 호출 시간과 네트워크 지연은 포함되지 않았다. 모든 검색 엔진 비교는 동일한 `latitude / longitude` 입력에서 시작했다.
 * 단일 애플리케이션 인스턴스에서 측정했다.
 * 10 VU, 30초의 비교적 짧은 부하 테스트다.
 * JVM GC와 JIT 상태가 실행마다 완전히 동일하지 않을 수 있다.
@@ -2272,7 +2295,7 @@ vs
 * Elasticsearch 검색 Document의 실시간 동기화 구조는 문서 작성 시점에는 아직 구현되지 않았다.
 * Elasticsearch 운영 클러스터 구축 비용과 실제 클라우드 인프라 비용을 정량적으로 측정하지 않았다.
 * 한국어 형태소 분석기, 자동완성, 오타 보정 등 검색 품질 기능은 이번 측정 범위에 포함하지 않았다.
-* 장소명 → 좌표 변환 Geocoding은 이번 범위에 포함하지 않았다.
+* 장소명 → 후보 좌표 변환은 별도 API로 구현되어 있으나, 이 성능 측정의 범위에는 포함하지 않았다.
 
 따라서 이번 결과를 다음과 같이 일반화해서는 안 된다.
 
@@ -2663,13 +2686,12 @@ Bounding Box
 
 구조도 충분히 현실적인 선택지가 될 수 있다.
 
-다만 RoomPick에서는 향후 다음 검색 기능 확장을 고려하고 있다.
+RoomPick은 현재 숙소명·주소 keyword 검색과 Kakao 장소 검색 연계를 제공한다. 다음 검색 품질·운영 기능은
+여전히 별도 고도화 범위다.
 
-* 숙소명·주소 검색
 * 검색 분석기
 * 한국어 검색 품질 개선
 * 자동완성
-* 장소 검색과 연계
 * 검색 트래픽 증가 대응
 
 또한 이번 동일 조건 테스트에서 Bounding Box로 최적화한 MySQL보다 Elasticsearch가 더 낮은 응답시간과 높은 처리량을 기록했다.

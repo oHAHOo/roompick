@@ -1,7 +1,7 @@
 # 접근 제어 정책 (역할 기반 권한)
 
-- 문서 버전: `v0.1`
-- 최종 수정일: 2026-07-24
+- 문서 버전: `v0.2`
+- 최종 수정일: 2026-08-13
 - 담당자: oHAHOo
 - 근거 코드: `MemberRole`, `AuthMember`, `SecurityConfig`, `JwtAuthenticationFilter`,
   `JwtAuthenticationEntryPoint`, `JwtAccessDeniedHandler`
@@ -37,6 +37,7 @@
 | `/api/v1/auth/signup`, `/api/v1/auth/login` | 인증 없이 호출 가능 |
 | `/actuator/health`, `/actuator/info` | 인증 없이 호출 가능 |
 | `GET /api/v1/accommodations/**`, `GET /api/v1/rooms/**` | 인증 없이 호출 가능(비로그인 사용자도 숙소·객실 조회 가능) |
+| `GET /api/v1/places/**` | 인증 없이 호출 가능(비로그인 사용자도 장소 후보 검색 가능) |
 | `/api/v1/admin/**` | `ADMIN` 역할만 호출 가능 |
 | 그 외 모든 경로 | 인증된 사용자만 호출 가능 |
 
