@@ -278,7 +278,7 @@ GET /api/v1/places/search?query=강남역&limit=5
 
 | 이름 | 타입 | 필수 | 기본값 | 설명 |
 | --- | --- | --- | --- | --- |
-| `query` | `String` | O | - | 장소 검색어, 앞뒤 공백은 제거하며 공백 문자열은 허용하지 않음 |
+| `query` | `String` | O | - | 장소 검색어, 앞뒤 공백 제거 후 1~100자 |
 | `limit` | `int` | X | `5` | 반환할 후보 수, 1 이상 15 이하 |
 
 ### Response — 200 OK
@@ -307,7 +307,7 @@ GET /api/v1/places/search?query=강남역&limit=5
 
 | HTTP | Error Code | 조건 |
 | --- | --- | --- |
-| `400` | `INVALID_INPUT_VALUE` | query가 없거나 공백, limit이 1 미만 또는 15 초과 |
+| `400` | `INVALID_INPUT_VALUE` | query가 없거나 공백 또는 100자 초과, limit이 1 미만 또는 15 초과 |
 | `502` | `PLACE_API_AUTHENTICATION_FAILED` | Kakao 장소 검색 API 인증 실패 |
 | `503` | `PLACE_API_RATE_LIMITED` | Kakao 장소 검색 API 요청 제한 |
 | `504` | `PLACE_API_TIMEOUT` | Kakao 장소 검색 API connect/read timeout |
@@ -317,10 +317,17 @@ GET /api/v1/places/search?query=강남역&limit=5
 
 ### 구현 메모
 
-- 장소 검색은 DB와 Elasticsearch를 조회하지 않고 Kakao Local API만 한 번 호출한다.
+- 장소 검색은 DB와 Elasticsearch를 조회하지 않는다. 동일한 정규화 query와 limit의 정상 결과는 Redis에
+  5분간 캐시하여 Kakao API 반복 호출과 quota 소비를 줄인다.
+- 캐시 key는 최대 100자인 정규화 query와 limit으로 구성한다. 정상 빈 목록은 캐시하지만 timeout, network,
+  Kakao 429·5xx와 잘못된 응답 등 예외 결과는 캐시하지 않는다.
+- Redis 캐시 조회·저장에 실패하면 캐시 오류를 전파하지 않고 Kakao API를 직접 호출한다.
 - 외부 API Key는 `KAKAO_REST_API_KEY` 환경변수로 관리하며 응답이나 로그에 노출하지 않는다.
 - Kakao 응답의 `x`는 `longitude`, `y`는 `latitude`로 변환한다.
 - 사용자가 후보를 선택한 뒤 해당 좌표를 아래 주변 숙소 검색 API에 전달한다.
+- 현재는 신뢰할 수 있는 클라이언트 식별자와 기존 rate limiter 기반이 없어 애플리케이션 rate limiting을
+  추가하지 않는다. 트래픽이나 abuse 징후가 확인되면 신뢰 가능한 reverse proxy/API Gateway 계층의 제한을
+  우선 검토한다.
 
 ---
 

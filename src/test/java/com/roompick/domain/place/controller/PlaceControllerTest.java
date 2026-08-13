@@ -132,6 +132,34 @@ class PlaceControllerTest {
     }
 
     @Test
+    @DisplayName("query가 100자를 초과하면 400을 반환한다")
+    void rejectWhenQueryExceedsMaximumLength() throws Exception {
+        String query = "가".repeat(101);
+
+        given(
+            placeFacade.searchPlaces(query, 5)
+        ).willThrow(
+            new BusinessException(
+                ErrorCode.INVALID_INPUT_VALUE
+            )
+        );
+
+        mockMvc.perform(
+                get("/api/v1/places/search")
+                    .param("query", query)
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        then(placeFacade)
+            .should()
+            .searchPlaces(query, 5);
+    }
+
+    @Test
     @DisplayName("장소 검색 입력 오류는 공통 예외 응답으로 400을 반환한다")
     void returnBadRequestWhenPlaceSearchInputIsInvalid()
         throws Exception {

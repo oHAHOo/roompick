@@ -127,6 +127,12 @@ class PlaceSearchServiceTest {
     }
 
     @Test
+    @DisplayName("검색어가 100자를 초과하면 외부 Client를 호출하지 않는다")
+    void rejectQueryLongerThanMaximum() {
+        assertInvalidQuery("가".repeat(101));
+    }
+
+    @Test
     @DisplayName("limit이 1보다 작으면 외부 Client를 호출하지 않는다")
     void rejectLimitLessThanMinimum() {
         assertInvalidLimit(0);

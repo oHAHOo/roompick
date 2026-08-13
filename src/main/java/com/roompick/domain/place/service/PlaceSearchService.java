@@ -2,6 +2,7 @@ package com.roompick.domain.place.service;
 
 import java.util.List;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import com.roompick.domain.place.client.PlaceSearchClient;
@@ -24,6 +25,7 @@ public class PlaceSearchService {
 
     private static final int MIN_LIMIT = 1;
     private static final int MAX_LIMIT = 15;
+    private static final int MAX_QUERY_LENGTH = 100;
 
     private final PlaceSearchClient placeSearchClient;
 
@@ -31,7 +33,15 @@ public class PlaceSearchService {
      * 검색어를 정규화하고 후보 장소를 공개 응답 DTO로 변환합니다.
      *
      * 잘못된 요청은 외부 API를 호출하기 전에 차단합니다.
+     * 동일한 정규화 검색어와 limit의 정상 결과는 단기 캐시에 저장합니다.
      */
+    @Cacheable(
+        cacheNames = "placeSearches",
+        key = "#query.trim() + ':' + #limit",
+        condition = "#query != null && !#query.isBlank() " +
+            "&& #query.trim().length() <= 100 " +
+            "&& #limit >= 1 && #limit <= 15"
+    )
     public List<PlaceSearchResponseDto> searchPlaces(
         String query,
         int limit
@@ -67,7 +77,16 @@ public class PlaceSearchService {
             );
         }
 
-        return query.trim();
+        String normalizedQuery = query.trim();
+
+        if (normalizedQuery.length() > MAX_QUERY_LENGTH) {
+            throw invalidInput(
+                "query",
+                "장소 검색어는 100자 이하여야 합니다."
+            );
+        }
+
+        return normalizedQuery;
     }
 
     /**
