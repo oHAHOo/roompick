@@ -12,7 +12,7 @@ import com.roompick.domain.accommodation.entity.Accommodation;
  * MySQL을 사용한 위치 기반 숙소 검색 Repository입니다.
  *
  * Bounding Box로 검색 후보를 먼저 줄이고,
- * 좌표 복합 인덱스를 이용해 후보 조회 비용을 줄인 뒤
+ * 좌표 복합 인덱스를 사용할 수 있는 범위 조건으로 후보를 줄인 뒤
  * ST_Distance_Sphere()로 정확한 반경을 검증합니다.
  *
  * 숙소 Entity 전체를 조회하지 않고
@@ -26,17 +26,15 @@ public interface AccommodationLocationSearchRepository
      *
      * 검색 과정:
      *
-     * 1. latitude / longitude 복합 인덱스를 사용합니다.
+     * 1. latitude / longitude 범위로 검색 후보를 제한합니다.
      * 2. Bounding Box로 검색 후보를 선필터링합니다.
      * 3. ACTIVE 상태 및 선택적인 keyword 조건을 적용합니다.
      * 4. ST_Distance_Sphere()로 정확한 거리를 계산합니다.
      * 5. 실제 검색 반경 안의 숙소만 남깁니다.
      * 6. 거리 오름차순으로 정렬하여 limit만큼 반환합니다.
      *
-     * 로컬 EXPLAIN ANALYZE에서 MySQL 옵티마이저가
-     * 좌표 인덱스보다 Full Table Scan을 선택했지만,
-     * 동일 조건에서 인덱스를 사용했을 때 실행 시간이 감소했기 때문에
-     * 해당 검색 경로에서는 좌표 인덱스를 명시적으로 사용합니다.
+     * 실행계획은 데이터 분포, 검색 반경과 keyword 선택도에 따라
+     * 달라질 수 있으므로 특정 인덱스를 강제하지 않습니다.
      *
      * Bounding Box는 원형 검색 반경을 감싸는 사각형이므로
      * 최종 ST_Distance_Sphere() 검증은 반드시 유지합니다.
@@ -71,9 +69,6 @@ public interface AccommodationLocationSearchRepository
                         )
                     ) AS distanceMeters
                 FROM accommodations accommodation
-                    FORCE INDEX (
-                        idx_accommodations_latitude_longitude
-                    )
                 WHERE accommodation.status = 'ACTIVE'
                   AND accommodation.latitude IS NOT NULL
                   AND accommodation.longitude IS NOT NULL

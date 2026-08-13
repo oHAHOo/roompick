@@ -1042,7 +1042,8 @@ idx_accommodations_latitude_longitude
 └─ longitude
 ```
 
-Repository 위치 검색 쿼리에서는 로컬 성능 비교 결과를 기준으로 해당 인덱스를 명시적으로 사용한다.
+기존 성능 측정 당시 Repository 위치 검색 쿼리에서는 로컬 성능 비교 결과를 기준으로 해당 인덱스를
+명시적으로 사용했다.
 
 ```sql
 FORCE INDEX (
@@ -1050,7 +1051,9 @@ FORCE INDEX (
 )
 ```
 
-단, `FORCE INDEX`는 현재 성능 테스트 데이터 분포와 실행계획을 기준으로 선택한 최적화다.
+단, `FORCE INDEX`는 당시 성능 테스트 데이터 분포와 실행계획을 기준으로 선택한 최적화다. 현재 production
+쿼리에서는 특정 실행계획을 영구 강제하지 않고 MySQL 옵티마이저가 데이터 분포, 검색 반경과 keyword
+선택도에 따라 계획을 선택하도록 힌트를 제거했다. 좌표 복합 인덱스와 Bounding Box 조건은 그대로 유지한다.
 
 향후 실제 운영 데이터의 규모, 상태 분포, 지역 분포, 검색 반경이 달라지면 MySQL 옵티마이저의 비용 계산과 인덱스 효율도 달라질 수 있으므로 운영 환경에서는 `EXPLAIN ANALYZE`를 다시 검증해야 한다.
 
@@ -2187,7 +2190,9 @@ idx_accommodations_latitude_longitude
 (latitude, longitude)
 ```
 
-이번 데이터에서는 MySQL 옵티마이저가 해당 인덱스를 자동 선택하지 않아 Repository에서 `FORCE INDEX`를 사용했다.
+기존 성능 측정 데이터에서는 MySQL 옵티마이저가 해당 인덱스를 자동 선택하지 않아 당시 Repository에서
+`FORCE INDEX`를 사용했다. 현재 production 쿼리는 운영 데이터의 분포와 검색 반경 변화에 대응할 수 있도록
+힌트를 사용하지 않으며, 인덱스 선택은 옵티마이저에 맡긴다.
 
 하지만 실제 운영 데이터에서는 다음 요소가 달라질 수 있다.
 
@@ -2205,7 +2210,7 @@ ANALYZE TABLE
 → EXPLAIN ANALYZE
 → 실제 처리 행 수
 → Index Range Scan / Table Scan 비교
-→ FORCE INDEX 유지 여부 재판단
+→ 인덱스 힌트 필요 여부 재판단
 ```
 
 ### 24.5 검색 부하 분리
@@ -2324,8 +2329,8 @@ end-to-end 응답시간으로 해석하면 안 된다.
 * geo-keyword 데이터는 생성한 50,000건 중 20%인 10,000건에 `룸픽`이 포함된 인위적인 분포다.
 * MySQL Bounding Box 성능은 이번 데이터의 지역 분포와 반경 5km 조건에서 측정한 결과다.
 * `(latitude, longitude)` B-Tree 복합 인덱스의 효율은 실제 운영 데이터의 위치 분포와 검색 반경에 따라 달라질 수 있다.
-* 현재 데이터에서는 MySQL 옵티마이저가 좌표 인덱스를 자동 선택하지 않아 위치 검색 쿼리에서 인덱스를 명시적으로 사용했다.
-* 따라서 `FORCE INDEX` 사용이 모든 데이터 분포에서 최적이라는 의미는 아니다.
+* 기존 측정 데이터에서는 MySQL 옵티마이저가 좌표 인덱스를 자동 선택하지 않아 당시 위치 검색 쿼리에서 인덱스를 명시적으로 사용했다.
+* 현재 production 쿼리는 `FORCE INDEX`를 제거했으며, 기존 측정 결과는 당시 조건의 상대 비교 결과로 보존한다.
 * 운영 데이터 규모와 분포가 달라지면 반드시 `ANALYZE TABLE`과 `EXPLAIN ANALYZE`를 다시 확인해야 한다.
 * MySQL Spatial Index 또는 다른 공간 검색 자료구조와의 성능 비교는 이번 범위에 포함하지 않았다.
 * `Com_select`는 API 단위 카운터가 아닌 MySQL 서버의 글로벌 누적 카운터이므로 다른 조회가 함께 포함될 수 있다.
@@ -2547,7 +2552,9 @@ Index Range Scan
 
 이에 최종적으로 `(latitude, longitude)` 복합 인덱스를 사용했다.
 
-현재 데이터 분포에서는 MySQL 옵티마이저가 해당 인덱스를 자동 선택하지 않아 위치 검색 Repository에서 명시적으로 인덱스를 사용하도록 구성했다.
+기존 측정 데이터 분포에서는 MySQL 옵티마이저가 해당 인덱스를 자동 선택하지 않아 당시 위치 검색
+Repository에서 명시적으로 인덱스를 사용했다. 현재 production 쿼리에서는 데이터 분포, 반경과 keyword
+선택도 변화에 따라 옵티마이저가 더 적절한 계획을 고를 수 있도록 `FORCE INDEX`를 제거했다.
 
 다만 실행계획은 데이터 규모와 분포에 따라 달라질 수 있으므로 운영 환경에서는 실제 데이터 기준으로 다시 검증할 필요가 있다.
 
