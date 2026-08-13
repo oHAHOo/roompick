@@ -65,6 +65,8 @@ class AdminAccommodationControllerTest {
                     .param("name", "룸픽 호텔")
                     .param("address", "서울특별시 중구")
                     .param("description", "RoomPick MVP 예약 테스트를 위한 숙소")
+                    .param("latitude", "37.566500")
+                    .param("longitude", "126.978000")
                     .param("checkInTime", "15:00:00")
                     .param("checkOutTime", "11:00:00")
             )
@@ -97,6 +99,50 @@ class AdminAccommodationControllerTest {
                 jsonPath("$.data.status")
                     .value("ACTIVE")
             );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("위도와 경도가 누락되면 숙소 등록에 실패한다")
+    void 위도와_경도가_누락되면_숙소_등록에_실패한다() throws Exception {
+        mockMvc.perform(
+                multipart("/api/v1/admin/accommodations")
+                    .with(csrf())
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("checkInTime", "15:00:00")
+                    .param("checkOutTime", "11:00:00")
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        verifyNoInteractions(adminAccommodationFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("좌표 범위를 벗어나면 숙소 등록에 실패한다")
+    void 좌표_범위를_벗어나면_숙소_등록에_실패한다() throws Exception {
+        mockMvc.perform(
+                multipart("/api/v1/admin/accommodations")
+                    .with(csrf())
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("latitude", "90.000001")
+                    .param("longitude", "180.000001")
+                    .param("checkInTime", "15:00:00")
+                    .param("checkOutTime", "11:00:00")
+            )
+            .andExpect(status().isBadRequest())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.INVALID_INPUT_VALUE.getCode())
+            );
+
+        verifyNoInteractions(adminAccommodationFacade);
     }
 
     @Test

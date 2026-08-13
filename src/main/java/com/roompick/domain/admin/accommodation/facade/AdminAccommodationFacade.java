@@ -37,6 +37,8 @@ public class AdminAccommodationFacade {
                     request.description(),
                     request.checkInTimeAsLocalTime(),
                     request.checkOutTimeAsLocalTime(),
+                    request.latitude(),
+                    request.longitude(),
                     imageUrls
                 );
 

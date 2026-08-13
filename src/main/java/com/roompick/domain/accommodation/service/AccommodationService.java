@@ -1,5 +1,6 @@
 package com.roompick.domain.accommodation.service;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -218,6 +219,8 @@ public class AccommodationService {
         String description,
         LocalTime checkInTime,
         LocalTime checkOutTime,
+        BigDecimal latitude,
+        BigDecimal longitude,
         List<String> imageUrls
     ) {
         Accommodation accommodation =
@@ -226,7 +229,9 @@ public class AccommodationService {
                 address,
                 description,
                 checkInTime,
-                checkOutTime
+                checkOutTime,
+                latitude,
+                longitude
             );
 
         accommodation.addImages(imageUrls);

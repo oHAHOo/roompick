@@ -24,6 +24,8 @@
 - 이름, 주소는 필수이며 비어 있으면(`null` 또는 공백) 각각 `ACCOMMODATION_NAME_REQUIRED`,
   `ACCOMMODATION_ADDRESS_REQUIRED`(`400`)를 반환한다.
 - 체크인·체크아웃 시간은 필수이며 없으면 `ACCOMMODATION_TIME_REQUIRED`(`400`)를 반환한다.
+- 관리자 숙소 등록 시 위도와 경도를 필수로 전달하며, 생성 시점부터 한 쌍으로 저장한다.
+- 위도는 -90~90, 경도는 -180~180 범위여야 하며 서버가 등록 과정에서 주소를 좌표로 다시 변환하지 않는다.
 - 숙소는 생성 시 항상 `ACTIVE` 상태로 시작한다. 생성 시점에 다른 상태를 선택할 수 없다.
   - 구현: `Accommodation.create()`
 

@@ -101,8 +101,7 @@ public class Accommodation extends BaseTimeEntity {
      *
      * 숙소는 처음 등록될 때 항상 운영 중인 ACTIVE 상태로 시작합니다.
      *
-     * 현재 위치 정보 입력은 별도 단계로 분리되어 있으므로
-     * 최초 생성 시 좌표는 null일 수 있습니다.
+     * 기존 좌표 없는 데이터와 테스트 fixture 호환을 위한 생성 경로입니다.
      */
     public static Accommodation create(
         String name,
@@ -123,6 +122,38 @@ public class Accommodation extends BaseTimeEntity {
             checkOutTime,
             null,
             null,
+            AccommodationStatus.ACTIVE
+        );
+    }
+
+    /**
+     * 위치 좌표를 포함하여 새로운 숙소를 생성합니다.
+     *
+     * 관리자 등록 숙소는 최초 생성 시부터 위치 검색 대상이 되도록
+     * 위도와 경도를 한 쌍으로 검증하고 저장합니다.
+     */
+    public static Accommodation create(
+        String name,
+        String address,
+        String description,
+        LocalTime checkInTime,
+        LocalTime checkOutTime,
+        BigDecimal latitude,
+        BigDecimal longitude
+    ) {
+        validateName(name);
+        validateAddress(address);
+        validateTimes(checkInTime, checkOutTime);
+        validateLocation(latitude, longitude);
+
+        return new Accommodation(
+            name,
+            address,
+            description,
+            checkInTime,
+            checkOutTime,
+            latitude,
+            longitude,
             AccommodationStatus.ACTIVE
         );
     }

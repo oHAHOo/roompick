@@ -3,8 +3,10 @@ package com.roompick.domain.accommodation.service;
 import static org.mockito.BDDMockito.then;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -153,6 +155,36 @@ class AccommodationServiceTest {
             LocalTime.of(15, 0),
             LocalTime.of(11, 0)
         );
+    }
+
+    @Test
+    void 좌표를_포함해_숙소를_생성한다() {
+        BigDecimal latitude = new BigDecimal("37.566500");
+        BigDecimal longitude = new BigDecimal("126.978000");
+
+        given(accommodationRepository.save(any()))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        Accommodation accommodation =
+            accommodationService.createAccommodation(
+                "룸픽 호텔",
+                "서울특별시 중구",
+                "숙소 설명",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0),
+                latitude,
+                longitude,
+                List.of()
+            );
+
+        assertThat(accommodation.getLatitude())
+            .isEqualByComparingTo(latitude);
+        assertThat(accommodation.getLongitude())
+            .isEqualByComparingTo(longitude);
+
+        then(accommodationRepository)
+            .should()
+            .save(accommodation);
     }
 
     @Test
