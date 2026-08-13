@@ -19,6 +19,8 @@ import com.roompick.domain.accommodation.service.PopularAccommodationSingleFligh
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.timesale.service.TimeSalePriceService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,8 @@ public class AccommodationFacade {
     private final PopularAccommodationQueryService
         popularAccommodationQueryService;
 
+    private final TimeSalePriceService
+        timeSalePriceService;
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
      *
@@ -159,8 +163,8 @@ public class AccommodationFacade {
     /**
      * 운영 중인 숙소에 소속된 운영 중인 객실 목록을 조회합니다.
      *
-     * 먼저 숙소의 존재 여부와 운영 상태를 확인한 뒤,
-     * 객실 목록 화면에 필요한 정보만 조회합니다.
+     * 먼저 숙소의 존재 여부와 운영 상태를 확인하고,
+     * 현재 적용되는 타임세일 가격을 계산해 응답합니다.
      */
     public List<RoomListResponseDto> getRoomList(
         Long accommodationId
@@ -169,10 +173,26 @@ public class AccommodationFacade {
             accommodationId
         );
 
-        return roomService
-            .findAllActiveSummaryByAccommodationId(
-                accommodationId
-            );
+        List<Room> rooms =
+            roomService
+                .findAllActiveWithImagesByAccommodationId(
+                    accommodationId
+                );
+
+        return rooms.stream()
+            .map(room -> {
+                long appliedPricePerNight =
+                    timeSalePriceService
+                        .calculatePricePerNight(
+                            room
+                        );
+
+                return RoomListResponseDto.from(
+                    room,
+                    appliedPricePerNight
+                );
+            })
+            .toList();
     }
 
     /**

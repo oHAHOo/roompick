@@ -58,6 +58,22 @@ public class RoomService {
     }
 
     /**
+     * 특정 숙소의 운영 중인 객실과
+     * 가격·이미지 응답 생성에 필요한 연관관계를 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<Room>
+    findAllActiveWithImagesByAccommodationId(
+        Long accommodationId
+    ) {
+        return roomRepository
+            .findAllActiveWithImagesByAccommodationId(
+                accommodationId
+            );
+    }
+
+
+    /**
      * 예약 가능 여부 확인에 필요한 객실을 조회하고
      * 객실 상태와 요청 인원을 검증합니다.
      */
@@ -202,6 +218,24 @@ public class RoomService {
         room.deactivate();
 
         return room;
+    }
+
+    /**
+     * 관리자 기능에서 지정한 숙소에 실제로 소속된
+     * 객실과 숙소 정보를 함께 조회합니다.
+     *
+     * 존재하지 않거나 다른 숙소에 소속된 객실이면
+     * ROOM_NOT_FOUND 예외를 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public Room findByIdAndAccommodationIdForAdmin(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return findByIdAndAccommodationIdWithAccommodation(
+            accommodationId,
+            roomId
+        );
     }
 
     private Room findByIdAndAccommodationId(

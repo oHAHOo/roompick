@@ -47,3 +47,8 @@ roompick:
       single-flight:
         # Redis 300ms 제한보다 여유를 두되 대기 요청의 무제한 점유를 막습니다.
         wait-timeout: ${POPULAR_ACCOMMODATION_SINGLE_FLIGHT_WAIT_TIMEOUT:5s}
+
+timesale:
+  scheduler:
+    initial-delay: 30000
+    fixed-delay: 30000

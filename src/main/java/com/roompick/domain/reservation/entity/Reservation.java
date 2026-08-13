@@ -97,7 +97,10 @@ public class Reservation extends BaseTimeEntity {
     private LocalDateTime canceledAt;
 
     /**
-     * 결제 대기 상태의 새로운 예약을 생성합니다.
+     * 정상 객실 가격을 사용해 새로운 예약을 생성합니다.
+     *
+     * 타임세일 가격을 전달하지 않는 기존 호출과
+     * 테스트의 호환성을 위해 유지합니다.
      */
     public static Reservation create(
         Member member,
@@ -107,17 +110,46 @@ public class Reservation extends BaseTimeEntity {
         int guestCount,
         LocalDateTime expiresAt
     ) {
+        long pricePerNight = room == null
+            ? 0L
+            : room.getPricePerNight();
+
+        return create(
+            member,
+            room,
+            checkInDate,
+            checkOutDate,
+            guestCount,
+            expiresAt,
+            pricePerNight
+        );
+    }
+
+    /**
+     * 현재 적용 가격을 사용해 새로운 예약을 생성합니다.
+     *
+     * appliedPricePerNight는 예약 생성 시점의 가격이며,
+     * 타임세일 종료 이후에도 예약에 그대로 보존됩니다.
+     */
+    public static Reservation create(
+        Member member,
+        Room room,
+        LocalDate checkInDate,
+        LocalDate checkOutDate,
+        int guestCount,
+        LocalDateTime expiresAt,
+        long appliedPricePerNight
+    ) {
         validateMember(member);
         validateRoom(room);
         validateGuestCount(room, guestCount);
         validateExpiresAt(expiresAt);
 
-        // 예약 생성과 예약 가능 여부 조회가 동일한 가격 계산 규칙을 사용합니다.
         ReservationPrice reservationPrice =
             ReservationPrice.calculate(
                 checkInDate,
                 checkOutDate,
-                room.getPricePerNight()
+                appliedPricePerNight
             );
 
         return new Reservation(

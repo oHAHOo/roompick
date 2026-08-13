@@ -9,7 +9,8 @@ import com.roompick.domain.room.entity.RoomImage;
  * 객실 상세·예약 가능 여부 화면에 필요한
  * 객실 기본 정보를 반환하는 응답 DTO입니다.
  *
- * 숙소명과 주소는 화면에서 사용하지 않으므로 반환하지 않습니다.
+ * pricePerNight는 현재 적용 가격이고,
+ * normalPricePerNight는 객실에 등록된 정상 가격입니다.
  */
 public record RoomDetailResponseDto(
 
@@ -23,6 +24,10 @@ public record RoomDetailResponseDto(
 
     long pricePerNight,
 
+    long normalPricePerNight,
+
+    boolean discountApplied,
+
     int standardCapacity,
 
     int maxCapacity,
@@ -32,17 +37,25 @@ public record RoomDetailResponseDto(
 ) {
 
     /**
-     * Room 엔티티를 객실 상세 응답 DTO로 변환합니다.
+     * Room 엔티티와 현재 적용 가격을
+     * 객실 상세 응답으로 변환합니다.
      */
     public static RoomDetailResponseDto from(
-        Room room
+        Room room,
+        long appliedPricePerNight
     ) {
+        long normalPricePerNight =
+            room.getPricePerNight();
+
         return new RoomDetailResponseDto(
             room.getId(),
             room.getRoomNumber(),
             room.getName(),
             room.getDescription(),
-            room.getPricePerNight(),
+            appliedPricePerNight,
+            normalPricePerNight,
+            appliedPricePerNight
+                < normalPricePerNight,
             room.getStandardCapacity(),
             room.getMaxCapacity(),
             room.getImages().stream()

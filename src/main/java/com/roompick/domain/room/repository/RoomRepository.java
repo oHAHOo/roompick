@@ -155,4 +155,19 @@ public interface RoomRepository
         Long accommodationId,
         String roomNumber
     );
+
+    @Query("""
+    SELECT DISTINCT room
+    FROM Room room
+    JOIN FETCH room.accommodation accommodation
+    LEFT JOIN FETCH room.images image
+    WHERE accommodation.id = :accommodationId
+      AND room.status =
+          com.roompick.domain.room.entity.RoomStatus.ACTIVE
+    ORDER BY room.roomNumber ASC, room.id ASC
+    """)
+    List<Room> findAllActiveWithImagesByAccommodationId(
+        @Param("accommodationId")
+        Long accommodationId
+    );
 }

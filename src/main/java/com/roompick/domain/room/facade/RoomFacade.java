@@ -8,6 +8,7 @@ import com.roompick.domain.room.dto.RoomAvailabilityResponseDto;
 import com.roompick.domain.room.dto.RoomDetailResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.timesale.service.TimeSalePriceService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -19,40 +20,69 @@ import lombok.RequiredArgsConstructor;
 public class RoomFacade {
 
     private final RoomService roomService;
-    private final ReservationService reservationService;
+
+    private final ReservationService
+        reservationService;
+
+    private final TimeSalePriceService
+        timeSalePriceService;
 
     /**
-     * 객실 상세 정보를 조회하고 공개 응답으로 변환합니다.
+     * 객실 상세 정보와 현재 적용 가격을 조회합니다.
      */
-    public RoomDetailResponseDto getRoomDetail(Long roomId) {
-        Room room = roomService.findActiveById(roomId);
+    public RoomDetailResponseDto getRoomDetail(
+        Long roomId
+    ) {
+        Room room =
+            roomService.findActiveById(
+                roomId
+            );
 
-        return RoomDetailResponseDto.from(room);
+        long appliedPricePerNight =
+            timeSalePriceService
+                .calculatePricePerNight(
+                    room
+                );
+
+        return RoomDetailResponseDto.from(
+            room,
+            appliedPricePerNight
+        );
     }
 
     /**
      * 객실 상태·인원·숙박 기간·기존 예약을 확인하고
-     * 예약 가능 여부와 예상 결제 금액을 반환합니다.
+     * 타임세일이 반영된 예상 결제 금액을 반환합니다.
      */
-    public RoomAvailabilityResponseDto getRoomAvailability(
+    public RoomAvailabilityResponseDto
+    getRoomAvailability(
         Long roomId,
         RoomAvailabilityRequestDto request
     ) {
-        Room room = roomService.findReservableRoom(
-            roomId,
-            request.guestCount()
-        );
+        Room room =
+            roomService.findReservableRoom(
+                roomId,
+                request.guestCount()
+            );
 
-        boolean available = reservationService.isRoomAvailable(
-            roomId,
-            request.checkInDate(),
-            request.checkOutDate()
-        );
+        boolean available =
+            reservationService.isRoomAvailable(
+                roomId,
+                request.checkInDate(),
+                request.checkOutDate()
+            );
+
+        long appliedPricePerNight =
+            timeSalePriceService
+                .calculatePricePerNight(
+                    room
+                );
 
         return RoomAvailabilityResponseDto.of(
             room,
             request,
-            available
+            available,
+            appliedPricePerNight
         );
     }
 }
