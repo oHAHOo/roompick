@@ -290,6 +290,127 @@ class AccommodationRepositoryTest {
             );
     }
 
+    @Test
+    @DisplayName(
+        "숙소 ID 목록 조회는 대표(0번) 이미지를 LEFT JOIN으로 "
+            + "함께 조회하고, 이미지가 없으면 imageUrl은 null이다"
+    )
+    void findAllActiveSummaryByIdIn_대표_이미지를_함께_조회한다() {
+        // given
+        Accommodation withImage =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "이미지 있는 호텔",
+                    "서울특별시 중구",
+                    "설명",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+        withImage.addImages(
+            List.of(
+                "https://example.com/a.jpg",
+                "https://example.com/b.jpg"
+            )
+        );
+        accommodationRepository.save(withImage);
+
+        Accommodation withoutImage =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "이미지 없는 호텔",
+                    "서울특별시 강남구",
+                    "설명",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<AccommodationListResponseDto> result =
+            accommodationRepository.findAllActiveSummaryByIdIn(
+                List.of(withImage.getId(), withoutImage.getId())
+            );
+
+        // then: 대표(0번) 이미지 URL만 반환되고, LEFT JOIN으로 행이 늘어나지 않는다.
+        assertThat(result).hasSize(2);
+
+        assertThat(result)
+            .filteredOn(dto -> dto.accommodationId().equals(withImage.getId()))
+            .extracting(AccommodationListResponseDto::imageUrl)
+            .containsExactly("https://example.com/a.jpg");
+
+        assertThat(result)
+            .filteredOn(dto -> dto.accommodationId().equals(withoutImage.getId()))
+            .extracting(AccommodationListResponseDto::imageUrl)
+            .containsExactly((String) null);
+    }
+
+    @Test
+    @DisplayName("숙소 상세 조회는 이미지 컬렉션을 fetch join으로 함께 초기화한다")
+    void findByIdWithImages_이미지를_함께_로딩한다() {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "룸픽 호텔",
+                    "서울특별시 중구",
+                    "설명",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+        accommodation.addImages(List.of("https://example.com/a.jpg"));
+        accommodationRepository.save(accommodation);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        Accommodation found = accommodationRepository
+            .findByIdWithImages(accommodation.getId())
+            .orElseThrow();
+
+        // then
+        boolean imagesLoaded = jakarta.persistence.Persistence.getPersistenceUtil()
+            .isLoaded(found, "images");
+        assertThat(imagesLoaded).isTrue();
+        assertThat(found.getImages()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("숙소 ID 조회는 이미지 컬렉션을 초기화하지 않는다")
+    void findById_이미지를_로딩하지_않는다() {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(
+                Accommodation.create(
+                    "룸픽 호텔",
+                    "서울특별시 중구",
+                    "설명",
+                    LocalTime.of(15, 0),
+                    LocalTime.of(11, 0)
+                )
+            );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        Accommodation found = accommodationRepository
+            .findById(accommodation.getId())
+            .orElseThrow();
+
+        // then: 상태 확인 등 이미지가 필요 없는 조회 경로까지
+        // 이미지 로딩을 강제하지 않는다.
+        boolean imagesLoaded = jakarta.persistence.Persistence.getPersistenceUtil()
+            .isLoaded(found, "images");
+        assertThat(imagesLoaded).isFalse();
+    }
+
     /**
      * fallback 정렬 테스트에서 사용할 생성 시각을
      * DB에 직접 설정합니다.

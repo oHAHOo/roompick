@@ -81,35 +81,26 @@ Content-Type: application/json
 
 인증된 관리자가 숙소를 등록한다. 생성된 숙소의 초기 상태는 `ACTIVE`이다.
 
+이미지 업로드를 포함하기 위해 `multipart/form-data`로 요청한다. `images`는 여러 장 첨부할 수 있으며, 업로드 순서가 그대로 대표(썸네일) 순서가 된다(0번째가 대표 이미지).
+
 ### Request
 
 ```http
 POST /api/v1/admin/accommodations
 Authorization: Bearer {accessToken}
-Content-Type: application/json
+Content-Type: multipart/form-data
 ```
 
-```json
-{
-  "name": "룸픽 호텔",
-  "address": "서울특별시 강남구 테헤란로 123",
-  "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
-  "checkInTime": "15:00:00",
-  "checkOutTime": "11:00:00"
-}
-```
-
-### Request Field
-
-| 이름 | 타입 | 필수 | 제약 |
+| 폼 필드 | 타입 | 필수 | 제약 |
 | --- | --- | --- | --- |
 | `name` | `String` | O | 공백 제외 1자 이상, 최대 100자 |
 | `address` | `String` | O | 공백 제외 1자 이상, 최대 255자 |
 | `description` | `String` | X | 숙소 설명 |
 | `checkInTime` | `LocalTime` | O | `HH:mm:ss` |
 | `checkOutTime` | `LocalTime` | O | `HH:mm:ss` |
+| `images` | `File[]` | X | jpg/png/webp, 파일당 최대 10MB, 최대 10장 |
 
-`status`와 관리자 ID는 Request Body로 받지 않는다. 숙소 상태는 서버에서 `ACTIVE`로 정하고 관리자 여부는 인증 정보로 검증한다.
+`status`와 관리자 ID는 Request로 받지 않는다. 숙소 상태는 서버에서 `ACTIVE`로 정하고 관리자 여부는 인증 정보로 검증한다.
 
 ### Response — 201 Created
 
@@ -124,7 +115,10 @@ Content-Type: application/json
     "description": "RoomPick MVP 예약 테스트를 위한 숙소입니다.",
     "checkInTime": "15:00:00",
     "checkOutTime": "11:00:00",
-    "status": "ACTIVE"
+    "status": "ACTIVE",
+    "imageUrls": [
+      "https://images.roompick.ina3700.click/accommodations/....jpg"
+    ]
   }
 }
 ```
@@ -136,18 +130,25 @@ Content-Type: application/json
 | `400` | `ACCOMMODATION_NAME_REQUIRED` | 숙소명이 없거나 공백임 |
 | `400` | `ACCOMMODATION_ADDRESS_REQUIRED` | 숙소 주소가 없거나 공백임 |
 | `400` | `ACCOMMODATION_TIME_REQUIRED` | 체크인 또는 체크아웃 시간이 없음 |
+| `400` | `UNSUPPORTED_IMAGE_TYPE` | 첨부한 이미지 형식이 jpg/png/webp가 아님 |
+| `400` | `IMAGE_SIZE_EXCEEDED` | 이미지 파일 용량이 10MB를 초과함 |
+| `400` | `IMAGE_COUNT_EXCEEDED` | 첨부한 이미지가 10장을 초과함 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
 | `403` | `FORBIDDEN` | `ADMIN` 권한이 없는 회원의 요청 |
+| `502` | `IMAGE_UPLOAD_FAILED` | S3 이미지 업로드 중 오류가 발생함 |
 
 ### 처리 순서
 
 ```text
 인증 회원의 ADMIN 권한 확인
 → 요청 값 검증
-→ ACTIVE 상태의 숙소 생성
+→ 첨부 이미지 S3 업로드
+→ ACTIVE 상태의 숙소 생성 및 이미지 URL 저장
 → 숙소 저장
 → 생성 결과 반환
 ```
+
+S3는 DB 트랜잭션에 참여하지 않으므로, 이미지 업로드 이후 단계(숙소 생성·저장)가 실패하면 이미 업로드된 이미지를 서버가 직접 정리해 orphan object가 남지 않도록 한다.
 
 ---
 
@@ -155,23 +156,14 @@ Content-Type: application/json
 
 인증된 관리자가 기존 숙소에 실제 객실을 등록한다. 생성된 객실의 초기 상태는 `INACTIVE`이며, 공개 처리 전에는 사용자 화면에 노출되지 않는다.
 
+이미지 업로드를 포함하기 위해 `multipart/form-data`로 요청한다. `images`는 여러 장 첨부할 수 있으며, 업로드 순서가 그대로 대표(썸네일) 순서가 된다(0번째가 대표 이미지).
+
 ### Request
 
 ```http
 POST /api/v1/admin/accommodations/1/rooms
 Authorization: Bearer {accessToken}
-Content-Type: application/json
-```
-
-```json
-{
-  "roomNumber": "101",
-  "name": "디럭스 더블룸",
-  "description": "2인이 이용할 수 있는 더블룸입니다.",
-  "pricePerNight": 100000,
-  "standardCapacity": 2,
-  "maxCapacity": 2
-}
+Content-Type: multipart/form-data
 ```
 
 ### Path Variable
@@ -182,7 +174,7 @@ Content-Type: application/json
 
 ### Request Field
 
-| 이름 | 타입 | 필수 | 제약 |
+| 폼 필드 | 타입 | 필수 | 제약 |
 | --- | --- | --- | --- |
 | `roomNumber` | `String` | O | 같은 숙소 안에서 중복 불가, 최대 30자 |
 | `name` | `String` | O | 공백 제외 1자 이상, 최대 100자 |
@@ -190,8 +182,9 @@ Content-Type: application/json
 | `pricePerNight` | `long` | O | 0원 이상 |
 | `standardCapacity` | `int` | O | 1명 이상 |
 | `maxCapacity` | `int` | O | 기준 인원 이상 |
+| `images` | `File[]` | X | jpg/png/webp, 파일당 최대 10MB, 최대 10장 |
 
-`status`는 Request Body로 받지 않고 서버에서 `INACTIVE`로 정한다. 관리자가 `SOLD_OUT`을 요청 값으로 전달할 수 없다.
+`status`는 Request로 받지 않고 서버에서 `INACTIVE`로 정한다. 관리자가 `SOLD_OUT`을 요청 값으로 전달할 수 없다.
 
 ### Response — 201 Created
 
@@ -208,7 +201,10 @@ Content-Type: application/json
     "pricePerNight": 100000,
     "standardCapacity": 2,
     "maxCapacity": 2,
-    "status": "INACTIVE"
+    "status": "INACTIVE",
+    "imageUrls": [
+      "https://images.roompick.ina3700.click/rooms/....jpg"
+    ]
   }
 }
 ```
@@ -221,22 +217,30 @@ Content-Type: application/json
 | `400` | `ROOM_NAME_REQUIRED` | 객실명이 없거나 공백임 |
 | `400` | `INVALID_ROOM_PRICE` | 1박 가격이 0원 미만임 |
 | `400` | `INVALID_ROOM_CAPACITY` | 기준·최대 인원 조건이 올바르지 않음 |
+| `400` | `UNSUPPORTED_IMAGE_TYPE` | 첨부한 이미지 형식이 jpg/png/webp가 아님 |
+| `400` | `IMAGE_SIZE_EXCEEDED` | 이미지 파일 용량이 10MB를 초과함 |
+| `400` | `IMAGE_COUNT_EXCEEDED` | 첨부한 이미지가 10장을 초과함 |
 | `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
 | `403` | `FORBIDDEN` | `ADMIN` 권한이 없는 회원의 요청 |
 | `404` | `ACCOMMODATION_NOT_FOUND` | 숙소가 존재하지 않음 |
 | `409` | `ACCOMMODATION_INACTIVE` | 운영 중지된 숙소에 객실 등록을 요청함 |
 | `409` | `ROOM_NUMBER_DUPLICATED` | 같은 숙소에 동일한 객실 번호가 이미 존재함 |
+| `502` | `IMAGE_UPLOAD_FAILED` | S3 이미지 업로드 중 오류가 발생함 |
 
 ### 처리 순서
 
 ```text
 인증 회원의 ADMIN 권한 확인
-→ 숙소 조회 및 운영 상태 확인
 → 요청 값 검증
+→ 숙소 조회
+→ 첨부 이미지 S3 업로드
+→ 숙소 운영 상태 확인
 → 같은 숙소의 객실 번호 중복 확인
-→ INACTIVE 상태의 객실 생성 및 저장
+→ INACTIVE 상태의 객실 생성 및 이미지 URL 저장
 → 생성 결과 반환
 ```
+
+S3는 DB 트랜잭션에 참여하지 않으므로, 이미지 업로드 이후 단계(숙소 상태 확인, 객실 번호 중복 확인, 객실 생성·저장)가 실패하면 이미 업로드된 이미지를 서버가 직접 정리해 orphan object가 남지 않도록 한다.
 
 ### 등록 이후 상태 정책
 

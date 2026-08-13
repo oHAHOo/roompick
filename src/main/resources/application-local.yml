@@ -34,8 +34,17 @@ portone:
     secret: ${PORTONE_API_SECRET}
     connect-timeout: ${PORTONE_CONNECT_TIMEOUT:3s}
     read-timeout: ${PORTONE_READ_TIMEOUT:5s}
-    store-id: ${PORTONE_STORE_ID}
-    channel-key: ${PORTONE_CHANNEL_KEY}
+  store-id: ${PORTONE_STORE_ID}
+  channel-key: ${PORTONE_CHANNEL_KEY}
+
+aws:
+  s3:
+    bucket: ${AWS_S3_BUCKET:roompick-images}
+    region: ${AWS_S3_REGION:ap-northeast-2}
+    access-key: ${AWS_S3_ACCESS_KEY}
+    secret-key: ${AWS_S3_SECRET_KEY}
+    cdn-domain: ${AWS_S3_CDN_DOMAIN:}
+    cdn-distribution-id: ${AWS_S3_CDN_DISTRIBUTION_ID:}
 
 place:
   api:

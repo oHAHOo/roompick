@@ -2,18 +2,24 @@ package com.roompick.domain.accommodation.entity;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.roompick.global.common.BaseTimeEntity;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -75,6 +81,20 @@ public class Accommodation extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private AccommodationStatus status;
+
+    /*
+     * 등록 순서(sortOrder) 오름차순이며, 첫 번째가 대표(썸네일) 이미지입니다.
+     * LAZY이므로 전체 이미지가 필요한 상세 조회는
+     * AccommodationRepository.findByIdWithImages()의 fetch join으로 초기화한다.
+     */
+    @OneToMany(
+        mappedBy = "accommodation",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true,
+        fetch = FetchType.LAZY
+    )
+    @OrderBy("sortOrder ASC")
+    private List<AccommodationImage> images = new ArrayList<>();
 
     /**
      * 새로운 숙소를 생성합니다.
@@ -179,6 +199,25 @@ public class Accommodation extends BaseTimeEntity {
      */
     public void inactivate() {
         this.status = AccommodationStatus.INACTIVE;
+    }
+
+    /**
+     * 등록 시점에 업로드된 이미지 URL을 순서대로 추가합니다.
+     */
+    public void addImages(List<String> imageUrls) {
+        if (imageUrls == null) {
+            return;
+        }
+
+        for (String imageUrl : imageUrls) {
+            images.add(
+                AccommodationImage.create(
+                    this,
+                    imageUrl,
+                    images.size()
+                )
+            );
+        }
     }
 
     private static void validateName(String name) {

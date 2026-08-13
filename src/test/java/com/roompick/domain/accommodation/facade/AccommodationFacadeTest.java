@@ -258,7 +258,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            accommodationService.findActiveById(
+            accommodationService.findActiveByIdWithImages(
                 accommodationId
             )
         ).willReturn(accommodation);
@@ -285,7 +285,7 @@ class AccommodationFacadeTest {
 
         then(accommodationService)
             .should()
-            .findActiveById(
+            .findActiveByIdWithImages(
                 accommodationId
             );
 
@@ -307,7 +307,7 @@ class AccommodationFacadeTest {
             );
 
         given(
-            accommodationService.findActiveById(
+            accommodationService.findActiveByIdWithImages(
                 accommodationId
             )
         ).willThrow(exception);

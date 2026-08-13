@@ -4,18 +4,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalTime;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -50,29 +50,23 @@ class AdminAccommodationControllerTest {
                 "RoomPick MVP 예약 테스트를 위한 숙소",
                 LocalTime.of(15, 0, 0),
                 LocalTime.of(11, 0, 0),
-                AccommodationStatus.ACTIVE
+                AccommodationStatus.ACTIVE,
+                List.of()
             );
 
         given(
-            adminAccommodationFacade.createAccommodation(any())
+            adminAccommodationFacade.createAccommodation(any(), any())
         ).willReturn(result);
-
-        String requestBody = """
-            {
-              "name": "룸픽 호텔",
-              "address": "서울특별시 중구",
-              "description": "RoomPick MVP 예약 테스트를 위한 숙소",
-              "checkInTime": "15:00:00",
-              "checkOutTime": "11:00:00"
-            }
-            """;
 
         // when & then
         mockMvc.perform(
-                post("/api/v1/admin/accommodations")
+                multipart("/api/v1/admin/accommodations")
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("description", "RoomPick MVP 예약 테스트를 위한 숙소")
+                    .param("checkInTime", "15:00:00")
+                    .param("checkOutTime", "11:00:00")
             )
             .andExpect(status().isCreated())
             .andExpect(
@@ -109,23 +103,15 @@ class AdminAccommodationControllerTest {
     @WithMockUser(roles = "USER")
     @DisplayName("일반 회원은 숙소를 등록할 수 없다")
     void 일반_회원은_숙소를_등록할_수_없다() throws Exception {
-        // given
-        String requestBody = """
-            {
-              "name": "룸픽 호텔",
-              "address": "서울특별시 중구",
-              "description": "RoomPick MVP 예약 테스트를 위한 숙소",
-              "checkInTime": "15:00:00",
-              "checkOutTime": "11:00:00"
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post("/api/v1/admin/accommodations")
+                multipart("/api/v1/admin/accommodations")
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("description", "RoomPick MVP 예약 테스트를 위한 숙소")
+                    .param("checkInTime", "15:00:00")
+                    .param("checkOutTime", "11:00:00")
             )
             .andExpect(status().isForbidden())
             .andExpect(
@@ -147,23 +133,15 @@ class AdminAccommodationControllerTest {
     @Test
     @DisplayName("인증되지 않은 회원은 숙소를 등록할 수 없다")
     void 인증되지_않은_회원은_숙소를_등록할_수_없다() throws Exception {
-        // given
-        String requestBody = """
-            {
-              "name": "룸픽 호텔",
-              "address": "서울특별시 중구",
-              "description": "RoomPick MVP 예약 테스트를 위한 숙소",
-              "checkInTime": "15:00:00",
-              "checkOutTime": "11:00:00"
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post("/api/v1/admin/accommodations")
+                multipart("/api/v1/admin/accommodations")
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("description", "RoomPick MVP 예약 테스트를 위한 숙소")
+                    .param("checkInTime", "15:00:00")
+                    .param("checkOutTime", "11:00:00")
             )
             .andExpect(status().isUnauthorized())
             .andExpect(
@@ -186,22 +164,14 @@ class AdminAccommodationControllerTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("체크인 시간이 누락되면 숙소 등록에 실패한다")
     void 체크인_시간이_누락되면_숙소_등록에_실패한다() throws Exception {
-        // given
-        String requestBody = """
-            {
-              "name": "룸픽 호텔",
-              "address": "서울특별시 중구",
-              "description": "RoomPick MVP 예약 테스트를 위한 숙소",
-              "checkOutTime": "11:00:00"
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post("/api/v1/admin/accommodations")
+                multipart("/api/v1/admin/accommodations")
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("description", "RoomPick MVP 예약 테스트를 위한 숙소")
+                    .param("checkOutTime", "11:00:00")
             )
             .andExpect(status().isBadRequest())
             .andExpect(
@@ -220,23 +190,15 @@ class AdminAccommodationControllerTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("시간 형식이 올바르지 않으면 숙소 등록에 실패한다")
     void 시간_형식이_올바르지_않으면_숙소_등록에_실패한다() throws Exception {
-        // given
-        String requestBody = """
-            {
-              "name": "룸픽 호텔",
-              "address": "서울특별시 중구",
-              "description": "RoomPick MVP 예약 테스트를 위한 숙소",
-              "checkInTime": "15:00",
-              "checkOutTime": "11:00"
-            }
-            """;
-
         // when & then
         mockMvc.perform(
-                post("/api/v1/admin/accommodations")
+                multipart("/api/v1/admin/accommodations")
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestBody)
+                    .param("name", "룸픽 호텔")
+                    .param("address", "서울특별시 중구")
+                    .param("description", "RoomPick MVP 예약 테스트를 위한 숙소")
+                    .param("checkInTime", "15:00")
+                    .param("checkOutTime", "11:00")
             )
             .andExpect(status().isBadRequest());
 

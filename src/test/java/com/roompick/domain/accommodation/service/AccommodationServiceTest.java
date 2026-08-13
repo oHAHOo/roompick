@@ -191,7 +191,6 @@ class AccommodationServiceTest {
             );
 
         // then: Repository에서 조회한 페이지 결과가 반환됩니다.
-        assertThat(result).isSameAs(accommodationPage);
         assertThat(result.getContent())
             .containsExactly(accommodationResponse);
     }

@@ -1,13 +1,19 @@
 package com.roompick.domain.admin.room.controller;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.roompick.domain.admin.room.dto.request.RoomCreateRequestDto;
 import com.roompick.domain.admin.room.dto.request.RoomStatusUpdateRequestDto;
@@ -26,15 +32,18 @@ public class AdminRoomController {
 
     private final AdminRoomFacade adminRoomFacade;
 
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<RoomCreateResponseDto>> createRoom(
         @PathVariable Long accommodationId,
-        @Valid @RequestBody RoomCreateRequestDto request
+        @Valid @ModelAttribute RoomCreateRequestDto request,
+        @RequestParam(required = false)
+        List<MultipartFile> images
     ) {
         RoomCreateResponseDto response =
             adminRoomFacade.createRoom(
                 accommodationId,
-                request
+                request,
+                images
             );
 
         ResponseEntity<ApiResponseDto<RoomCreateResponseDto>> result =

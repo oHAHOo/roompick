@@ -62,6 +62,38 @@ public class AccommodationService {
     }
 
     /**
+     * 운영 중인 숙소를 이미지 전체 목록과 함께 조회합니다.
+     *
+     * 숙소 상세 조회에서만 이미지가 필요하므로
+     * fetch join 전용 쿼리로 조회해 다른 조회 경로의
+     * 이미지 로딩을 강제하지 않습니다.
+     */
+    @Transactional(readOnly = true)
+    public Accommodation findActiveByIdWithImages(
+        Long accommodationId
+    ) {
+        Accommodation accommodation =
+            accommodationRepository
+                .findByIdWithImages(accommodationId)
+                .orElseThrow(() ->
+                    new BusinessException(
+                        ErrorCode.ACCOMMODATION_NOT_FOUND
+                    )
+                );
+
+        if (
+            accommodation.getStatus()
+                != AccommodationStatus.ACTIVE
+        ) {
+            throw new BusinessException(
+                ErrorCode.ACCOMMODATION_INACTIVE
+            );
+        }
+
+        return accommodation;
+    }
+
+    /**
      * 운영 중인 숙소 목록을 페이지 단위로 조회합니다.
      *
      * 페이지 요청값을 검증한 뒤 목록 화면에 필요한 필드만
@@ -185,7 +217,8 @@ public class AccommodationService {
         String address,
         String description,
         LocalTime checkInTime,
-        LocalTime checkOutTime
+        LocalTime checkOutTime,
+        List<String> imageUrls
     ) {
         Accommodation accommodation =
             Accommodation.create(
@@ -195,6 +228,8 @@ public class AccommodationService {
                 checkInTime,
                 checkOutTime
             );
+
+        accommodation.addImages(imageUrls);
 
         return accommodationRepository.save(accommodation);
     }

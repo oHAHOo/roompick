@@ -1,6 +1,7 @@
 package com.roompick.domain.accommodation.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,6 +17,11 @@ import com.roompick.domain.accommodation.entity.Accommodation;
  *
  * 단건 조회는 Entity로 반환하고,
  * 목록 조회는 필요한 필드만 DTO로 직접 조회합니다.
+ *
+ * 목록 조회 DTO의 대표(썸네일) 이미지는 accommodation_images의
+ * (accommodation_id, sort_order) UNIQUE 제약으로 sort_order = 0인 행이
+ * 최대 1건만 존재함이 보장되므로, LEFT JOIN으로 조회해도 행이 늘어나지 않습니다.
+ * 이 덕분에 대표 이미지를 별도 배치 쿼리 없이 원래의 단일 쿼리로 함께 가져올 수 있습니다.
  */
 public interface AccommodationRepository
     extends JpaRepository<Accommodation, Long> {
@@ -31,9 +37,12 @@ public interface AccommodationRepository
             SELECT new com.roompick.domain.accommodation.dto.AccommodationListResponseDto(
                 accommodation.id,
                 accommodation.name,
-                accommodation.address
+                accommodation.address,
+                image.imageUrl
             )
             FROM Accommodation accommodation
+            LEFT JOIN accommodation.images image
+                ON image.sortOrder = 0
             WHERE accommodation.status =
                 com.roompick.domain.accommodation.entity.AccommodationStatus.ACTIVE
             ORDER BY accommodation.id ASC
@@ -63,9 +72,12 @@ public interface AccommodationRepository
         SELECT new com.roompick.domain.accommodation.dto.AccommodationListResponseDto(
             accommodation.id,
             accommodation.name,
-            accommodation.address
+            accommodation.address,
+            image.imageUrl
         )
         FROM Accommodation accommodation
+        LEFT JOIN accommodation.images image
+            ON image.sortOrder = 0
         WHERE accommodation.id IN :accommodationIds
             AND accommodation.status =
                 com.roompick.domain.accommodation.entity.AccommodationStatus.ACTIVE
@@ -87,9 +99,12 @@ public interface AccommodationRepository
         SELECT new com.roompick.domain.accommodation.dto.AccommodationListResponseDto(
             accommodation.id,
             accommodation.name,
-            accommodation.address
+            accommodation.address,
+            image.imageUrl
         )
         FROM Accommodation accommodation
+        LEFT JOIN accommodation.images image
+            ON image.sortOrder = 0
         WHERE accommodation.status =
             com.roompick.domain.accommodation.entity.AccommodationStatus.ACTIVE
         ORDER BY accommodation.createdAt DESC,
@@ -98,5 +113,22 @@ public interface AccommodationRepository
     )
     List<AccommodationListResponseDto> findLatestActive(
         Pageable pageable
+    );
+
+    /**
+     * 숙소 상세 조회에 필요한 이미지 목록을 fetch join으로 함께 조회합니다.
+     *
+     * 상세 조회에서만 이미지 전체 목록이 필요하므로,
+     * 다른 조회 경로(공개 상태 확인 등)까지 이미지 로딩을 강제하지 않도록
+     * 전용 쿼리로 분리합니다.
+     */
+    @Query("""
+        SELECT accommodation
+        FROM Accommodation accommodation
+        LEFT JOIN FETCH accommodation.images
+        WHERE accommodation.id = :accommodationId
+        """)
+    Optional<Accommodation> findByIdWithImages(
+        @Param("accommodationId") Long accommodationId
     );
 }

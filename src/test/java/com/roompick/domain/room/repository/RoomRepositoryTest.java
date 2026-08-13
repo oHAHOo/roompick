@@ -195,6 +195,55 @@ class RoomRepositoryTest {
     }
 
     @Test
+    @DisplayName("예약 생성용 비관적 락 조회는 이미지 컬렉션을 초기화하지 않는다")
+    void findByIdForUpdate_이미지를_로딩하지_않는다() {
+        // given
+        Accommodation accommodation = accommodationRepository.save(createAccommodation());
+        Room room = roomRepository.save(createRoom(accommodation));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        Room foundRoom = roomRepository.findByIdForUpdate(room.getId())
+            .orElseThrow();
+
+        // then
+        // 락 획득 경로에서는 이미지가 필요 없으므로 LAZY 컬렉션이
+        // 초기화되지 않은 채로 남아 있어야 락 보유 시간이 불필요하게 늘어나지 않는다.
+        boolean imagesLoaded = Persistence.getPersistenceUtil()
+            .isLoaded(foundRoom, "images");
+        assertThat(imagesLoaded).isFalse();
+    }
+
+    @Test
+    @DisplayName("사용자 상세 조회는 이미지 컬렉션을 fetch join으로 함께 초기화한다")
+    void findPublicById_이미지를_함께_로딩한다() {
+        // given
+        Accommodation accommodation = accommodationRepository.save(createAccommodation());
+        Room room = createRoom(accommodation);
+        room.activate();
+        room.addImages(List.of("https://example.com/room.jpg"));
+        roomRepository.save(room);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        Room foundRoom = roomRepository.findPublicById(
+            room.getId(),
+            RoomStatus.ACTIVE,
+            AccommodationStatus.ACTIVE
+        ).orElseThrow();
+
+        // then
+        boolean imagesLoaded = Persistence.getPersistenceUtil()
+            .isLoaded(foundRoom, "images");
+        assertThat(imagesLoaded).isTrue();
+        assertThat(foundRoom.getImages()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("객실과 숙소가 모두 ACTIVE인 경우에만 사용자 상세 조회 조건에 일치한다")
     void findPublicById() {
         // given
