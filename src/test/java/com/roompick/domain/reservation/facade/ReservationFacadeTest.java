@@ -36,11 +36,12 @@ import com.roompick.domain.reservation.service.ReservationIdempotencyService;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.timesale.service.TimeSalePriceService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
 /**
- * 객실 Service와 예약 Service를 연결하는
+ * 객실 Service, 타임세일 가격 Service와 예약 Service를 연결하는
  * ReservationFacade의 흐름을 검증합니다.
  */
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +49,9 @@ class ReservationFacadeTest {
 
     private static final String IDEMPOTENCY_KEY =
         "reservation-create-20260810-0001";
+
+    private static final long APPLIED_PRICE_PER_NIGHT =
+        100_000L;
 
     @Mock
     private RoomService roomService;
@@ -60,6 +64,9 @@ class ReservationFacadeTest {
         reservationIdempotencyService;
 
     @Mock
+    private TimeSalePriceService timeSalePriceService;
+
+    @Mock
     private ReservationIdempotency reservationIdempotency;
 
     @InjectMocks
@@ -68,7 +75,7 @@ class ReservationFacadeTest {
     @Test
     @DisplayName(
         "객실에 비관적 락을 획득한 뒤 "
-            + "결제 대기 예약을 생성한다"
+            + "타임세일 가격을 적용해 결제 대기 예약을 생성한다"
     )
     void 객실에_락을_획득한_뒤_예약을_생성한다() {
         // given
@@ -101,9 +108,7 @@ class ReservationFacadeTest {
             );
 
         Accommodation accommodation =
-            createAccommodation(
-                accommodationId
-            );
+            createAccommodation(accommodationId);
 
         Room room =
             createRoom(
@@ -121,7 +126,8 @@ class ReservationFacadeTest {
                 checkInDate,
                 checkOutDate,
                 2,
-                expiresAt
+                expiresAt,
+                APPLIED_PRICE_PER_NIGHT
             );
 
         ReflectionTestUtils.setField(
@@ -144,12 +150,16 @@ class ReservationFacadeTest {
         ).willReturn(false);
 
         given(
-            roomService
-                .findReservableRoomForUpdate(
-                    roomId,
-                    2
-                )
+            roomService.findReservableRoomForUpdate(
+                roomId,
+                2
+            )
         ).willReturn(room);
+
+        given(
+            timeSalePriceService
+                .calculatePricePerNight(room)
+        ).willReturn(APPLIED_PRICE_PER_NIGHT);
 
         given(
             reservationService.createReservation(
@@ -157,7 +167,8 @@ class ReservationFacadeTest {
                 room,
                 checkInDate,
                 checkOutDate,
-                2
+                2,
+                APPLIED_PRICE_PER_NIGHT
             )
         ).willReturn(reservation);
 
@@ -201,7 +212,7 @@ class ReservationFacadeTest {
             .isEqualTo(2);
 
         assertThat(response.pricePerNight())
-            .isEqualTo(100_000L);
+            .isEqualTo(APPLIED_PRICE_PER_NIGHT);
 
         assertThat(response.totalAmount())
             .isEqualTo(200_000L);
@@ -214,13 +225,6 @@ class ReservationFacadeTest {
         assertThat(response.expiresAt())
             .isEqualTo(expiresAt);
 
-        then(roomService)
-            .should()
-            .findReservableRoomForUpdate(
-                roomId,
-                2
-            );
-
         then(reservationIdempotencyService)
             .should()
             .getOrCreate(
@@ -229,6 +233,17 @@ class ReservationFacadeTest {
                 request
             );
 
+        then(roomService)
+            .should()
+            .findReservableRoomForUpdate(
+                roomId,
+                2
+            );
+
+        then(timeSalePriceService)
+            .should()
+            .calculatePricePerNight(room);
+
         then(reservationService)
             .should()
             .createReservation(
@@ -236,7 +251,8 @@ class ReservationFacadeTest {
                 room,
                 checkInDate,
                 checkOutDate,
-                2
+                2,
+                APPLIED_PRICE_PER_NIGHT
             );
 
         then(reservationIdempotencyService)
@@ -250,7 +266,7 @@ class ReservationFacadeTest {
     @Test
     @DisplayName(
         "같은 멱등성 키와 요청이 다시 전달되면 "
-            + "기존 예약 결과를 반환한다"
+            + "가격을 다시 계산하지 않고 기존 예약 결과를 반환한다"
     )
     void 동일한_멱등성_요청이면_기존_예약을_반환한다() {
         // given
@@ -296,7 +312,8 @@ class ReservationFacadeTest {
                     1,
                     12,
                     10
-                )
+                ),
+                APPLIED_PRICE_PER_NIGHT
             );
 
         ReflectionTestUtils.setField(
@@ -338,6 +355,12 @@ class ReservationFacadeTest {
         assertThat(response.memberId())
             .isEqualTo(memberId);
 
+        assertThat(response.pricePerNight())
+            .isEqualTo(APPLIED_PRICE_PER_NIGHT);
+
+        assertThat(response.totalAmount())
+            .isEqualTo(200_000L);
+
         then(reservationIdempotencyService)
             .should()
             .getOrCreate(
@@ -350,6 +373,9 @@ class ReservationFacadeTest {
             .shouldHaveNoMoreInteractions();
 
         then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(timeSalePriceService)
             .shouldHaveNoInteractions();
 
         then(reservationService)
@@ -408,6 +434,9 @@ class ReservationFacadeTest {
         then(roomService)
             .shouldHaveNoInteractions();
 
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
+
         then(reservationService)
             .shouldHaveNoInteractions();
     }
@@ -459,6 +488,9 @@ class ReservationFacadeTest {
             );
 
         then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(timeSalePriceService)
             .shouldHaveNoInteractions();
 
         then(reservationService)
@@ -515,6 +547,9 @@ class ReservationFacadeTest {
         then(roomService)
             .shouldHaveNoInteractions();
 
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
+
         then(reservationService)
             .shouldHaveNoInteractions();
     }
@@ -522,7 +557,7 @@ class ReservationFacadeTest {
     @Test
     @DisplayName(
         "락 조회한 숙소 또는 객실이 운영 중지 상태면 "
-            + "예약을 생성하지 않는다"
+            + "가격을 계산하거나 예약을 생성하지 않는다"
     )
     void 운영_중지된_숙소나_객실에는_예약을_생성하지_않는다() {
         // given
@@ -570,19 +605,12 @@ class ReservationFacadeTest {
                 request
             )
         )
-            .isInstanceOf(
-                BusinessException.class
-            )
+            .isInstanceOf(BusinessException.class)
             .extracting(exception ->
                 ((BusinessException) exception)
                     .getErrorCode()
             )
-            .isEqualTo(
-                ErrorCode.ROOM_INACTIVE
-            );
-
-        then(reservationService)
-            .shouldHaveNoInteractions();
+            .isEqualTo(ErrorCode.ROOM_INACTIVE);
 
         then(reservationIdempotencyService)
             .should()
@@ -594,6 +622,12 @@ class ReservationFacadeTest {
 
         then(reservationIdempotencyService)
             .shouldHaveNoMoreInteractions();
+
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
     }
 
     @Test
@@ -636,9 +670,7 @@ class ReservationFacadeTest {
             );
 
         Accommodation accommodation =
-            createAccommodation(
-                accommodationId
-            );
+            createAccommodation(accommodationId);
 
         Room room =
             createRoom(
@@ -656,7 +688,8 @@ class ReservationFacadeTest {
                 checkInDate,
                 checkOutDate,
                 2,
-                expiresAt
+                expiresAt,
+                APPLIED_PRICE_PER_NIGHT
             );
 
         ReflectionTestUtils.setField(
@@ -692,12 +725,11 @@ class ReservationFacadeTest {
 
         // when
         ReservationPageResponseDto response =
-            reservationFacade
-                .getMyReservations(
-                    memberId,
-                    page,
-                    size
-                );
+            reservationFacade.getMyReservations(
+                memberId,
+                page,
+                size
+            );
 
         // then
         assertThat(response.content())
@@ -712,8 +744,7 @@ class ReservationFacadeTest {
         ).isEqualTo(reservationId);
 
         assertThat(
-            reservationResponse
-                .accommodationName()
+            reservationResponse.accommodationName()
         ).isEqualTo("룸픽 호텔");
 
         assertThat(
@@ -768,6 +799,12 @@ class ReservationFacadeTest {
                 page,
                 size
             );
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
     }
 
     @Test
@@ -807,9 +844,7 @@ class ReservationFacadeTest {
             );
 
         Accommodation accommodation =
-            createAccommodation(
-                accommodationId
-            );
+            createAccommodation(accommodationId);
 
         Room room =
             createRoom(
@@ -827,7 +862,8 @@ class ReservationFacadeTest {
                 checkInDate,
                 checkOutDate,
                 2,
-                expiresAt
+                expiresAt,
+                APPLIED_PRICE_PER_NIGHT
             );
 
         ReflectionTestUtils.setField(
@@ -843,20 +879,18 @@ class ReservationFacadeTest {
         );
 
         given(
-            reservationService
-                .findMyReservation(
-                    memberId,
-                    reservationId
-                )
+            reservationService.findMyReservation(
+                memberId,
+                reservationId
+            )
         ).willReturn(reservation);
 
         // when
         ReservationDetailResponseDto response =
-            reservationFacade
-                .getMyReservation(
-                    memberId,
-                    reservationId
-                );
+            reservationFacade.getMyReservation(
+                memberId,
+                reservationId
+            );
 
         // then
         assertThat(response.reservationId())
@@ -878,9 +912,7 @@ class ReservationFacadeTest {
             response
                 .accommodation()
                 .address()
-        ).isEqualTo(
-            "서울특별시 강남구"
-        );
+        ).isEqualTo("서울특별시 강남구");
 
         assertThat(response.room().roomId())
             .isEqualTo(roomId);
@@ -904,7 +936,7 @@ class ReservationFacadeTest {
             .isEqualTo(2);
 
         assertThat(response.pricePerNight())
-            .isEqualTo(100_000L);
+            .isEqualTo(APPLIED_PRICE_PER_NIGHT);
 
         assertThat(response.totalAmount())
             .isEqualTo(200_000L);
@@ -929,6 +961,12 @@ class ReservationFacadeTest {
                 memberId,
                 reservationId
             );
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
     }
 
     @Test
@@ -966,16 +1004,8 @@ class ReservationFacadeTest {
             Reservation.create(
                 member,
                 room,
-                LocalDate.of(
-                    2026,
-                    8,
-                    10
-                ),
-                LocalDate.of(
-                    2026,
-                    8,
-                    12
-                ),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
                 2,
                 LocalDateTime.of(
                     2026,
@@ -983,7 +1013,8 @@ class ReservationFacadeTest {
                     1,
                     14,
                     10
-                )
+                ),
+                APPLIED_PRICE_PER_NIGHT
             );
 
         ReflectionTestUtils.setField(
@@ -998,20 +1029,18 @@ class ReservationFacadeTest {
         );
 
         given(
-            reservationService
-                .cancelReservation(
-                    memberId,
-                    reservationId
-                )
+            reservationService.cancelReservation(
+                memberId,
+                reservationId
+            )
         ).willReturn(reservation);
 
         // when
         ReservationCancelResponseDto response =
-            reservationFacade
-                .cancelReservation(
-                    memberId,
-                    reservationId
-                );
+            reservationFacade.cancelReservation(
+                memberId,
+                reservationId
+            );
 
         // then
         assertThat(response.reservationId())
@@ -1031,6 +1060,12 @@ class ReservationFacadeTest {
                 memberId,
                 reservationId
             );
+
+        then(roomService)
+            .shouldHaveNoInteractions();
+
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
     }
 
     /**
@@ -1085,8 +1120,7 @@ class ReservationFacadeTest {
     }
 
     /**
-     * 예약 회원의 ID가 필요한
-     * 단위 테스트 회원을 생성합니다.
+     * 예약 회원의 ID가 필요한 단위 테스트 회원을 생성합니다.
      */
     private Member createMember(
         Long memberId
