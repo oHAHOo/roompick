@@ -3,11 +3,14 @@ package com.roompick.domain.timesale.service;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.timesale.entity.TimeSale;
 import com.roompick.domain.timesale.repository.TimeSaleRepository;
@@ -70,6 +73,110 @@ public class TimeSalePriceService {
             normalPricePerNight,
             applicableSale.getDiscountRate()
         );
+    }
+
+    /**
+     * 숙소의 객실 목록에 적용할 현재 가격을 배치 계산합니다.
+     *
+     * 객실 수와 관계없이 객실 전용 타임세일 1회와
+     * 숙소 전체 타임세일 1회만 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Long> calculateRoomListPrices(
+        Long accommodationId,
+        List<RoomListResponseDto> rooms
+    ) {
+        if (rooms == null || rooms.isEmpty()) {
+            return Map.of();
+        }
+
+        LocalDateTime now = now();
+
+        List<Long> roomIds = rooms.stream()
+            .map(RoomListResponseDto::roomId)
+            .toList();
+
+        List<TimeSale> roomSales =
+            timeSaleRepository
+                .findApplicableRoomSalesByRoomIds(
+                    roomIds,
+                    now
+                );
+
+        List<TimeSale> accommodationSales =
+            timeSaleRepository
+                .findApplicableAccommodationSales(
+                    accommodationId,
+                    now
+                );
+
+        Map<Long, TimeSale> roomSaleByRoomId =
+            selectFirstApplicableRoomSale(
+                roomSales,
+                now
+            );
+
+        TimeSale accommodationSale =
+            findFirstApplicableSale(
+                accommodationSales,
+                now
+            );
+
+        Map<Long, Long> prices = new LinkedHashMap<>();
+
+        for (RoomListResponseDto room : rooms) {
+            TimeSale roomSale =
+                roomSaleByRoomId.get(room.roomId());
+
+            TimeSale applicableSale =
+                roomSale != null
+                    ? roomSale
+                    : accommodationSale;
+
+            long appliedPrice =
+                applicableSale == null
+                    ? room.normalPricePerNight()
+                    : calculateDiscountedPrice(
+                        room.normalPricePerNight(),
+                        applicableSale.getDiscountRate()
+                    );
+
+            prices.put(room.roomId(), appliedPrice);
+        }
+
+        return prices;
+    }
+
+    private Map<Long, TimeSale>
+    selectFirstApplicableRoomSale(
+        List<TimeSale> roomSales,
+        LocalDateTime now
+    ) {
+        Map<Long, TimeSale> result =
+            new LinkedHashMap<>();
+
+        for (TimeSale sale : roomSales) {
+            if (!sale.appliesAt(now)) {
+                continue;
+            }
+
+            result.putIfAbsent(
+                sale.getRoom().getId(),
+                sale
+            );
+        }
+
+        return result;
+    }
+
+    private TimeSale findFirstApplicableSale(
+        List<TimeSale> sales,
+        LocalDateTime now
+    ) {
+        return sales.stream()
+            .filter(sale -> sale.appliesAt(now))
+            .findFirst()
+            .orElse(null);
     }
 
     /**

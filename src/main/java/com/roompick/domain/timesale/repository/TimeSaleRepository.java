@@ -70,6 +70,29 @@ public interface TimeSaleRepository
     );
 
     /**
+     * 객실 목록에 포함된 모든 객실의 현재 적용 가능한
+     * 객실 전용 타임세일을 한 번에 조회합니다.
+     */
+    @Query("""
+        SELECT timeSale
+        FROM TimeSale timeSale
+        JOIN FETCH timeSale.room room
+        WHERE room.id IN :roomIds
+          AND timeSale.status
+              <> com.roompick.domain.timesale.entity.TimeSaleStatus.ENDED
+          AND timeSale.startAt <= :now
+          AND timeSale.endAt > :now
+        ORDER BY
+            room.id ASC,
+            timeSale.discountRate DESC,
+            timeSale.id ASC
+        """)
+    List<TimeSale> findApplicableRoomSalesByRoomIds(
+        @Param("roomIds") List<Long> roomIds,
+        @Param("now") LocalDateTime now
+    );
+
+    /**
      * 현재 시각에 적용 가능한 숙소 전체 타임세일을
      * 조회합니다.
      *

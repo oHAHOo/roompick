@@ -9,6 +9,13 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +40,8 @@ import org.testcontainers.utility.DockerImageName;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.admin.timesale.dto.request.TimeSaleCreateRequestDto;
+import com.roompick.domain.admin.timesale.facade.AdminTimeSaleFacade;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.domain.timesale.entity.TimeSale;
@@ -106,6 +115,11 @@ class TimeSaleMySqlIntegrationTest {
             12,
             0
         );
+
+    private static final int CONCURRENT_REQUEST_COUNT = 2;
+
+    private static final Duration ASYNC_TIMEOUT =
+        Duration.ofSeconds(15);
 
     @Container
     static final MySQLContainer<?> MYSQL_CONTAINER =
@@ -184,6 +198,9 @@ class TimeSaleMySqlIntegrationTest {
 
     @Autowired
     private RoomRepository roomRepository;
+
+    @Autowired
+    private AdminTimeSaleFacade adminTimeSaleFacade;
 
     private Accommodation accommodation;
 
@@ -603,6 +620,208 @@ class TimeSaleMySqlIntegrationTest {
                     firstRoom
                 )
         ).isEqualTo(100_000L);
+    }
+
+    @Test
+    @DisplayName(
+        "같은 숙소 전체 타임세일의 겹치는 동시 등록은 한 건만 저장된다"
+    )
+    void concurrentOverlappingAccommodationSalesCreateOnlyOne()
+        throws Exception {
+        TimeSaleCreateRequestDto request =
+            new TimeSaleCreateRequestDto(
+                null,
+                20,
+                NOW.plusHours(1),
+                NOW.plusHours(4)
+            );
+
+        List<ErrorCode> results =
+            executeConcurrentCreates(
+                request,
+                request
+            );
+
+        assertThat(results)
+            .filteredOn(errorCode -> errorCode == null)
+            .hasSize(1);
+
+        assertThat(results)
+            .filteredOn(
+                ErrorCode.TIME_SALE_PERIOD_OVERLAP::equals
+            )
+            .hasSize(1);
+
+        assertThat(timeSaleRepository.count())
+            .isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName(
+        "같은 객실 타임세일의 겹치는 동시 등록은 한 건만 저장된다"
+    )
+    void concurrentOverlappingRoomSalesCreateOnlyOne()
+        throws Exception {
+        TimeSaleCreateRequestDto request =
+            new TimeSaleCreateRequestDto(
+                firstRoom.getId(),
+                20,
+                NOW.plusHours(1),
+                NOW.plusHours(4)
+            );
+
+        List<ErrorCode> results =
+            executeConcurrentCreates(
+                request,
+                request
+            );
+
+        assertThat(results)
+            .filteredOn(errorCode -> errorCode == null)
+            .hasSize(1);
+
+        assertThat(results)
+            .filteredOn(
+                ErrorCode.TIME_SALE_PERIOD_OVERLAP::equals
+            )
+            .hasSize(1);
+
+        assertThat(timeSaleRepository.count())
+            .isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName(
+        "서로 다른 객실의 타임세일은 동시에 등록할 수 있다"
+    )
+    void concurrentSalesForDifferentRoomsBothSucceed()
+        throws Exception {
+        TimeSaleCreateRequestDto firstRequest =
+            new TimeSaleCreateRequestDto(
+                firstRoom.getId(),
+                20,
+                NOW.plusHours(1),
+                NOW.plusHours(4)
+            );
+
+        TimeSaleCreateRequestDto secondRequest =
+            new TimeSaleCreateRequestDto(
+                secondRoom.getId(),
+                30,
+                NOW.plusHours(1),
+                NOW.plusHours(4)
+            );
+
+        List<ErrorCode> results =
+            executeConcurrentCreates(
+                firstRequest,
+                secondRequest
+            );
+
+        assertThat(results)
+            .containsOnlyNulls();
+
+        assertThat(timeSaleRepository.count())
+            .isEqualTo(2L);
+    }
+
+    private List<ErrorCode> executeConcurrentCreates(
+        TimeSaleCreateRequestDto firstRequest,
+        TimeSaleCreateRequestDto secondRequest
+    ) throws Exception {
+        CountDownLatch ready = new CountDownLatch(
+            CONCURRENT_REQUEST_COUNT
+        );
+
+        CountDownLatch start = new CountDownLatch(1);
+
+        ExecutorService executor =
+            Executors.newFixedThreadPool(
+                CONCURRENT_REQUEST_COUNT
+            );
+
+        try {
+            Future<ErrorCode> firstFuture =
+                executor.submit(() ->
+                    attemptCreate(
+                        firstRequest,
+                        ready,
+                        start
+                    )
+                );
+
+            Future<ErrorCode> secondFuture =
+                executor.submit(() ->
+                    attemptCreate(
+                        secondRequest,
+                        ready,
+                        start
+                    )
+                );
+
+            boolean bothReady = ready.await(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+
+            assertThat(bothReady).isTrue();
+            start.countDown();
+
+            return Arrays.asList(
+                firstFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                ),
+                secondFuture.get(
+                    ASYNC_TIMEOUT.toMillis(),
+                    TimeUnit.MILLISECONDS
+                )
+            );
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            executor.awaitTermination(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+        }
+    }
+
+    private ErrorCode attemptCreate(
+        TimeSaleCreateRequestDto request,
+        CountDownLatch ready,
+        CountDownLatch start
+    ) {
+        ready.countDown();
+
+        try {
+            boolean started = start.await(
+                ASYNC_TIMEOUT.toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+
+            if (!started) {
+                throw new IllegalStateException(
+                    "타임세일 동시 등록 시작 신호 대기 시간이 초과됐습니다."
+                );
+            }
+
+            adminTimeSaleFacade.create(
+                accommodation.getId(),
+                request
+            );
+
+            return null;
+        } catch (BusinessException exception) {
+            return exception.getErrorCode();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+
+            throw new IllegalStateException(
+                "타임세일 동시 등록 테스트가 중단됐습니다.",
+                exception
+            );
+        }
     }
 
     /**

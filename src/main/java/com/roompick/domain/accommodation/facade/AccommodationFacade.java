@@ -2,6 +2,7 @@ package com.roompick.domain.accommodation.facade;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
@@ -19,7 +20,6 @@ import com.roompick.domain.accommodation.service.PopularAccommodationSingleFligh
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
-import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.timesale.service.TimeSalePriceService;
 
 import lombok.RequiredArgsConstructor;
@@ -173,25 +173,23 @@ public class AccommodationFacade {
             accommodationId
         );
 
-        List<Room> rooms =
+        List<RoomListResponseDto> rooms =
             roomService
-                .findAllActiveWithImagesByAccommodationId(
+                .findAllActiveSummaryByAccommodationId(
                     accommodationId
                 );
 
-        return rooms.stream()
-            .map(room -> {
-                long appliedPricePerNight =
-                    timeSalePriceService
-                        .calculatePricePerNight(
-                            room
-                        );
-
-                return RoomListResponseDto.from(
-                    room,
-                    appliedPricePerNight
+        Map<Long, Long> appliedPrices =
+            timeSalePriceService
+                .calculateRoomListPrices(
+                    accommodationId,
+                    rooms
                 );
-            })
+
+        return rooms.stream()
+            .map(room -> room.withAppliedPrice(
+                appliedPrices.get(room.roomId())
+            ))
             .toList();
     }
 
