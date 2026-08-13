@@ -2,6 +2,7 @@ package com.roompick.domain.accommodation.repository;
 
 import java.util.List;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -25,6 +26,11 @@ import lombok.RequiredArgsConstructor;
  * 최종 결과는 검색 중심 위치와 가까운 순서로 반환합니다.
  */
 @Repository
+@ConditionalOnProperty(
+    prefix = "roompick.search",
+    name = "location-engine",
+    havingValue = "ELASTICSEARCH"
+)
 @RequiredArgsConstructor
 public class AccommodationElasticsearchLocationSearchRepository {
 

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,7 +52,10 @@ public class AccommodationFacade {
     /**
      * Elasticsearch 기반 위치 검색을 담당합니다.
      */
-    private final AccommodationElasticsearchLocationSearchService
+    private final ObjectProvider<AccommodationElasticsearchLocationSearchService>
+        accommodationElasticsearchLocationSearchServiceProvider;
+
+    private AccommodationElasticsearchLocationSearchService
         accommodationElasticsearchLocationSearchService;
 
     private final RoomService roomService;
@@ -70,8 +75,32 @@ public class AccommodationFacade {
      * application 설정에 따라
      * MySQL 또는 Elasticsearch 검색 경로를 선택합니다.
      */
-    @Value("${roompick.search.location-engine:ELASTICSEARCH}")
+    @Value("${roompick.search.location-engine:MYSQL}")
     private AccommodationLocationSearchEngine locationSearchEngine;
+
+    /**
+     * 위치 검색 엔진 설정과 조건부 Elasticsearch Bean 구성을 검증합니다.
+     *
+     * ELASTICSEARCH가 선택된 경우 검색 Service를 애플리케이션 초기화 시
+     * 한 번만 확인하고 보관하여 잘못된 배포 설정을 즉시 발견합니다.
+     */
+    @PostConstruct
+    void initializeLocationSearchEngine() {
+        if (locationSearchEngine !=
+            AccommodationLocationSearchEngine.ELASTICSEARCH) {
+            return;
+        }
+
+        accommodationElasticsearchLocationSearchService =
+            accommodationElasticsearchLocationSearchServiceProvider
+                .getIfAvailable();
+
+        if (accommodationElasticsearchLocationSearchService == null) {
+            throw new IllegalStateException(
+                "위치 검색 엔진은 ELASTICSEARCH이지만 Elasticsearch 검색 Bean이 활성화되지 않았습니다."
+            );
+        }
+    }
 
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.

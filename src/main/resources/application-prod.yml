@@ -50,3 +50,8 @@ place:
     key: ${KAKAO_REST_API_KEY}
     connect-timeout: ${KAKAO_LOCAL_API_CONNECT_TIMEOUT:2s}
     read-timeout: ${KAKAO_LOCAL_API_READ_TIMEOUT:3s}
+
+roompick:
+  search:
+    # 운영에서는 별도 Elasticsearch 인프라 없이 MySQL 위치 검색을 사용합니다.
+    location-engine: MYSQL

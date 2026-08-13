@@ -19,11 +19,6 @@ spring:
     init:
       mode: never
 
-  data:
-    elasticsearch:
-      repositories:
-        enabled: false
-
 jwt:
   secret: roompick-test-secret-key-roompick-test-secret-key-1234567890
   access-token-validity-seconds: 3600
@@ -51,3 +46,8 @@ place:
     key: test-kakao-rest-api-key
     connect-timeout: 200ms
     read-timeout: 200ms
+
+roompick:
+  search:
+    # CI와 단위 테스트는 외부 Elasticsearch 서버 없이 실행합니다.
+    location-engine: MYSQL

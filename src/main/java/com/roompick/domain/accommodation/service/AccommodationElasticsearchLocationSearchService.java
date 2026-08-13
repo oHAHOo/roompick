@@ -2,6 +2,7 @@ package com.roompick.domain.accommodation.service;
 
 import java.util.List;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.roompick.domain.accommodation.document.AccommodationSearchDocument;
@@ -21,6 +22,11 @@ import lombok.RequiredArgsConstructor;
  * API 응답 DTO로 변환합니다.
  */
 @Service
+@ConditionalOnProperty(
+    prefix = "roompick.search",
+    name = "location-engine",
+    havingValue = "ELASTICSEARCH"
+)
 @RequiredArgsConstructor
 public class AccommodationElasticsearchLocationSearchService {
 

@@ -43,6 +43,7 @@
 - `ACTIVE` 숙소 목록과 좌표 기반 주변 숙소 검색을 제공한다.
 - 주변 숙소 검색은 선택된 `latitude`, `longitude`를 중심으로 반경과 반환 개수를 제한하며 거리순으로 반환한다.
 - 장소명은 `/api/v1/places/search`에서 후보 좌표로 변환하고, 사용자가 선택한 좌표를 `/api/v1/accommodations/search`에 전달한다.
-- 숙소 위치 검색 엔진은 설정에 따라 MySQL Bounding Box 또는 Elasticsearch를 사용한다.
+- production 숙소 위치 검색은 MySQL Bounding Box를 사용한다.
+- Elasticsearch 검색 구현은 local 성능 비교와 향후 재도입을 위해 보존하며, local 설정에서 선택할 수 있다.
 - 장소 검색 중 숙소 DB를 조회하거나 DB 트랜잭션을 시작하지 않는다.
 - 자동완성, 초성 검색, 오타 보정, 동의어, 추천 검색어와 복합 필터·사용자 지정 정렬은 구현하지 않는다.

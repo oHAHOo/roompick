@@ -19,10 +19,12 @@ import lombok.NoArgsConstructor;
  *
  * location은 Elasticsearch의 geo_point로 저장하며,
  * 반경 검색과 거리순 정렬에 사용합니다.
+ * 인덱스 생성과 매핑은 전체 재색인 Service에서 명시적으로 수행합니다.
  */
 @Getter
 @Document(
-    indexName = "roompick-accommodations-v1"
+    indexName = "roompick-accommodations-v1",
+    createIndex = false
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AccommodationSearchDocument {

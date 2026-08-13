@@ -2,6 +2,7 @@ package com.roompick.domain.accommodation.service;
 
 import java.util.List;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.IndexOperations;
@@ -25,6 +26,11 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
+@ConditionalOnProperty(
+    prefix = "roompick.search",
+    name = "location-engine",
+    havingValue = "ELASTICSEARCH"
+)
 @RequiredArgsConstructor
 public class AccommodationSearchReindexService {
 

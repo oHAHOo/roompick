@@ -345,6 +345,8 @@ GET /api/v1/accommodations/search?latitude=37.4979&longitude=127.0276&radiusKm=5
 | `limit` | `int` | X | `20` | 반환할 숙소 수, 1 이상 100 이하 |
 
 설정값 `roompick.search.location-engine`에 따라 MySQL Bounding Box 또는 Elasticsearch 검색 경로를 사용한다.
+production 기본값은 `MYSQL`이며 Elasticsearch 서버 없이 기동한다. Elasticsearch 경로는 local 성능 비교와
+향후 재도입을 위해 보존한다.
 장소 검색과 숙소 검색은 별도 요청이므로 Kakao API 지연 중에 DB 트랜잭션을 열지 않는다.
 
 ---

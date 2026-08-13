@@ -204,6 +204,9 @@ Controller
 ```
 
 현재 Facade는 설정값에 따라 MySQL Bounding Box 검색과 Elasticsearch 검색 중 하나를 선택할 수 있다.
+production에서는 `MYSQL`을 사용하며, Elasticsearch 전용 Repository·Service·재색인 Bean은 생성하지 않는다.
+따라서 Elasticsearch 서버가 없어도 애플리케이션을 기동할 수 있다. Elasticsearch 경로는 local 성능 비교와
+향후 재도입을 위해 설정값이 `ELASTICSEARCH`일 때만 활성화한다.
 
 ```text
 ACCOMMODATION_LOCATION_SEARCH_ENGINE=MYSQL
@@ -463,6 +466,9 @@ ACCOMMODATION_LOCATION_SEARCH_ENGINE=MYSQL \
 ACCOMMODATION_LOCATION_SEARCH_ENGINE=ELASTICSEARCH \
 ./gradlew bootRun
 ```
+
+production 설정은 `roompick.search.location-engine: MYSQL`로 고정한다. 운영 배포에서는 Elasticsearch
+Repository·검색 Service·재색인 Bean을 활성화하지 않으며 Elasticsearch 컨테이너도 필요하지 않다.
 
 성능 측정에서 검색 엔진 태그와 실제 애플리케이션 검색 경로가 뒤섞이지 않도록 `/actuator/info`에도 현재 검색 엔진을 노출한다.
 
@@ -1416,7 +1422,7 @@ API 요청
 3. 위치 검색뿐 아니라 향후 숙소명·주소 검색, 검색 분석기, 자동완성 등 검색 기능을 확장할 수 있다.
 4. 검색 부하를 예약·결제 등 트랜잭션 데이터를 처리하는 MySQL과 분리할 수 있다.
 
-다만 이번 비교를 통해 **현재 수준의 단순 반경 검색만 필요하고 운영 복잡도와 비용을 최소화해야 한다면 Bounding Box + MySQL 역시 충분히 고려할 수 있는 대안**임을 확인했다.
+이번 비교를 통해 **현재 수준의 단순 반경 검색에는 Bounding Box + MySQL만으로도 충분한 응답 성능을 확보할 수 있음**을 확인했다. Elasticsearch의 추가 성능 효과보다 현재 규모의 운영 복잡도와 비용을 줄이는 편이 적절하다고 판단했다.
 
 따라서 RoomPick의 선택은 다음과 같이 정리한다.
 
@@ -1424,14 +1430,14 @@ API 요청
 Source of Truth
 MySQL
 
-단순 위치 검색의 저복잡도 대안
+현재 production 위치 검색
 MySQL Bounding Box + 좌표 인덱스
 
-검색 전용 목표 구조
+local 성능 비교 및 향후 재도입 후보
 Elasticsearch Read Model
 ```
 
-Elasticsearch를 실제 운영 검색 경로로 사용하려면 숙소 생성·좌표 변경·비활성화 시 인덱스를 일관되게 동기화하는 구조와 장애 대응 및 재색인 운영 정책이 추가로 필요하다.
+Elasticsearch 구현과 성능 결과는 보존한다. 향후 운영 검색 경로로 재도입하려면 숙소 생성·좌표 변경·비활성화 시 인덱스를 일관되게 동기화하는 구조와 장애 대응 및 재색인 운영 정책이 추가로 필요하다.
 
 
 ---
@@ -2083,25 +2089,28 @@ scenario=geo-only
 
 숙소 생성·수정·상태 변경의 원본 데이터는 MySQL에 유지한다.
 
-Elasticsearch는 검색을 위한 Read Model이다.
+Elasticsearch는 local 성능 비교와 향후 재도입을 위해 보존하는 검색용 Read Model이다.
 
 ```text
 Write
 → MySQL
 
-Search
-→ Elasticsearch
+Production Search
+→ MySQL Bounding Box
+
+Local Elasticsearch Experiment
+→ Elasticsearch Read Model
 ```
 
 Elasticsearch 장애 또는 데이터 유실 시 MySQL을 기준으로 검색 인덱스를 다시 생성할 수 있어야 한다.
 
-MySQL Bounding Box 검색 경로는 별도 검색 인프라가 필요하지 않기 때문에 단순 반경 검색만 필요할 경우 낮은 운영 복잡도의 대안으로 유지할 수 있다.
+현재 production은 별도 검색 인프라가 필요하지 않은 MySQL Bounding Box 검색 경로를 사용한다.
 
 ### 24.2 실시간 Elasticsearch 인덱스 동기화
 
 이번 작업에서는 전체 재색인 경로를 구현했지만 숙소 생성·좌표 변경·비활성화 시 Elasticsearch Document를 실시간으로 동기화하는 운영 흐름은 아직 구현하지 않았다.
 
-운영 환경에서는 다음 흐름이 필요하다.
+향후 Elasticsearch를 production 검색 엔진으로 재도입하려면 다음 흐름이 필요하다.
 
 ```text
 숙소 생성 / 수정 / 좌표 변경 / 비활성화
@@ -2117,7 +2126,8 @@ MySQL 트랜잭션과 Elasticsearch 작업은 하나의 DB 트랜잭션으로 �
 * 재동기화
 * 전체 재색인 복구 경로
 
-따라서 Elasticsearch를 최종 운영 경로로 선택할 경우 **검색 성능뿐 아니라 데이터 일관성 운영 구조가 필수**다.
+현재 production 검색 엔진은 MySQL이므로 이 실시간 동기화는 구현하지 않는다. 향후 Elasticsearch를 운영
+경로로 재도입할 경우에는 **검색 성능뿐 아니라 데이터 일관성 운영 구조가 필수**다.
 
 ### 24.3 전체 재색인과 인덱스 버전
 
@@ -2672,7 +2682,8 @@ Elasticsearch
 3. Elasticsearch geo_distance
 ```
 
-비교 결과 MySQL 자체에서도 Bounding Box와 인덱스를 이용해 큰 폭의 성능 개선이 가능했다.
+비교 결과 MySQL 자체에서도 Bounding Box와 인덱스를 이용해 큰 폭의 성능 개선이 가능했고, 현재 RoomPick
+규모에서 필요한 응답 성능을 충분히 확보했다고 판단했다.
 
 따라서 단순한 반경 검색만 필요하고 별도 검색 인프라 운영 비용을 최소화하는 것이 중요하다면:
 
@@ -2684,7 +2695,7 @@ Bounding Box
 좌표 인덱스
 ```
 
-구조도 충분히 현실적인 선택지가 될 수 있다.
+구조를 production 검색 엔진으로 최종 선택했다.
 
 RoomPick은 현재 숙소명·주소 keyword 검색과 Kakao 장소 검색 연계를 제공한다. 다음 검색 품질·운영 기능은
 여전히 별도 고도화 범위다.
@@ -2696,20 +2707,24 @@ RoomPick은 현재 숙소명·주소 keyword 검색과 Kakao 장소 검색 연�
 
 또한 이번 동일 조건 테스트에서 Bounding Box로 최적화한 MySQL보다 Elasticsearch가 더 낮은 응답시간과 높은 처리량을 기록했다.
 
-따라서 RoomPick의 최종 방향은 다음과 같이 정리한다.
+Elasticsearch의 측정 성능이 가장 빨랐지만, 추가 검색 노드 인프라, MySQL과 Elasticsearch 사이의 데이터
+동기화, 장애 지점 증가, 모니터링과 운영 복잡도를 함께 고려했다. 따라서 RoomPick의 최종 방향은 다음과 같이
+정리한다.
 
 ```text
 Source of Truth
 → MySQL
 
-단순 위치 검색의 저복잡도 대안
+현재 production 위치 검색
 → MySQL Bounding Box + 좌표 인덱스
 
-검색 기능 확장 및 검색 부하 분리를 위한 목표 구조
+local 성능 비교 및 향후 재도입 후보
 → Elasticsearch Read Model
 ```
 
-Elasticsearch를 운영 검색 경로로 사용하기 위해서는 아직 숙소 생성·수정·비활성화 시 검색 Document를 안정적으로 동기화하는 구조와 장애 대응 정책이 필요하다.
+Elasticsearch 구현과 기존 성능 측정 결과는 삭제하지 않는다. 검색 트래픽 증가나 검색 기능 고도화로 재도입할
+때 활용하되, 숙소 생성·수정·비활성화 시 검색 Document를 안정적으로 동기화하는 구조와 장애 대응 정책을
+먼저 마련해야 한다. 현재는 production 검색 엔진으로 사용하지 않으므로 실시간 동기화를 구현하지 않는다.
 
 이번 테스트를 통해 단순히 `MySQL보다 Elasticsearch가 빠르다`는 결론이 아니라,
 

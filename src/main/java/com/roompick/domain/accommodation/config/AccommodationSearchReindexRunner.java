@@ -3,6 +3,7 @@ package com.roompick.domain.accommodation.config;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @Profile("local")
 @RequiredArgsConstructor
+@ConditionalOnBean(AccommodationSearchReindexService.class)
 @ConditionalOnProperty(
     prefix = "roompick.search",
     name = "reindex-enabled",

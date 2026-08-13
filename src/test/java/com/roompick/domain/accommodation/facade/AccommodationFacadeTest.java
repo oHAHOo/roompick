@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -51,6 +52,10 @@ class AccommodationFacadeTest {
     @Mock
     private AccommodationLocationSearchService
         accommodationLocationSearchService;
+
+    @Mock
+    private ObjectProvider<AccommodationElasticsearchLocationSearchService>
+        accommodationElasticsearchLocationSearchServiceProvider;
 
     @Mock
     private AccommodationElasticsearchLocationSearchService
@@ -165,7 +170,7 @@ class AccommodationFacadeTest {
          * MYSQL이 선택된 경우
          * Elasticsearch 검색 경로는 호출되면 안 됩니다.
          */
-        then(accommodationElasticsearchLocationSearchService)
+        then(accommodationElasticsearchLocationSearchServiceProvider)
             .shouldHaveNoInteractions();
     }
 
@@ -198,6 +203,15 @@ class AccommodationFacadeTest {
             "locationSearchEngine",
             AccommodationLocationSearchEngine.ELASTICSEARCH
         );
+
+        given(
+            accommodationElasticsearchLocationSearchServiceProvider
+                .getIfAvailable()
+        ).willReturn(
+            accommodationElasticsearchLocationSearchService
+        );
+
+        accommodationFacade.initializeLocationSearchEngine();
 
         given(
             accommodationElasticsearchLocationSearchService.searchNearby(
@@ -238,6 +252,39 @@ class AccommodationFacadeTest {
          * MySQL Bounding Box 검색은 실행되면 안 됩니다.
          */
         then(accommodationLocationSearchService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
+        "ELASTICSEARCH 설정에 검색 Bean이 없으면 명확한 설정 예외가 발생한다"
+    )
+    void Elasticsearch_설정과_Bean_활성화가_불일치하면_예외가_발생한다() {
+        // given
+        ReflectionTestUtils.setField(
+            accommodationFacade,
+            "locationSearchEngine",
+            AccommodationLocationSearchEngine.ELASTICSEARCH
+        );
+
+        given(
+            accommodationElasticsearchLocationSearchServiceProvider
+                .getIfAvailable()
+        ).willReturn(null);
+
+        // when & then
+        assertThatThrownBy(
+            () -> accommodationFacade.initializeLocationSearchEngine()
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(
+                "위치 검색 엔진은 ELASTICSEARCH"
+            );
+
+        then(accommodationLocationSearchService)
+            .shouldHaveNoInteractions();
+
+        then(accommodationElasticsearchLocationSearchService)
             .shouldHaveNoInteractions();
     }
 

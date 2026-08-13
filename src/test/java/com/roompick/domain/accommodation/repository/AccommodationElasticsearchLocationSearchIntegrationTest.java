@@ -37,7 +37,8 @@ import com.roompick.domain.accommodation.service.AccommodationSearchReindexServi
 @SpringBootTest(
     properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.flyway.enabled=false"
+        "spring.flyway.enabled=false",
+        "roompick.search.location-engine=ELASTICSEARCH"
     }
 )
 class AccommodationElasticsearchLocationSearchIntegrationTest {
