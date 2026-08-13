@@ -11,8 +11,6 @@ CREATE TABLE time_sales (
 
     PRIMARY KEY (time_sale_id),
 
-    PRIMARY KEY (time_sale_id),
-
     CONSTRAINT fk_time_sales_accommodation
         FOREIGN KEY (accommodation_id)
             REFERENCES accommodations (accommodation_id),
