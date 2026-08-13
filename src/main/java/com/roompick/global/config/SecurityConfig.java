@@ -37,7 +37,8 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_GET_PATHS = {
         "/api/v1/accommodations/**",
-        "/api/v1/rooms/**"
+        "/api/v1/rooms/**",
+        "/api/v1/places/**"
     };
 
     private static final String ADMIN_PATH_PATTERN = "/api/v1/admin/**";
