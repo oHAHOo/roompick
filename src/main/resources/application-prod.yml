@@ -34,3 +34,10 @@ portone:
     read-timeout: ${PORTONE_READ_TIMEOUT:5s}
   store-id: ${PORTONE_STORE_ID}
   channel-key: ${PORTONE_CHANNEL_KEY}
+
+place:
+  api:
+    base-url: ${KAKAO_LOCAL_API_BASE_URL:https://dapi.kakao.com}
+    key: ${KAKAO_REST_API_KEY}
+    connect-timeout: ${KAKAO_LOCAL_API_CONNECT_TIMEOUT:2s}
+    read-timeout: ${KAKAO_LOCAL_API_READ_TIMEOUT:3s}

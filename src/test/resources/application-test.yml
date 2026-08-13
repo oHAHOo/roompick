@@ -33,3 +33,10 @@ portone:
     read-timeout: 1s
   store-id: test-store-id
   channel-key: test-channel-key
+
+place:
+  api:
+    base-url: http://localhost
+    key: test-kakao-rest-api-key
+    connect-timeout: 200ms
+    read-timeout: 200ms

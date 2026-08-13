@@ -34,6 +34,14 @@ public enum ErrorCode {
     POPULAR_ACCOMMODATION_REQUEST_TIMEOUT(HttpStatus.SERVICE_UNAVAILABLE, "POPULAR_ACCOMMODATION_REQUEST_TIMEOUT", "인기 숙소 조회가 지연되고 있습니다. 잠시 후 다시 시도해주세요."),
     POPULAR_ACCOMMODATION_REQUEST_INTERRUPTED(HttpStatus.SERVICE_UNAVAILABLE, "POPULAR_ACCOMMODATION_REQUEST_INTERRUPTED", "인기 숙소 조회를 완료하지 못했습니다. 잠시 후 다시 시도해주세요."),
 
+    // 장소 검색 외부 API 연동 오류
+    PLACE_API_AUTHENTICATION_FAILED(HttpStatus.BAD_GATEWAY, "PLACE_API_AUTHENTICATION_FAILED", "장소 검색 API 인증에 실패했습니다."),
+    PLACE_API_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_API_RATE_LIMITED", "장소 검색 요청이 많습니다. 잠시 후 다시 시도해주세요."),
+    PLACE_API_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "PLACE_API_TIMEOUT", "장소 검색 API 응답 시간이 초과되었습니다."),
+    PLACE_API_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "PLACE_API_UNAVAILABLE", "현재 장소 검색 서비스를 사용할 수 없습니다."),
+    PLACE_API_REQUEST_FAILED(HttpStatus.BAD_GATEWAY, "PLACE_API_REQUEST_FAILED", "장소 검색 API 요청을 처리하지 못했습니다."),
+    PLACE_API_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "PLACE_API_INVALID_RESPONSE", "장소 검색 API 응답이 올바르지 않습니다."),
+
     // 객실 오류
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "객실을 찾을 수 없습니다."),
     ROOM_INACTIVE(HttpStatus.CONFLICT, "ROOM_INACTIVE", "현재 이용할 수 없는 객실입니다."),
