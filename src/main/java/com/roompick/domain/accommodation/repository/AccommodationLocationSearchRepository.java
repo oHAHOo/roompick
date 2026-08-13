@@ -101,9 +101,33 @@ public interface AccommodationLocationSearchRepository
                       :keyword IS NULL
                       OR :keyword = ''
                       OR accommodation.name
-                          LIKE CONCAT('%', :keyword, '%')
+                          LIKE CONCAT(
+                              '%',
+                              REPLACE(
+                                  REPLACE(
+                                      REPLACE(:keyword, '!', '!!'),
+                                      '%',
+                                      '!%'
+                                  ),
+                                  '_',
+                                  '!_'
+                              ),
+                              '%'
+                          ) ESCAPE '!'
                       OR accommodation.address
-                          LIKE CONCAT('%', :keyword, '%')
+                          LIKE CONCAT(
+                              '%',
+                              REPLACE(
+                                  REPLACE(
+                                      REPLACE(:keyword, '!', '!!'),
+                                      '%',
+                                      '!%'
+                                  ),
+                                  '_',
+                                  '!_'
+                              ),
+                              '%'
+                          ) ESCAPE '!'
                   )
             ) searched
             WHERE searched.distanceMeters <= (:radiusKm * 1000)

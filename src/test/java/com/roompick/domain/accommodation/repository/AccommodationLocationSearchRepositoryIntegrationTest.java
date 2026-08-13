@@ -257,6 +257,123 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
     }
 
     @Test
+    @DisplayName("keyword의 %는 LIKE wildcard가 아니라 일반 문자로 검색한다")
+    void searchNearbyWithPercentKeyword() {
+        Accommodation literalMatched =
+            saveAccommodation(
+                "할인 20% 호텔",
+                "서울특별시 중구",
+                "37.565800",
+                "126.978500"
+            );
+
+        Accommodation wildcardOnlyMatched =
+            saveAccommodation(
+                "일반 호텔",
+                "서울특별시 중구",
+                "37.560900",
+                "126.986000"
+            );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        List<AccommodationLocationSearchProjection> result =
+            searchNearby(
+                "%",
+                SEOUL_CITY_HALL_LATITUDE,
+                SEOUL_CITY_HALL_LONGITUDE,
+                2.0,
+                10
+            );
+
+        assertThat(result)
+            .extracting(
+                AccommodationLocationSearchProjection::getAccommodationId
+            )
+            .containsExactly(literalMatched.getId())
+            .doesNotContain(wildcardOnlyMatched.getId());
+    }
+
+    @Test
+    @DisplayName("keyword의 _는 LIKE wildcard가 아니라 일반 문자로 검색한다")
+    void searchNearbyWithUnderscoreKeyword() {
+        Accommodation literalMatched =
+            saveAccommodation(
+                "ROOM_PICK 호텔",
+                "서울특별시 중구",
+                "37.565800",
+                "126.978500"
+            );
+
+        Accommodation wildcardOnlyMatched =
+            saveAccommodation(
+                "ROOMXPICK 호텔",
+                "서울특별시 중구",
+                "37.560900",
+                "126.986000"
+            );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        List<AccommodationLocationSearchProjection> result =
+            searchNearby(
+                "_",
+                SEOUL_CITY_HALL_LATITUDE,
+                SEOUL_CITY_HALL_LONGITUDE,
+                2.0,
+                10
+            );
+
+        assertThat(result)
+            .extracting(
+                AccommodationLocationSearchProjection::getAccommodationId
+            )
+            .containsExactly(literalMatched.getId())
+            .doesNotContain(wildcardOnlyMatched.getId());
+    }
+
+    @Test
+    @DisplayName("LIKE escape 문자 자체도 일반 문자로 검색한다")
+    void searchNearbyWithEscapeCharacterKeyword() {
+        Accommodation literalMatched =
+            saveAccommodation(
+                "느낌! 호텔",
+                "서울특별시 중구",
+                "37.565800",
+                "126.978500"
+            );
+
+        Accommodation unmatched =
+            saveAccommodation(
+                "느낌 좋은 호텔",
+                "서울특별시 중구",
+                "37.560900",
+                "126.986000"
+            );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        List<AccommodationLocationSearchProjection> result =
+            searchNearby(
+                "!",
+                SEOUL_CITY_HALL_LATITUDE,
+                SEOUL_CITY_HALL_LONGITUDE,
+                2.0,
+                10
+            );
+
+        assertThat(result)
+            .extracting(
+                AccommodationLocationSearchProjection::getAccommodationId
+            )
+            .containsExactly(literalMatched.getId())
+            .doesNotContain(unmatched.getId());
+    }
+
+    @Test
     @DisplayName(
         "위치 검색 결과는 요청한 limit만큼만 반환한다"
     )

@@ -344,6 +344,7 @@ GET /api/v1/accommodations/search?latitude=37.4979&longitude=127.0276&radiusKm=5
 | `radiusKm` | `double` | X | `5` | 검색 반경, 0 초과 100 이하 |
 | `limit` | `int` | X | `20` | 반환할 숙소 수, 1 이상 100 이하 |
 
+MySQL 위치 검색에서 `keyword`의 `%`, `_`와 escape 문자는 LIKE wildcard가 아니라 입력한 일반 문자로 검색한다.
 설정값 `roompick.search.location-engine`에 따라 MySQL Bounding Box 또는 Elasticsearch 검색 경로를 사용한다.
 production 기본값은 `MYSQL`이며 Elasticsearch 서버 없이 기동한다. Elasticsearch 경로는 local 성능 비교와
 향후 재도입을 위해 보존한다.
