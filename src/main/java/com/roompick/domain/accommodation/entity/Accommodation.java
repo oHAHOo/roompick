@@ -1,5 +1,6 @@
 package com.roompick.domain.accommodation.entity;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +36,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Accommodation extends BaseTimeEntity {
 
+    private static final BigDecimal MIN_LATITUDE = BigDecimal.valueOf(-90);
+    private static final BigDecimal MAX_LATITUDE = BigDecimal.valueOf(90);
+    private static final BigDecimal MIN_LONGITUDE = BigDecimal.valueOf(-180);
+    private static final BigDecimal MAX_LONGITUDE = BigDecimal.valueOf(180);
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "accommodation_id")
@@ -54,6 +60,23 @@ public class Accommodation extends BaseTimeEntity {
 
     @Column(name = "check_out_time", nullable = false)
     private LocalTime checkOutTime;
+
+    /**
+     * 숙소 위도입니다.
+     *
+     * 기존 숙소에는 좌표가 없을 수 있으므로 nullable로 유지합니다.
+     * 위치 검색에서는 위도와 경도가 모두 존재하는 숙소만 대상으로 합니다.
+     */
+    @Column(precision = 9, scale = 6)
+    private BigDecimal latitude;
+
+    /**
+     * 숙소 경도입니다.
+     *
+     * 기존 숙소에는 좌표가 없을 수 있으므로 nullable로 유지합니다.
+     */
+    @Column(precision = 10, scale = 6)
+    private BigDecimal longitude;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -77,6 +100,8 @@ public class Accommodation extends BaseTimeEntity {
      * 새로운 숙소를 생성합니다.
      *
      * 숙소는 처음 등록될 때 항상 운영 중인 ACTIVE 상태로 시작합니다.
+     *
+     * 기존 좌표 없는 데이터와 테스트 fixture 호환을 위한 생성 경로입니다.
      */
     public static Accommodation create(
         String name,
@@ -95,6 +120,40 @@ public class Accommodation extends BaseTimeEntity {
             description,
             checkInTime,
             checkOutTime,
+            null,
+            null,
+            AccommodationStatus.ACTIVE
+        );
+    }
+
+    /**
+     * 위치 좌표를 포함하여 새로운 숙소를 생성합니다.
+     *
+     * 관리자 등록 숙소는 최초 생성 시부터 위치 검색 대상이 되도록
+     * 위도와 경도를 한 쌍으로 검증하고 저장합니다.
+     */
+    public static Accommodation create(
+        String name,
+        String address,
+        String description,
+        LocalTime checkInTime,
+        LocalTime checkOutTime,
+        BigDecimal latitude,
+        BigDecimal longitude
+    ) {
+        validateName(name);
+        validateAddress(address);
+        validateTimes(checkInTime, checkOutTime);
+        validateLocation(latitude, longitude);
+
+        return new Accommodation(
+            name,
+            address,
+            description,
+            checkInTime,
+            checkOutTime,
+            latitude,
+            longitude,
             AccommodationStatus.ACTIVE
         );
     }
@@ -106,6 +165,8 @@ public class Accommodation extends BaseTimeEntity {
         String description,
         LocalTime checkInTime,
         LocalTime checkOutTime,
+        BigDecimal latitude,
+        BigDecimal longitude,
         AccommodationStatus status
     ) {
         this.name = name;
@@ -113,6 +174,8 @@ public class Accommodation extends BaseTimeEntity {
         this.description = description;
         this.checkInTime = checkInTime;
         this.checkOutTime = checkOutTime;
+        this.latitude = latitude;
+        this.longitude = longitude;
         this.status = status;
     }
 
@@ -141,6 +204,22 @@ public class Accommodation extends BaseTimeEntity {
         this.description = description;
         this.checkInTime = checkInTime;
         this.checkOutTime = checkOutTime;
+    }
+
+    /**
+     * 숙소 위치 좌표를 변경합니다.
+     *
+     * 위도와 경도는 항상 한 쌍으로 관리하며,
+     * 지구 좌표 범위를 벗어나는 값은 허용하지 않습니다.
+     */
+    public void updateLocation(
+        BigDecimal latitude,
+        BigDecimal longitude
+    ) {
+        validateLocation(latitude, longitude);
+
+        this.latitude = latitude;
+        this.longitude = longitude;
     }
 
     /**
@@ -184,9 +263,47 @@ public class Accommodation extends BaseTimeEntity {
         }
     }
 
-    private static void validateTimes(LocalTime checkInTime, LocalTime checkOutTime) {
+    private static void validateTimes(
+        LocalTime checkInTime,
+        LocalTime checkOutTime
+    ) {
         if (checkInTime == null || checkOutTime == null) {
             throw new BusinessException(ErrorCode.ACCOMMODATION_TIME_REQUIRED);
+        }
+    }
+
+    /**
+     * 위치 좌표를 검증합니다.
+     *
+     * 위치 검색의 정확성을 위해 위도와 경도 중 하나만 존재하는 상태는
+     * 허용하지 않습니다.
+     */
+    private static void validateLocation(
+        BigDecimal latitude,
+        BigDecimal longitude
+    ) {
+        if (latitude == null || longitude == null) {
+            throw new BusinessException(
+                ErrorCode.ACCOMMODATION_LOCATION_REQUIRED
+            );
+        }
+
+        if (
+            latitude.compareTo(MIN_LATITUDE) < 0
+                || latitude.compareTo(MAX_LATITUDE) > 0
+        ) {
+            throw new BusinessException(
+                ErrorCode.ACCOMMODATION_LATITUDE_OUT_OF_RANGE
+            );
+        }
+
+        if (
+            longitude.compareTo(MIN_LONGITUDE) < 0
+                || longitude.compareTo(MAX_LONGITUDE) > 0
+        ) {
+            throw new BusinessException(
+                ErrorCode.ACCOMMODATION_LONGITUDE_OUT_OF_RANGE
+            );
         }
     }
 }

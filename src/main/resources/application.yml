@@ -43,6 +43,8 @@ management:
 
 roompick:
   cache:
+    # 동일 장소 검색의 Kakao API 반복 호출을 줄이는 단기 캐시입니다.
+    place-search-ttl: ${PLACE_SEARCH_CACHE_TTL:5m}
     popular-accommodations:
       single-flight:
         # Redis 300ms 제한보다 여유를 두되 대기 요청의 무제한 점유를 막습니다.

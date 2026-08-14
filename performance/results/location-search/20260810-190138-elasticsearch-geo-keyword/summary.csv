@@ -1,0 +1,4 @@
+search_engine,scenario,run,keyword,latitude,longitude,radius_km,limit,vus,duration,mysql_selects,request_count,avg_ms,p50_ms,p95_ms,p99_ms,throughput_rps,error_rate
+elasticsearch,geo-keyword,1,룸픽,37.5665,126.9780,5,20,10,30s,0,56517,5.113722932922798,4.431,8.779199999999998,19.699,1883.7388147487513,0
+elasticsearch,geo-keyword,2,룸픽,37.5665,126.9780,5,20,10,30s,0,56026,5.1628640095670075,4.673,8.179749999999997,14.881749999999997,1867.3446070383818,0
+elasticsearch,geo-keyword,3,룸픽,37.5665,126.9780,5,20,10,30s,2,52545,5.507431439718293,4.957,8.877,16.408,1751.348333234342,0

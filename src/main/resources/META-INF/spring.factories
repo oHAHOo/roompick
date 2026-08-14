@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.AutoConfigurationImportFilter=\
+com.roompick.domain.accommodation.config.AccommodationElasticsearchAutoConfigurationImportFilter

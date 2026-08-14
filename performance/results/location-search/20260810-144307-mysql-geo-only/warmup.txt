@@ -1,0 +1,74 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: performance/k6/accommodation-location-search.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 1 max VUs, 35s max duration (incl. graceful stop):
+              * default: 1 looping VUs for 5s (gracefulStop: 30s)
+
+
+running (01.0s), 1/1 VUs, 8 complete and 0 interrupted iterations
+default   [  20% ] 1 VUs  1.0s/5s
+
+running (02.0s), 1/1 VUs, 17 complete and 0 interrupted iterations
+default   [  40% ] 1 VUs  2.0s/5s
+
+running (03.0s), 1/1 VUs, 24 complete and 0 interrupted iterations
+default   [  60% ] 1 VUs  3.0s/5s
+
+running (04.0s), 1/1 VUs, 32 complete and 0 interrupted iterations
+default   [  80% ] 1 VUs  4.0s/5s
+
+running (05.0s), 1/1 VUs, 40 complete and 0 interrupted iterations
+default   [ 100% ] 1 VUs  5.0s/5s
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.99' rate=100.00%
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 205     40.728819/s
+    checks_succeeded...: 100.00% 205 out of 205
+    checks_failed......: 0.00%   0 out of 205
+
+    ✓ HTTP 상태가 200이다
+    ✓ success 값이 true이다
+    ✓ data 값이 배열이다
+    ✓ data 개수가 limit을 초과하지 않는다
+    ✓ 검색 결과가 거리순으로 정렬되어 있다
+
+    HTTP
+    http_req_duration..............: avg=121.97ms min=102.8ms  med=113.05ms p(90)=140.81ms p(95)=153.44ms p(99)=173.56ms max=175.9ms 
+      { expected_response:true }...: avg=121.97ms min=102.8ms  med=113.05ms p(90)=140.81ms p(95)=153.44ms p(99)=173.56ms max=175.9ms 
+    http_req_failed................: 0.00%  0 out of 41
+    http_reqs......................: 41     8.145764/s
+
+    EXECUTION
+    iteration_duration.............: avg=122.74ms min=103.07ms med=113.44ms p(90)=148.75ms p(95)=153.87ms p(99)=174.04ms max=176.33ms
+    iterations.....................: 41     8.145764/s
+    vus............................: 1      min=1       max=1
+    vus_max........................: 1      min=1       max=1
+
+    NETWORK
+    data_received..................: 170 kB 34 kB/s
+    data_sent......................: 6.3 kB 1.2 kB/s
+
+
+
+
+running (05.0s), 0/1 VUs, 41 complete and 0 interrupted iterations
+default ✓ [ 100% ] 1 VUs  5s
