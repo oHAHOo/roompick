@@ -1,11 +1,11 @@
 # RoomPick API 명세서 — 임선구 담당
 
-- 문서 버전: `v0.4`
+- 문서 버전: `v0.5`
 - 작성일: 2026-07-21
-- 최종 수정일: 2026-07-29
+- 최종 수정일: 2026-08-13
 - 담당자: 임선구
-- 담당 도메인: 숙소, 객실, 예약
-- MVP 기준: 관리자가 등록한 숙소·객실 사용, 검색 기능 없음
+- 담당 도메인: 숙소, 객실, 예약, 장소 검색
+- 현재 범위: 장소 후보 검색과 좌표 기반 주변 숙소 검색 포함
 
 이 문서는 RoomPick MVP에서 임선구 담당 API만 정의한다. 회원·인증 API와 결제 API는 각 담당자의 별도 명세에서 관리한다.
 
@@ -16,7 +16,7 @@
 1. API 기본 경로는 코드 컨벤션 초안에 따라 `/api/v1`을 사용한다.
 2. 관리자 숙소·객실 등록 API는 minjae123123 담당의 `docs/API_SPEC_ADMIN.md`에서 정의한다.
 3. 이 문서는 관리자가 등록한 숙소와 실제 객실을 조회·예약하는 API를 정의한다.
-4. 기본 숙소 목록과 숙소별 객실 목록 조회는 MVP에 포함하며, 검색·필터·사용자 지정 정렬 기능은 W3 확장 범위로 제외한다.
+4. 기본 숙소 목록과 숙소별 객실 목록 조회에 더해 장소 후보 검색과 좌표 기반 주변 숙소 검색을 제공한다. 그 외 복합 필터와 사용자 지정 정렬은 범위에서 제외한다.
 5. `ROOM` 한 행은 실제로 예약되는 물리적 객실 한 개를 의미한다.
 6. 예약 생성 시 상태는 `PENDING_PAYMENT`가 된다.
 7. 결제 성공·실패 API는 minjae123123 담당의 결제 API 명세에서 정의한다.
@@ -43,7 +43,7 @@ Content-Type: application/json
 Authorization: Bearer {accessToken}
 ```
 
-숙소·객실 조회와 예약 가능 여부 확인은 비로그인 사용자도 호출할 수 있다.
+장소 검색, 숙소·객실 조회와 예약 가능 여부 확인은 비로그인 사용자도 호출할 수 있다.
 
 ### 날짜 형식
 
@@ -105,6 +105,9 @@ HH:mm:ss
 | `403 Forbidden` | 다른 회원의 예약 접근 |
 | `404 Not Found` | 숙소·객실·예약을 찾지 못함 |
 | `409 Conflict` | 객실 예약 불가 또는 예약 상태 충돌 |
+| `502 Bad Gateway` | 장소 검색 외부 API 인증·요청·응답 오류 |
+| `503 Service Unavailable` | 장소 검색 요청 제한 또는 외부 서비스 장애 |
+| `504 Gateway Timeout` | 장소 검색 외부 API timeout |
 | `500 Internal Server Error` | 예상하지 못한 서버 오류 |
 
 ---
@@ -115,6 +118,8 @@ HH:mm:ss
 | --- | --- | --- | --- | --- |
 | 1 | `GET` | `/api/v1/accommodations` | 전체 숙소 목록 조회 | 불필요 |
 | 1-1 | `GET` | `/api/v1/accommodations/popular` | 일간·주간 인기 숙소 TOP N 조회 | 불필요 |
+| 1-2 | `GET` | `/api/v1/places/search` | 장소명으로 후보 장소와 좌표 검색 | 불필요 |
+| 1-3 | `GET` | `/api/v1/accommodations/search` | 선택한 좌표 주변의 숙소 검색 | 불필요 |
 | 2 | `GET` | `/api/v1/accommodations/{accommodationId}/rooms` | 숙소별 객실 목록 조회 | 불필요 |
 | 3 | `GET` | `/api/v1/accommodations/{accommodationId}` | 숙소 상세 조회 | 불필요 |
 | 4 | `GET` | `/api/v1/rooms/{roomId}` | 객실 상세 조회 | 불필요 |
@@ -124,7 +129,7 @@ HH:mm:ss
 | 8 | `GET` | `/api/v1/reservations/{reservationId}` | 내 예약 상세 조회 | 필요 |
 | 9 | `PATCH` | `/api/v1/reservations/{reservationId}/cancel` | 예약 취소 | 필요 |
 
-관리자 등록 API는 `docs/API_SPEC_ADMIN.md`에서 관리한다. 검색과 관리자용 숙소·객실 수정·삭제·관리 목록 API는 MVP에 포함하지 않는다.
+관리자 등록 API는 `docs/API_SPEC_ADMIN.md`에서 관리한다. 장소 후보·위치 기반 숙소 검색 외의 관리자용 숙소·객실 수정·삭제·관리 목록 API는 포함하지 않는다.
 
 ---
 
@@ -256,6 +261,101 @@ GET /api/v1/accommodations/popular?period=WEEKLY&limit=10
 - 랭킹 데이터가 없으면 오류가 아닌 빈 배열을 반환한다.
 - `imageUrl`은 등록된 이미지 중 대표(첫 번째) 이미지이며, 등록된 이미지가 없으면 `null`이다.
 - Redis 랭킹 장애 시 기간과 무관하게 최신 ACTIVE 숙소를 임시 fallback으로 반환한다. 이 결과는 실제 기간별 인기 순위가 아니다.
+
+---
+
+## 5-2. 장소 후보 검색
+
+사용자가 입력한 장소명을 Kakao Local API로 검색하여 후보 장소와 좌표를 반환한다. 인증 없이 호출할 수 있다.
+
+### Request
+
+```http
+GET /api/v1/places/search?query=강남역&limit=5
+```
+
+### Query Parameter
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+| --- | --- | --- | --- | --- |
+| `query` | `String` | O | - | 장소 검색어, 앞뒤 공백 제거 후 1~100자 |
+| `limit` | `int` | X | `5` | 반환할 후보 수, 1 이상 15 이하 |
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "장소 검색에 성공했습니다.",
+  "data": [
+    {
+      "placeId": "123456",
+      "name": "강남역 2호선",
+      "address": "서울 강남구 역삼동",
+      "roadAddress": "서울 강남구 강남대로 396",
+      "latitude": 37.4979,
+      "longitude": 127.0276,
+      "category": "교통,수송 > 지하철"
+    }
+  ]
+}
+```
+
+검색 결과가 없으면 오류가 아닌 빈 배열을 반환한다.
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT_VALUE` | query가 없거나 공백 또는 100자 초과, limit이 1 미만 또는 15 초과 |
+| `502` | `PLACE_API_AUTHENTICATION_FAILED` | Kakao 장소 검색 API 인증 실패 |
+| `503` | `PLACE_API_RATE_LIMITED` | Kakao 장소 검색 API 요청 제한 |
+| `504` | `PLACE_API_TIMEOUT` | Kakao 장소 검색 API connect/read timeout |
+| `503` | `PLACE_API_UNAVAILABLE` | Kakao 연결 실패 또는 외부 5xx |
+| `502` | `PLACE_API_REQUEST_FAILED` | 인증·요청 제한 외의 Kakao 4xx |
+| `502` | `PLACE_API_INVALID_RESPONSE` | body, documents 또는 좌표 응답 이상 |
+
+### 구현 메모
+
+- 장소 검색은 DB와 Elasticsearch를 조회하지 않는다. 동일한 정규화 query와 limit의 정상 결과는 Redis에
+  5분간 캐시하여 Kakao API 반복 호출과 quota 소비를 줄인다.
+- 캐시 key는 최대 100자인 정규화 query와 limit으로 구성한다. 정상 빈 목록은 캐시하지만 timeout, network,
+  Kakao 429·5xx와 잘못된 응답 등 예외 결과는 캐시하지 않는다.
+- Redis 캐시 조회·저장에 실패하면 캐시 오류를 전파하지 않고 Kakao API를 직접 호출한다.
+- 외부 API Key는 `KAKAO_REST_API_KEY` 환경변수로 관리하며 응답이나 로그에 노출하지 않는다.
+- Kakao 응답의 `x`는 `longitude`, `y`는 `latitude`로 변환한다.
+- 사용자가 후보를 선택한 뒤 해당 좌표를 아래 주변 숙소 검색 API에 전달한다.
+- 현재는 신뢰할 수 있는 클라이언트 식별자와 기존 rate limiter 기반이 없어 애플리케이션 rate limiting을
+  추가하지 않는다. 트래픽이나 abuse 징후가 확인되면 신뢰 가능한 reverse proxy/API Gateway 계층의 제한을
+  우선 검토한다.
+
+---
+
+## 5-3. 좌표 기반 주변 숙소 검색
+
+사용자가 선택한 장소의 좌표를 중심으로 운영 중인 주변 숙소를 거리순으로 조회한다.
+
+### Request
+
+```http
+GET /api/v1/accommodations/search?latitude=37.4979&longitude=127.0276&radiusKm=5&limit=20
+```
+
+### Query Parameter
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+| --- | --- | --- | --- | --- |
+| `keyword` | `String` | X | - | 숙소명 또는 주소 keyword |
+| `latitude` | `double` | O | - | 검색 중심 위도, -90 이상 90 이하 |
+| `longitude` | `double` | O | - | 검색 중심 경도, -180 이상 180 이하 |
+| `radiusKm` | `double` | X | `5` | 검색 반경, 0 초과 100 이하 |
+| `limit` | `int` | X | `20` | 반환할 숙소 수, 1 이상 100 이하 |
+
+MySQL 위치 검색에서 `keyword`의 `%`, `_`와 escape 문자는 LIKE wildcard가 아니라 입력한 일반 문자로 검색한다.
+설정값 `roompick.search.location-engine`에 따라 MySQL Bounding Box 또는 Elasticsearch 검색 경로를 사용한다.
+production 기본값은 `MYSQL`이며 Elasticsearch 서버 없이 기동한다. Elasticsearch 경로는 local 성능 비교와
+향후 재도입을 위해 보존한다.
+장소 검색과 숙소 검색은 별도 요청이므로 Kakao API 지연 중에 DB 트랜잭션을 열지 않는다.
 
 ---
 

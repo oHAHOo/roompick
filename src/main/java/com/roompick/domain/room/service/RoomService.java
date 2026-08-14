@@ -58,22 +58,6 @@ public class RoomService {
     }
 
     /**
-     * 특정 숙소의 운영 중인 객실과
-     * 가격·이미지 응답 생성에 필요한 연관관계를 조회합니다.
-     */
-    @Transactional(readOnly = true)
-    public List<Room>
-    findAllActiveWithImagesByAccommodationId(
-        Long accommodationId
-    ) {
-        return roomRepository
-            .findAllActiveWithImagesByAccommodationId(
-                accommodationId
-            );
-    }
-
-
-    /**
      * 예약 가능 여부 확인에 필요한 객실을 조회하고
      * 객실 상태와 요청 인원을 검증합니다.
      */
@@ -236,6 +220,27 @@ public class RoomService {
             accommodationId,
             roomId
         );
+    }
+
+    /**
+     * 객실 전용 타임세일 등록 트랜잭션에서
+     * 대상 객실 행에 비관적 쓰기 락을 획득합니다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Room findByIdAndAccommodationIdForTimeSaleUpdate(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository
+            .findByIdAndAccommodationIdForUpdate(
+                roomId,
+                accommodationId
+            )
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
+            );
     }
 
     private Room findByIdAndAccommodationId(

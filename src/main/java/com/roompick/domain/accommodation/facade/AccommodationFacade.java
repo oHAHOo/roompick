@@ -2,26 +2,33 @@ package com.roompick.domain.accommodation.facade;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import com.roompick.domain.accommodation.dto.AccommodationDetailResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
+import com.roompick.domain.accommodation.dto.AccommodationLocationSearchResponseDto;
 import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUnavailableException;
+import com.roompick.domain.accommodation.service.AccommodationElasticsearchLocationSearchService;
+import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationService;
-import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.accommodation.service.PopularAccommodationQueryService;
+import com.roompick.domain.accommodation.service.PopularAccommodationRankingService;
 import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
+import com.roompick.domain.accommodation.type.AccommodationLocationSearchEngine;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.service.RoomService;
-import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.timesale.service.TimeSalePriceService;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -38,6 +45,21 @@ public class AccommodationFacade {
 
     private final AccommodationService accommodationService;
 
+    /**
+     * MySQL Bounding Box 기반 위치 검색을 담당합니다.
+     */
+    private final AccommodationLocationSearchService
+        accommodationLocationSearchService;
+
+    /**
+     * Elasticsearch 기반 위치 검색을 담당합니다.
+     */
+    private final ObjectProvider<AccommodationElasticsearchLocationSearchService>
+        accommodationElasticsearchLocationSearchServiceProvider;
+
+    private AccommodationElasticsearchLocationSearchService
+        accommodationElasticsearchLocationSearchService;
+
     private final RoomService roomService;
 
     private final PopularAccommodationRankingService
@@ -51,6 +73,39 @@ public class AccommodationFacade {
 
     private final TimeSalePriceService
         timeSalePriceService;
+    /**
+     * 위치 기반 숙소 검색에서 사용할 검색 엔진입니다.
+     *
+     * application 설정에 따라
+     * MySQL 또는 Elasticsearch 검색 경로를 선택합니다.
+     */
+    @Value("${roompick.search.location-engine:MYSQL}")
+    private AccommodationLocationSearchEngine locationSearchEngine;
+
+    /**
+     * 위치 검색 엔진 설정과 조건부 Elasticsearch Bean 구성을 검증합니다.
+     *
+     * ELASTICSEARCH가 선택된 경우 검색 Service를 애플리케이션 초기화 시
+     * 한 번만 확인하고 보관하여 잘못된 배포 설정을 즉시 발견합니다.
+     */
+    @PostConstruct
+    void initializeLocationSearchEngine() {
+        if (locationSearchEngine !=
+            AccommodationLocationSearchEngine.ELASTICSEARCH) {
+            return;
+        }
+
+        accommodationElasticsearchLocationSearchService =
+            accommodationElasticsearchLocationSearchServiceProvider
+                .getIfAvailable();
+
+        if (accommodationElasticsearchLocationSearchService == null) {
+            throw new IllegalStateException(
+                "위치 검색 엔진은 ELASTICSEARCH이지만 Elasticsearch 검색 Bean이 활성화되지 않았습니다."
+            );
+        }
+    }
+
     /**
      * 운영 중인 숙소 목록 조회 흐름을 조율합니다.
      *
@@ -70,6 +125,44 @@ public class AccommodationFacade {
         return AccommodationPageResponseDto.from(
             accommodationPage
         );
+    }
+
+    /**
+     * 사용자 위치를 기준으로 주변 숙소를 검색합니다.
+     *
+     * roompick.search.location-engine 설정에 따라
+     * MySQL Bounding Box 검색 또는 Elasticsearch 검색을 선택합니다.
+     *
+     * Controller는 실제 검색 엔진 구현을 알 필요 없이
+     * 항상 동일한 Facade 메서드만 호출합니다.
+     */
+    public List<AccommodationLocationSearchResponseDto>
+    searchNearbyAccommodations(
+        String keyword,
+        double latitude,
+        double longitude,
+        double radiusKm,
+        int limit
+    ) {
+        return switch (locationSearchEngine) {
+            case MYSQL ->
+                accommodationLocationSearchService.searchNearby(
+                    keyword,
+                    latitude,
+                    longitude,
+                    radiusKm,
+                    limit
+                );
+
+            case ELASTICSEARCH ->
+                accommodationElasticsearchLocationSearchService.searchNearby(
+                    keyword,
+                    latitude,
+                    longitude,
+                    radiusKm,
+                    limit
+                );
+        };
     }
 
     /**
@@ -95,7 +188,8 @@ public class AccommodationFacade {
     }
 
     /**
-     * 정상 인기 숙소 조회와 Redis 랭킹 장애 fallback을 하나의 최종 작업으로 조율합니다.
+     * 정상 인기 숙소 조회와 Redis 랭킹 장애 fallback을
+     * 하나의 최종 작업으로 조율합니다.
      */
     private List<PopularAccommodationResponseDto>
     getPopularAccommodationsWithFallback(
@@ -109,8 +203,7 @@ public class AccommodationFacade {
                     limit
                 );
         } catch (
-            PopularAccommodationRankingUnavailableException
-                exception
+            PopularAccommodationRankingUnavailableException exception
         ) {
             log.warn(
                 "Redis 인기 숙소 랭킹 조회 실패로 최신 숙소 fallback을 반환합니다. period={}, limit={}",
@@ -173,25 +266,23 @@ public class AccommodationFacade {
             accommodationId
         );
 
-        List<Room> rooms =
+        List<RoomListResponseDto> rooms =
             roomService
-                .findAllActiveWithImagesByAccommodationId(
+                .findAllActiveSummaryByAccommodationId(
                     accommodationId
                 );
 
-        return rooms.stream()
-            .map(room -> {
-                long appliedPricePerNight =
-                    timeSalePriceService
-                        .calculatePricePerNight(
-                            room
-                        );
-
-                return RoomListResponseDto.from(
-                    room,
-                    appliedPricePerNight
+        Map<Long, Long> appliedPrices =
+            timeSalePriceService
+                .calculateRoomListPrices(
+                    accommodationId,
+                    rooms
                 );
-            })
+
+        return rooms.stream()
+            .map(room -> room.withAppliedPrice(
+                appliedPrices.get(room.roomId())
+            ))
             .toList();
     }
 
@@ -203,8 +294,7 @@ public class AccommodationFacade {
      */
     private List<PopularAccommodationResponseDto>
     createFallbackPopularAccommodations(
-        List<AccommodationListResponseDto>
-            accommodations
+        List<AccommodationListResponseDto> accommodations
     ) {
         List<PopularAccommodationResponseDto> result =
             new ArrayList<>();

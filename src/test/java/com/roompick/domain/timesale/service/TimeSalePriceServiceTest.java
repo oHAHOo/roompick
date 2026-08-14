@@ -3,6 +3,7 @@ package com.roompick.domain.timesale.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.time.Clock;
@@ -11,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +24,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.timesale.entity.TimeSale;
 import com.roompick.domain.timesale.repository.TimeSaleRepository;
 
@@ -273,5 +276,100 @@ class TimeSalePriceServiceTest {
 
         assertThat(result)
             .isEqualTo(79_999L);
+    }
+
+    @Test
+    @DisplayName(
+        "객실 목록 가격은 객실 수와 관계없이 타임세일을 배치 조회한다"
+    )
+    void calculateRoomListPricesInBatch() {
+        TimeSale roomTimeSale = TimeSale.create(
+            accommodation,
+            room,
+            20,
+            now.minusHours(1),
+            now.plusHours(1),
+            now
+        );
+
+        TimeSale accommodationTimeSale =
+            TimeSale.create(
+                accommodation,
+                null,
+                15,
+                now.minusHours(1),
+                now.plusHours(1),
+                now
+            );
+
+        List<RoomListResponseDto> rooms = List.of(
+            new RoomListResponseDto(
+                10L,
+                "디럭스룸",
+                100_000L,
+                2,
+                2
+            ),
+            new RoomListResponseDto(
+                11L,
+                "스위트룸",
+                200_000L,
+                2,
+                4
+            )
+        );
+
+        given(
+            timeSaleRepository
+                .findApplicableRoomSalesByRoomIds(
+                    List.of(10L, 11L),
+                    now
+                )
+        ).willReturn(List.of(roomTimeSale));
+
+        given(
+            timeSaleRepository
+                .findApplicableAccommodationSales(
+                    accommodation.getId(),
+                    now
+                )
+        ).willReturn(
+            List.of(accommodationTimeSale)
+        );
+
+        Map<Long, Long> prices =
+            timeSalePriceService
+                .calculateRoomListPrices(
+                    accommodation.getId(),
+                    rooms
+                );
+
+        assertThat(prices)
+            .containsEntry(10L, 80_000L)
+            .containsEntry(11L, 170_000L);
+
+        verify(
+            timeSaleRepository,
+            times(1)
+        ).findApplicableRoomSalesByRoomIds(
+            List.of(10L, 11L),
+            now
+        );
+
+        verify(
+            timeSaleRepository,
+            times(1)
+        ).findApplicableAccommodationSales(
+            accommodation.getId(),
+            now
+        );
+
+        verify(
+            timeSaleRepository,
+            never()
+        ).findApplicableRoomSales(
+            room.getId(),
+            now
+        );
     }
 }

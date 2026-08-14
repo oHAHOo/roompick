@@ -6,11 +6,14 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
+
+import jakarta.persistence.LockModeType;
 
 /**
  * 숙소 데이터를 저장하고 조회하는 Repository입니다.
@@ -25,6 +28,20 @@ import com.roompick.domain.accommodation.entity.Accommodation;
  */
 public interface AccommodationRepository
     extends JpaRepository<Accommodation, Long> {
+
+    /**
+     * 숙소 전체 타임세일 등록 요청을 직렬화하기 위해
+     * 대상 숙소 행을 비관적 쓰기 락으로 조회합니다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT accommodation
+        FROM Accommodation accommodation
+        WHERE accommodation.id = :accommodationId
+        """)
+    Optional<Accommodation> findByIdForUpdate(
+        @Param("accommodationId") Long accommodationId
+    );
 
     /**
      * 운영 중인 숙소를 ID 오름차순으로 조회합니다.

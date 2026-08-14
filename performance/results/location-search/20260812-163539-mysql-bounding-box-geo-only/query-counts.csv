@@ -1,0 +1,4 @@
+search_engine,scenario,run,mysql_selects
+mysql-bounding-box,geo-only,1,3576
+mysql-bounding-box,geo-only,2,3190
+mysql-bounding-box,geo-only,3,3068

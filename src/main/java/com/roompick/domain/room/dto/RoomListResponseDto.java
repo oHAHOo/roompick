@@ -103,6 +103,25 @@ public record RoomListResponseDto(
     }
 
     /**
+     * Repository에서 한 번에 조회한 객실 요약 정보에
+     * 배치 계산된 현재 적용 가격을 반영합니다.
+     */
+    public RoomListResponseDto withAppliedPrice(
+        long appliedPricePerNight
+    ) {
+        return new RoomListResponseDto(
+            roomId,
+            name,
+            appliedPricePerNight,
+            normalPricePerNight,
+            appliedPricePerNight < normalPricePerNight,
+            standardCapacity,
+            maxCapacity,
+            imageUrl
+        );
+    }
+
+    /**
      * 정렬된 객실 이미지 중 첫 번째 이미지를
      * 대표 이미지로 반환합니다.
      */

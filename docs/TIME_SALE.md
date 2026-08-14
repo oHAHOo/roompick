@@ -141,6 +141,28 @@ AND existing.endAt > requested.startAt
 
 중복 검사에서는 `ENDED` 상태의 타임세일을 제외한다.
 
+### 4.4 동시 등록 제어
+
+기간 중복 검사는 조회 후 저장하는 방식이므로, 대상 행의 DB 락 없이
+동시에 실행하면 두 요청이 모두 중복 없음으로 판단할 수 있다.
+
+이를 방지하기 위해 등록 흐름 전체를 하나의 트랜잭션으로 처리한다.
+
+```text
+숙소 전체 타임세일
+→ 대상 Accommodation 행 PESSIMISTIC_WRITE 락
+→ 기간 중복 검사
+→ 타임세일 저장
+
+객실 전용 타임세일
+→ 대상 Room 행 PESSIMISTIC_WRITE 락
+→ 기간 중복 검사
+→ 타임세일 저장
+```
+
+같은 숙소 전체 또는 같은 객실의 등록 요청은 직렬화된다. 서로 다른
+객실은 서로 다른 행을 잠그므로 동시에 등록할 수 있다.
+
 ---
 
 ## 5. 할인 가격 계산
@@ -187,6 +209,21 @@ ORDER BY discount_rate DESC, time_sale_id ASC
 계산 결과: 84,999.15원
 저장 가격: 84,999원
 ```
+
+### 5.3 객실 목록 배치 계산
+
+객실 목록에서는 객실마다 단건 가격 계산 메서드를 반복 호출하지 않는다.
+
+```text
+객실 목록 DTO 조회 1회
+→ roomId 목록의 객실 전용 타임세일 배치 조회 1회
+→ 숙소 전체 타임세일 조회 1회
+→ 메모리에서 객실 전용 > 숙소 전체 > 정상 가격 순으로 매핑
+```
+
+따라서 객실 수가 증가해도 목록 가격 계산을 위한 쿼리 수는 고정된다.
+예약 생성과 객실 상세·예약 가능 여부처럼 객실 하나만 처리하는 경로는
+기존 단건 가격 계산 메서드를 사용한다.
 
 ---
 
@@ -418,10 +455,12 @@ AND now < endAt
 
 | 기능 | 트랜잭션 담당 |
 | --- | --- |
-| 타임세일 등록 | `TimeSaleService.create()` |
+| 타임세일 등록 전체 흐름 | `AdminTimeSaleFacade.create()` |
+| 타임세일 생성·중복 검사·저장 | `TimeSaleService.create()` — Facade 트랜잭션 참여 |
 | 시작 대상 활성화 | `TimeSaleService.activateDueSales()` |
 | 종료 대상 종료 | `TimeSaleService.endDueSales()` |
 | 할인 가격 조회 | `TimeSalePriceService.calculatePricePerNight()` 읽기 전용 |
+| 객실 목록 가격 배치 조회 | `TimeSalePriceService.calculateRoomListPrices()` 읽기 전용 |
 | 예약 생성 전체 흐름 | `ReservationFacade.createReservation()` |
 
 상태 변경은 Spring이 관리하는 `TimeSaleService` Bean을 통해 호출해야 한다. 테스트나 다른 객체에서 서비스를 직접 생성하면 `@Transactional` 프록시가 적용되지 않아 변경 감지가 DB에 반영되지 않을 수 있다.
@@ -435,6 +474,7 @@ AND now < endAt
 - `TimeSale` 생성 및 입력값 검증
 - 할인 시작·종료 경계 검증
 - 할인 가격 계산과 객실 전용 할인 우선순위
+- 객실 목록 가격의 고정 횟수 배치 조회
 - 같은 대상의 기간 중복 차단
 - 관리자 타임세일 등록 성공·입력 검증·접근 권한
 - 스케줄러의 종료 후 활성화 호출 순서
@@ -446,6 +486,8 @@ AND now < endAt
   - 숙소 전체·객실 전용 타임세일 저장 및 가격 계산
   - 같은 대상 기간 중복 차단
   - 서로 다른 객실의 중복 기간 허용
+  - 같은 대상·겹치는 기간의 동시 등록 시 정확히 한 건 저장
+  - 서로 다른 객실의 동시 등록 허용
   - `SCHEDULED → ACTIVE` 전환
   - `ACTIVE/SCHEDULED → ENDED` 전환
 - `ReservationTimeSaleMySqlIntegrationTest`

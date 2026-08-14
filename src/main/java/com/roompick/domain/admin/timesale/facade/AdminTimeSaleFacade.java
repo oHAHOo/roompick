@@ -1,6 +1,7 @@
 package com.roompick.domain.admin.timesale.facade;
 
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
@@ -37,24 +38,20 @@ public class AdminTimeSaleFacade {
      * roomId가 null이면 숙소 전체 타임세일로
      * 등록합니다.
      */
+    @Transactional
     public TimeSaleCreateResponseDto create(
         Long accommodationId,
         TimeSaleCreateRequestDto request
     ) {
-        Accommodation accommodation =
-            accommodationService.findById(
-                accommodationId
-            );
-
-        Room room = findTargetRoom(
+        TimeSaleTarget target = lockTarget(
             accommodationId,
             request.roomId()
         );
 
         TimeSale timeSale =
             timeSaleService.create(
-                accommodation,
-                room,
+                target.accommodation(),
+                target.room(),
                 request.discountRate(),
                 request.startAt(),
                 request.endAt()
@@ -69,18 +66,38 @@ public class AdminTimeSaleFacade {
      * roomId가 존재할 때만 지정한 숙소에 소속된
      * 객실을 조회합니다.
      */
-    private Room findTargetRoom(
+    private TimeSaleTarget lockTarget(
         Long accommodationId,
         Long roomId
     ) {
         if (roomId == null) {
-            return null;
+            Accommodation accommodation =
+                accommodationService
+                    .findByIdForTimeSaleUpdate(
+                        accommodationId
+                    );
+
+            return new TimeSaleTarget(
+                accommodation,
+                null
+            );
         }
 
-        return roomService
-            .findByIdAndAccommodationIdForAdmin(
+        Room room = roomService
+            .findByIdAndAccommodationIdForTimeSaleUpdate(
                 accommodationId,
                 roomId
             );
+
+        return new TimeSaleTarget(
+            room.getAccommodation(),
+            room
+        );
+    }
+
+    private record TimeSaleTarget(
+        Accommodation accommodation,
+        Room room
+    ) {
     }
 }
