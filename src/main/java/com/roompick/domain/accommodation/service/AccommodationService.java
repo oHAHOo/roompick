@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
@@ -30,6 +31,26 @@ public class AccommodationService {
     @Transactional(readOnly = true)
     public Accommodation findById(Long accommodationId) {
         return accommodationRepository.findById(accommodationId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ACCOMMODATION_NOT_FOUND
+                )
+            );
+    }
+
+    /**
+     * 숙소 전체 타임세일 등록 트랜잭션에서
+     * 대상 숙소 행에 비관적 쓰기 락을 획득합니다.
+     *
+     * 락 획득부터 기간 중복 검사와 저장까지 같은
+     * Facade 트랜잭션에서 처리하기 위해 기존 트랜잭션을 필수로 합니다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Accommodation findByIdForTimeSaleUpdate(
+        Long accommodationId
+    ) {
+        return accommodationRepository
+            .findByIdForUpdate(accommodationId)
             .orElseThrow(() ->
                 new BusinessException(
                     ErrorCode.ACCOMMODATION_NOT_FOUND

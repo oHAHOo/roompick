@@ -65,10 +65,9 @@ public class ReservationService {
     }
 
     /**
-     * 결제 대기 상태의 새로운 예약을 생성합니다.
+     * 정상 객실 가격으로 예약을 생성합니다.
      *
-     * 숙박 기간과 기존 활성 예약을 다시 확인한 뒤
-     * 예약 당시의 객실 가격을 스냅샷으로 저장합니다.
+     * 기존 호출부와 테스트의 호환성을 위해 유지합니다.
      */
     @Transactional
     public Reservation createReservation(
@@ -77,6 +76,35 @@ public class ReservationService {
         LocalDate checkInDate,
         LocalDate checkOutDate,
         int guestCount
+    ) {
+        long pricePerNight = room == null
+            ? 0L
+            : room.getPricePerNight();
+
+        return createReservation(
+            memberId,
+            room,
+            checkInDate,
+            checkOutDate,
+            guestCount,
+            pricePerNight
+        );
+    }
+
+    /**
+     * 현재 적용 가격으로 예약을 생성합니다.
+     *
+     * 숙박 기간과 기존 활성 예약을 다시 확인한 뒤
+     * 적용 가격을 예약 금액으로 스냅샷 저장합니다.
+     */
+    @Transactional
+    public Reservation createReservation(
+        Long memberId,
+        Room room,
+        LocalDate checkInDate,
+        LocalDate checkOutDate,
+        int guestCount,
+        long appliedPricePerNight
     ) {
         validateMemberId(memberId);
 
@@ -107,18 +135,24 @@ public class ReservationService {
             );
 
         LocalDateTime expiresAt =
-            now.plusMinutes(PAYMENT_WAIT_MINUTES);
+            now.plusMinutes(
+                PAYMENT_WAIT_MINUTES
+            );
 
-        Reservation reservation = Reservation.create(
-            memberReference,
-            room,
-            checkInDate,
-            checkOutDate,
-            guestCount,
-            expiresAt
+        Reservation reservation =
+            Reservation.create(
+                memberReference,
+                room,
+                checkInDate,
+                checkOutDate,
+                guestCount,
+                expiresAt,
+                appliedPricePerNight
+            );
+
+        return reservationRepository.save(
+            reservation
         );
-
-        return reservationRepository.save(reservation);
     }
 
     /**

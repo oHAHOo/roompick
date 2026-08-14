@@ -42,6 +42,22 @@ public interface RoomRepository
     );
 
     /**
+     * 객실 전용 타임세일 등록 요청을 직렬화하기 위해
+     * 지정한 숙소에 소속된 객실 행을 비관적 쓰기 락으로 조회합니다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT room
+        FROM Room room
+        WHERE room.id = :roomId
+          AND room.accommodation.id = :accommodationId
+        """)
+    Optional<Room> findByIdAndAccommodationIdForUpdate(
+        @Param("roomId") Long roomId,
+        @Param("accommodationId") Long accommodationId
+    );
+
+    /**
      * 예약 생성에 필요한 객실과 소속 숙소를
      * fetch join으로 한 번에 조회합니다.
      *
@@ -155,4 +171,5 @@ public interface RoomRepository
         Long accommodationId,
         String roomNumber
     );
+
 }

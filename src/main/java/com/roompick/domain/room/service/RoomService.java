@@ -204,6 +204,45 @@ public class RoomService {
         return room;
     }
 
+    /**
+     * 관리자 기능에서 지정한 숙소에 실제로 소속된
+     * 객실과 숙소 정보를 함께 조회합니다.
+     *
+     * 존재하지 않거나 다른 숙소에 소속된 객실이면
+     * ROOM_NOT_FOUND 예외를 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public Room findByIdAndAccommodationIdForAdmin(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return findByIdAndAccommodationIdWithAccommodation(
+            accommodationId,
+            roomId
+        );
+    }
+
+    /**
+     * 객실 전용 타임세일 등록 트랜잭션에서
+     * 대상 객실 행에 비관적 쓰기 락을 획득합니다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Room findByIdAndAccommodationIdForTimeSaleUpdate(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository
+            .findByIdAndAccommodationIdForUpdate(
+                roomId,
+                accommodationId
+            )
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
+            );
+    }
+
     private Room findByIdAndAccommodationId(
         Long accommodationId,
         Long roomId

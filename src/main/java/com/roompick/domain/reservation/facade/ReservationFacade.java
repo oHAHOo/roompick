@@ -15,11 +15,12 @@ import com.roompick.domain.reservation.service.ReservationIdempotencyService;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.timesale.service.TimeSalePriceService;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * 객실 도메인과 예약 도메인의
+ * 객실·예약·타임세일 도메인의
  * 예약 생성 흐름을 조율합니다.
  */
 @Component
@@ -27,28 +28,28 @@ import lombok.RequiredArgsConstructor;
 public class ReservationFacade {
 
     private final RoomService roomService;
-    private final ReservationService reservationService;
+
+    private final ReservationService
+        reservationService;
+
     private final ReservationIdempotencyService
         reservationIdempotencyService;
+
+    private final TimeSalePriceService
+        timeSalePriceService;
 
     /**
      * 인증된 회원의 예약을 멱등하게 생성합니다.
      *
-     * 회원 ID와 멱등성 키를 기준으로 최초 처리 정보를
-     * 생성하거나 기존 처리 결과를 조회합니다.
+     * 최초 요청은 객실에 비관적 쓰기 락을 획득한 뒤
+     * 현재 타임세일 가격을 계산하고 예약에 저장합니다.
      *
-     * 동일 키와 동일 요청이 이미 완료됐다면
-     * 객실 락을 다시 획득하거나 새로운 예약을 생성하지 않고
-     * 최초 요청으로 생성된 예약 결과를 반환합니다.
-     *
-     * 최초 요청이라면 객실에 비관적 쓰기 락을 획득한 뒤
-     * 숙박 기간의 중복 예약을 검증하고 저장합니다.
-     *
-     * 멱등성 처리 정보 생성부터 예약 저장 및 완료 상태 변경까지
-     * 하나의 트랜잭션으로 묶어 함께 커밋하거나 롤백합니다.
+     * 동일 요청이 이미 완료됐다면 현재 가격을 다시 계산하지 않고
+     * 최초 예약에 저장된 가격과 결과를 반환합니다.
      */
     @Transactional
-    public ReservationCreateResponseDto createReservation(
+    public ReservationCreateResponseDto
+    createReservation(
         Long memberId,
         String idempotencyKey,
         ReservationCreateRequestDto request
@@ -61,10 +62,6 @@ public class ReservationFacade {
                     request
                 );
 
-        /*
-         * 같은 회원이 같은 키와 동일한 요청을
-         * 다시 전달했다면 최초 예약 결과를 반환합니다.
-         */
         if (idempotency.isCompleted()) {
             Reservation completedReservation =
                 idempotency
@@ -75,6 +72,10 @@ public class ReservationFacade {
             );
         }
 
+        /*
+         * 객실 행을 먼저 잠가 동일 객실의 예약 생성 요청을
+         * 현재 트랜잭션 안에서 순차적으로 처리합니다.
+         */
         Room room =
             roomService
                 .findReservableRoomForUpdate(
@@ -82,14 +83,25 @@ public class ReservationFacade {
                     request.guestCount()
                 );
 
+        /*
+         * 객실 락을 획득한 후 현재 적용 가격을 계산합니다.
+         */
+        long appliedPricePerNight =
+            timeSalePriceService
+                .calculatePricePerNight(
+                    room
+                );
+
         Reservation reservation =
-            reservationService.createReservation(
-                memberId,
-                room,
-                request.checkInDate(),
-                request.checkOutDate(),
-                request.guestCount()
-            );
+            reservationService
+                .createReservation(
+                    memberId,
+                    room,
+                    request.checkInDate(),
+                    request.checkOutDate(),
+                    request.guestCount(),
+                    appliedPricePerNight
+                );
 
         reservationIdempotencyService.complete(
             idempotency,
@@ -105,17 +117,19 @@ public class ReservationFacade {
      * 인증된 회원의 예약 목록을
      * 페이지 단위로 조회합니다.
      */
-    public ReservationPageResponseDto getMyReservations(
+    public ReservationPageResponseDto
+    getMyReservations(
         Long memberId,
         int page,
         int size
     ) {
         Page<Reservation> reservationPage =
-            reservationService.findMyReservations(
-                memberId,
-                page,
-                size
-            );
+            reservationService
+                .findMyReservations(
+                    memberId,
+                    page,
+                    size
+                );
 
         return ReservationPageResponseDto.from(
             reservationPage
@@ -125,15 +139,17 @@ public class ReservationFacade {
     /**
      * 인증된 회원의 예약 상세 정보를 조회합니다.
      */
-    public ReservationDetailResponseDto getMyReservation(
+    public ReservationDetailResponseDto
+    getMyReservation(
         Long memberId,
         Long reservationId
     ) {
         Reservation reservation =
-            reservationService.findMyReservation(
-                memberId,
-                reservationId
-            );
+            reservationService
+                .findMyReservation(
+                    memberId,
+                    reservationId
+                );
 
         return ReservationDetailResponseDto.from(
             reservation
@@ -143,15 +159,17 @@ public class ReservationFacade {
     /**
      * 인증된 회원의 결제 대기 예약을 취소합니다.
      */
-    public ReservationCancelResponseDto cancelReservation(
+    public ReservationCancelResponseDto
+    cancelReservation(
         Long memberId,
         Long reservationId
     ) {
         Reservation reservation =
-            reservationService.cancelReservation(
-                memberId,
-                reservationId
-            );
+            reservationService
+                .cancelReservation(
+                    memberId,
+                    reservationId
+                );
 
         return ReservationCancelResponseDto.from(
             reservation

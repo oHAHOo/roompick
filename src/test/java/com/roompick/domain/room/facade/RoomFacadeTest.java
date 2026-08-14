@@ -23,11 +23,13 @@ import com.roompick.domain.room.dto.RoomAvailabilityResponseDto;
 import com.roompick.domain.room.dto.RoomAvailabilityStatus;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.timesale.service.TimeSalePriceService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
 /**
- * 객실과 예약 Service를 연결하는 RoomFacade의 흐름을 검증합니다.
+ * 객실과 예약 Service를 연결하는
+ * RoomFacade의 흐름을 검증합니다.
  */
 @ExtendWith(MockitoExtension.class)
 class RoomFacadeTest {
@@ -36,17 +38,25 @@ class RoomFacadeTest {
     private RoomService roomService;
 
     @Mock
-    private ReservationService reservationService;
+    private ReservationService
+        reservationService;
+
+    @Mock
+    private TimeSalePriceService
+        timeSalePriceService;
 
     @InjectMocks
     private RoomFacade roomFacade;
 
     @Test
-    @DisplayName("객실을 예약할 수 있으면 예상 금액과 available true를 반환한다")
+    @DisplayName(
+        "객실을 예약할 수 있으면 예상 금액과 available true를 반환한다"
+    )
     void getAvailableRoom() {
         // given
         Long roomId = 1L;
         Room room = createRoom(roomId);
+
         RoomAvailabilityRequestDto request =
             createAvailabilityRequest();
 
@@ -65,6 +75,11 @@ class RoomFacadeTest {
             )
         ).willReturn(true);
 
+        given(
+            timeSalePriceService
+                .calculatePricePerNight(room)
+        ).willReturn(100_000L);
+
         // when
         RoomAvailabilityResponseDto response =
             roomFacade.getRoomAvailability(
@@ -73,22 +88,45 @@ class RoomFacadeTest {
             );
 
         // then
-        assertThat(response.roomId()).isEqualTo(roomId);
-        assertThat(response.nightCount()).isEqualTo(2);
-        assertThat(response.pricePerNight()).isEqualTo(100_000L);
-        assertThat(response.totalAmount()).isEqualTo(200_000L);
-        assertThat(response.available()).isTrue();
+        assertThat(response.roomId())
+            .isEqualTo(roomId);
+
+        assertThat(response.nightCount())
+            .isEqualTo(2);
+
+        assertThat(response.pricePerNight())
+            .isEqualTo(100_000L);
+
+        assertThat(response.normalPricePerNight())
+            .isEqualTo(100_000L);
+
+        assertThat(response.discountApplied())
+            .isFalse();
+
+        assertThat(response.totalAmount())
+            .isEqualTo(200_000L);
+
+        assertThat(response.available())
+            .isTrue();
+
         assertThat(response.status())
-            .isEqualTo(RoomAvailabilityStatus.ACTIVE);
-        assertThat(response.unavailableReason()).isNull();
+            .isEqualTo(
+                RoomAvailabilityStatus.ACTIVE
+            );
+
+        assertThat(response.unavailableReason())
+            .isNull();
     }
 
     @Test
-    @DisplayName("겹치는 예약이 있으면 available false와 사유를 반환한다")
+    @DisplayName(
+        "겹치는 예약이 있으면 available false와 사유를 반환한다"
+    )
     void getUnavailableRoom() {
         // given
         Long roomId = 1L;
         Room room = createRoom(roomId);
+
         RoomAvailabilityRequestDto request =
             createAvailabilityRequest();
 
@@ -107,6 +145,11 @@ class RoomFacadeTest {
             )
         ).willReturn(false);
 
+        given(
+            timeSalePriceService
+                .calculatePricePerNight(room)
+        ).willReturn(100_000L);
+
         // when
         RoomAvailabilityResponseDto response =
             roomFacade.getRoomAvailability(
@@ -115,18 +158,37 @@ class RoomFacadeTest {
             );
 
         // then
-        assertThat(response.available()).isFalse();
+        assertThat(response.pricePerNight())
+            .isEqualTo(100_000L);
+
+        assertThat(response.normalPricePerNight())
+            .isEqualTo(100_000L);
+
+        assertThat(response.discountApplied())
+            .isFalse();
+
+        assertThat(response.available())
+            .isFalse();
+
         assertThat(response.status())
-            .isEqualTo(RoomAvailabilityStatus.SOLD_OUT);
+            .isEqualTo(
+                RoomAvailabilityStatus.SOLD_OUT
+            );
+
         assertThat(response.unavailableReason())
-            .isEqualTo("선택한 날짜에 이미 예약된 객실입니다.");
+            .isEqualTo(
+                "선택한 날짜에 이미 예약된 객실입니다."
+            );
     }
 
     @Test
-    @DisplayName("숙소 또는 객실이 운영 중지 상태면 예약 가능 여부 조회를 중단한다")
+    @DisplayName(
+        "숙소 또는 객실이 운영 중지 상태면 예약 가능 여부 조회를 중단한다"
+    )
     void inactiveRoomOrAccommodationStopsAvailabilityCheck() {
         // given
         Long roomId = 1L;
+
         RoomAvailabilityRequestDto request =
             createAvailabilityRequest();
 
@@ -136,23 +198,38 @@ class RoomFacadeTest {
                 request.guestCount()
             )
         ).willThrow(
-            new BusinessException(ErrorCode.ROOM_INACTIVE)
+            new BusinessException(
+                ErrorCode.ROOM_INACTIVE
+            )
         );
 
         // when & then
         assertThatThrownBy(() ->
-            roomFacade.getRoomAvailability(roomId, request)
-        )
-            .isInstanceOf(BusinessException.class)
-            .extracting(exception ->
-                ((BusinessException) exception).getErrorCode()
+            roomFacade.getRoomAvailability(
+                roomId,
+                request
             )
-            .isEqualTo(ErrorCode.ROOM_INACTIVE);
+        )
+            .isInstanceOf(
+                BusinessException.class
+            )
+            .extracting(exception ->
+                ((BusinessException) exception)
+                    .getErrorCode()
+            )
+            .isEqualTo(
+                ErrorCode.ROOM_INACTIVE
+            );
 
-        then(reservationService).shouldHaveNoInteractions();
+        then(reservationService)
+            .shouldHaveNoInteractions();
+
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
     }
 
-    private RoomAvailabilityRequestDto createAvailabilityRequest() {
+    private RoomAvailabilityRequestDto
+    createAvailabilityRequest() {
         return new RoomAvailabilityRequestDto(
             LocalDate.of(2026, 8, 10),
             LocalDate.of(2026, 8, 12),
@@ -161,13 +238,14 @@ class RoomFacadeTest {
     }
 
     private Room createRoom(Long roomId) {
-        Accommodation accommodation = Accommodation.create(
-            "룸픽 호텔",
-            "서울특별시 강남구",
-            "RoomPick 테스트 숙소",
-            LocalTime.of(15, 0),
-            LocalTime.of(11, 0)
-        );
+        Accommodation accommodation =
+            Accommodation.create(
+                "룸픽 호텔",
+                "서울특별시 강남구",
+                "RoomPick 테스트 숙소",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0)
+            );
 
         Room room = Room.create(
             accommodation,
@@ -181,7 +259,6 @@ class RoomFacadeTest {
 
         room.activate();
 
-        // 저장하지 않은 단위 테스트 객체에 ID를 지정합니다.
         ReflectionTestUtils.setField(
             room,
             "id",

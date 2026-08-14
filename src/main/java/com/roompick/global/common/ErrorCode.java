@@ -54,6 +54,12 @@ public enum ErrorCode {
     INVALID_ROOM_CAPACITY(HttpStatus.BAD_REQUEST, "INVALID_ROOM_CAPACITY", "객실 인원 설정이 올바르지 않습니다."),
     ROOM_NUMBER_DUPLICATED(HttpStatus.CONFLICT, "ROOM_NUMBER_DUPLICATED", "동일한 숙소에 같은 객실 번호가 이미 존재합니다."),
 
+    // 타임세일 오류
+    INVALID_TIME_SALE_DISCOUNT_RATE(HttpStatus.BAD_REQUEST, "INVALID_TIME_SALE_DISCOUNT_RATE", "할인율은 1% 이상 99% 이하여야 합니다."),
+    INVALID_TIME_SALE_PERIOD(HttpStatus.BAD_REQUEST, "INVALID_TIME_SALE_PERIOD", "타임세일 기간이 올바르지 않습니다."),
+    TIME_SALE_TARGET_MISMATCH(HttpStatus.BAD_REQUEST, "TIME_SALE_TARGET_MISMATCH", "객실이 요청한 숙소에 속하지 않습니다."),
+    TIME_SALE_PERIOD_OVERLAP(HttpStatus.CONFLICT, "TIME_SALE_PERIOD_OVERLAP", "같은 대상에 겹치는 타임세일이 이미 존재합니다."),
+
     // 예약 입력 및 상태 오류
     INVALID_STAY_PERIOD(HttpStatus.BAD_REQUEST, "INVALID_STAY_PERIOD", "숙박 기간이 올바르지 않습니다."),
     INVALID_GUEST_COUNT(HttpStatus.BAD_REQUEST, "INVALID_GUEST_COUNT", "예약 인원은 1명 이상이어야 합니다."),

@@ -11,33 +11,50 @@ import com.roompick.domain.room.entity.Room;
 public record RoomAvailabilityResponseDto(
 
     Long roomId,
+
     LocalDate checkInDate,
+
     LocalDate checkOutDate,
+
     int guestCount,
+
     int nightCount,
+
     long pricePerNight,
+
+    long normalPricePerNight,
+
+    boolean discountApplied,
+
     long totalAmount,
+
     RoomAvailabilityStatus status,
+
     boolean available,
+
     String unavailableReason
 
 ) {
 
-    private static final String OVERLAPPING_RESERVATION_REASON = "선택한 날짜에 이미 예약된 객실입니다.";
+    private static final String
+        OVERLAPPING_RESERVATION_REASON =
+        "선택한 날짜에 이미 예약된 객실입니다.";
 
     /**
-     * 검증된 객실과 요청 정보로 예약 가능 여부 응답을 생성합니다.
+     * 검증된 객실과 현재 적용 가격으로
+     * 예약 가능 여부 응답을 생성합니다.
      */
     public static RoomAvailabilityResponseDto of(
         Room room,
         RoomAvailabilityRequestDto request,
-        boolean available
+        boolean available,
+        long appliedPricePerNight
     ) {
         ReservationPrice reservationPrice =
             ReservationPrice.calculate(
                 request.checkInDate(),
                 request.checkOutDate(),
-                room.getPricePerNight()
+                appliedPricePerNight
             );
 
         String unavailableReason = available
@@ -48,6 +65,9 @@ public record RoomAvailabilityResponseDto(
             ? RoomAvailabilityStatus.ACTIVE
             : RoomAvailabilityStatus.SOLD_OUT;
 
+        long normalPricePerNight =
+            room.getPricePerNight();
+
         return new RoomAvailabilityResponseDto(
             room.getId(),
             request.checkInDate(),
@@ -55,6 +75,9 @@ public record RoomAvailabilityResponseDto(
             request.guestCount(),
             reservationPrice.nightCount(),
             reservationPrice.pricePerNight(),
+            normalPricePerNight,
+            appliedPricePerNight
+                < normalPricePerNight,
             reservationPrice.totalAmount(),
             status,
             available,
