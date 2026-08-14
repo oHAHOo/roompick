@@ -1,0 +1,11 @@
+search_engine=elasticsearch
+scenario=geo-keyword
+keyword=룸픽
+latitude=37.5665
+longitude=126.9780
+radius_km=5
+limit=20
+vus=10
+duration=30s
+think_time=0
+runs=3

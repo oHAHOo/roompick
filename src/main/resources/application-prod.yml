@@ -43,3 +43,15 @@ aws:
     secret-key: ${AWS_S3_SECRET_KEY}
     cdn-domain: ${AWS_S3_CDN_DOMAIN}
     cdn-distribution-id: ${AWS_S3_CDN_DISTRIBUTION_ID}
+
+place:
+  api:
+    base-url: ${KAKAO_LOCAL_API_BASE_URL:https://dapi.kakao.com}
+    key: ${KAKAO_REST_API_KEY}
+    connect-timeout: ${KAKAO_LOCAL_API_CONNECT_TIMEOUT:2s}
+    read-timeout: ${KAKAO_LOCAL_API_READ_TIMEOUT:3s}
+
+roompick:
+  search:
+    # 운영에서는 별도 Elasticsearch 인프라 없이 MySQL 위치 검색을 사용합니다.
+    location-engine: MYSQL

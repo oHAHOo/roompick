@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -45,6 +46,8 @@ class AdminAccommodationFacadeTest {
                 "룸픽 호텔",
                 "서울특별시 중구",
                 "RoomPick MVP 예약 테스트를 위한 숙소",
+                new BigDecimal("37.566500"),
+                new BigDecimal("126.978000"),
                 "15:00:00",
                 "11:00:00"
             );
@@ -55,7 +58,9 @@ class AdminAccommodationFacadeTest {
                 request.address(),
                 request.description(),
                 checkInTime,
-                checkOutTime
+                checkOutTime,
+                request.latitude(),
+                request.longitude()
             );
 
         given(
@@ -65,6 +70,8 @@ class AdminAccommodationFacadeTest {
                 request.description(),
                 checkInTime,
                 checkOutTime,
+                request.latitude(),
+                request.longitude(),
                 List.of()
             )
         ).willReturn(accommodation);
@@ -100,6 +107,8 @@ class AdminAccommodationFacadeTest {
                 request.description(),
                 checkInTime,
                 checkOutTime,
+                request.latitude(),
+                request.longitude(),
                 List.of()
             );
     }

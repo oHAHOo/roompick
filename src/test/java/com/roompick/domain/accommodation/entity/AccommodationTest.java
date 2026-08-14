@@ -3,11 +3,14 @@ package com.roompick.domain.accommodation.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.roompick.global.common.BusinessException;
-import com.roompick.global.common.ErrorCode;
+import java.math.BigDecimal;
 import java.time.LocalTime;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 /**
  * Accommodation의 생성 규칙을 검증하는 단위 테스트입니다.
@@ -23,6 +26,8 @@ class AccommodationTest {
         String description = "RoomPick MVP 예약 테스트를 위한 숙소입니다.";
         LocalTime checkInTime = LocalTime.of(15, 0);
         LocalTime checkOutTime = LocalTime.of(11, 0);
+        BigDecimal latitude = new BigDecimal("37.566500");
+        BigDecimal longitude = new BigDecimal("126.978000");
 
         // when
         Accommodation accommodation = Accommodation.create(
@@ -30,7 +35,9 @@ class AccommodationTest {
             address,
             description,
             checkInTime,
-            checkOutTime
+            checkOutTime,
+            latitude,
+            longitude
         );
 
         // then
@@ -39,7 +46,52 @@ class AccommodationTest {
         assertThat(accommodation.getDescription()).isEqualTo(description);
         assertThat(accommodation.getCheckInTime()).isEqualTo(checkInTime);
         assertThat(accommodation.getCheckOutTime()).isEqualTo(checkOutTime);
-        assertThat(accommodation.getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+        assertThat(accommodation.getLatitude())
+            .isEqualByComparingTo(latitude);
+        assertThat(accommodation.getLongitude())
+            .isEqualByComparingTo(longitude);
+        assertThat(accommodation.getStatus())
+            .isEqualTo(AccommodationStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("위도 범위를 벗어나면 숙소를 생성할 수 없다")
+    void createAccommodationWithInvalidLatitude() {
+        BusinessException exception = catchThrowableOfType(
+            () -> Accommodation.create(
+                "룸픽 호텔",
+                "서울특별시 중구",
+                "숙소 설명",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0),
+                new BigDecimal("90.000001"),
+                new BigDecimal("126.978000")
+            ),
+            BusinessException.class
+        );
+
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.ACCOMMODATION_LATITUDE_OUT_OF_RANGE);
+    }
+
+    @Test
+    @DisplayName("경도 범위를 벗어나면 숙소를 생성할 수 없다")
+    void createAccommodationWithInvalidLongitude() {
+        BusinessException exception = catchThrowableOfType(
+            () -> Accommodation.create(
+                "룸픽 호텔",
+                "서울특별시 중구",
+                "숙소 설명",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0),
+                new BigDecimal("37.566500"),
+                new BigDecimal("180.000001")
+            ),
+            BusinessException.class
+        );
+
+        assertThat(exception.getErrorCode())
+            .isEqualTo(ErrorCode.ACCOMMODATION_LONGITUDE_OUT_OF_RANGE);
     }
 
     @Test

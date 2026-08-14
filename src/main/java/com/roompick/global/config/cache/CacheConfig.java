@@ -3,8 +3,11 @@ package com.roompick.global.config.cache;
 import java.time.Duration;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
 import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -13,9 +16,6 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-import org.springframework.cache.Cache;
-import org.springframework.cache.interceptor.CacheErrorHandler;
-import org.springframework.beans.factory.annotation.Value;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,6 +30,9 @@ public class CacheConfig implements CachingConfigurer {
 
     private static final String POPULAR_ACCOMMODATIONS_CACHE =
         "popularAccommodations";
+
+    private static final String PLACE_SEARCHES_CACHE =
+        "placeSearches";
 
     /**
      * 인기 숙소 조회 결과를 Redis에 JSON 형식으로 저장합니다.
@@ -56,7 +59,12 @@ public class CacheConfig implements CachingConfigurer {
         @Value(
             "${roompick.cache.popular-accommodations-ttl:60s}"
         )
-        Duration popularAccommodationsTtl
+        Duration popularAccommodationsTtl,
+
+        @Value(
+            "${roompick.cache.place-search-ttl:5m}"
+        )
+        Duration placeSearchTtl
     ) {
         /*
          * 모든 Redis 캐시에서 공통으로 사용할
@@ -109,6 +117,11 @@ public class CacheConfig implements CachingConfigurer {
                 popularAccommodationsTtl
             );
 
+        RedisCacheConfiguration placeSearchConfiguration =
+            defaultConfiguration.entryTtl(
+                placeSearchTtl
+            );
+
         /*
          * Redis 기반 CacheManager를 생성합니다.
          */
@@ -131,7 +144,9 @@ public class CacheConfig implements CachingConfigurer {
             .withInitialCacheConfigurations(
                 Map.of(
                     POPULAR_ACCOMMODATIONS_CACHE,
-                    popularAccommodationConfiguration
+                    popularAccommodationConfiguration,
+                    PLACE_SEARCHES_CACHE,
+                    placeSearchConfiguration
                 )
             )
 
