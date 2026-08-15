@@ -1,5 +1,6 @@
 package com.roompick.domain.admin.specialoffer.dto;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.validation.constraints.NotNull;
@@ -14,5 +15,11 @@ public record SpecialOfferCreateRequestDto(
     LocalDateTime startsAt,
 
     @NotNull(message = "판매 종료 시각은 필수입니다.")
-    LocalDateTime endsAt
+    LocalDateTime endsAt,
+
+    @NotNull(message = "체크인 날짜는 필수입니다.")
+    LocalDate checkInDate,
+
+    @NotNull(message = "체크아웃 날짜는 필수입니다.")
+    LocalDate checkOutDate
 ) {}

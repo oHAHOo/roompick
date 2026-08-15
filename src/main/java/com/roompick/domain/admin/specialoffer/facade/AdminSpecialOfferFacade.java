@@ -28,7 +28,9 @@ public class AdminSpecialOfferFacade {
             room,
             request.price(),
             request.startsAt(),
-            request.endsAt()
+            request.endsAt(),
+            request.checkInDate(),
+            request.checkOutDate()
         );
         return SpecialOfferCreateResponseDto.from(specialOffer);
     }

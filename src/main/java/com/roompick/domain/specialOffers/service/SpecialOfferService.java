@@ -3,6 +3,7 @@ package com.roompick.domain.specialOffers.service;
 import static java.time.LocalDateTime.*;
 
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -33,9 +34,13 @@ public class SpecialOfferService {
         Room room,
         long price,
         LocalDateTime startsAt,
-        LocalDateTime endsAt
+        LocalDateTime endsAt,
+        LocalDate checkInDate,
+        LocalDate checkOutDate
     ) {
-        SpecialOffer specialOffer = SpecialOffer.create(room, price, startsAt, endsAt);
+        SpecialOffer specialOffer = SpecialOffer.create(
+            room, price, startsAt, endsAt, checkInDate, checkOutDate
+        );
         return specialOfferRepository.save(specialOffer);
     }
 

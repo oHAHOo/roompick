@@ -1,5 +1,6 @@
 package com.roompick.domain.specialOffers.entity;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.roompick.domain.room.entity.Room;
@@ -55,12 +56,12 @@ public class SpecialOffer extends BaseTimeEntity {
     private SpecialOfferStatus status;
 
     @Column(name = "check_in_date", nullable = false)
-    private LocalDateTime checkInDate;
+    private LocalDate checkInDate;
 
     @Column(name = "check_out_date", nullable = false)
-    private LocalDateTime checkOutDate;
+    private LocalDate checkOutDate;
 
-    private SpecialOffer(Room room, long price, LocalDateTime startsAt, LocalDateTime endsAt, SpecialOfferStatus status, LocalDateTime checkInDate, LocalDateTime checkOutDate) {
+    private SpecialOffer(Room room, long price, LocalDateTime startsAt, LocalDateTime endsAt, SpecialOfferStatus status, LocalDate checkInDate, LocalDate checkOutDate) {
         this.room = room;
         this.price = price;
         this.startsAt = startsAt;
@@ -70,7 +71,7 @@ public class SpecialOffer extends BaseTimeEntity {
         this.checkOutDate = checkOutDate;
     }
 
-    public static SpecialOffer create(Room room, long price, LocalDateTime startsAt, LocalDateTime endsAt, LocalDateTime checkInDate, LocalDateTime checkOutDate) {
+    public static SpecialOffer create(Room room, long price, LocalDateTime startsAt, LocalDateTime endsAt, LocalDate checkInDate, LocalDate checkOutDate) {
         validateRoom(room);
         validatePrice(price);
         validatePeriod(startsAt, endsAt);
@@ -79,7 +80,7 @@ public class SpecialOffer extends BaseTimeEntity {
         return new SpecialOffer(room, price, startsAt, endsAt, SpecialOfferStatus.SCHEDULED, checkInDate, checkOutDate);
     }
 
-    private static void validateStayPeriod(LocalDateTime checkInDate, LocalDateTime checkOutDate) {
+    private static void validateStayPeriod(LocalDate checkInDate, LocalDate checkOutDate) {
         if (checkInDate == null || checkOutDate == null || !checkOutDate.isAfter(checkInDate)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
         }

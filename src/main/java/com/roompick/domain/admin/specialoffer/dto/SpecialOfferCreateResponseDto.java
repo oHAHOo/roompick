@@ -1,11 +1,10 @@
 package com.roompick.domain.admin.specialoffer.dto;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.roompick.domain.specialOffers.entity.SpecialOffer;
 import com.roompick.domain.specialOffers.entity.SpecialOfferStatus;
-
-import lombok.Getter;
 
 public record SpecialOfferCreateResponseDto(
     Long specialOfferId,
@@ -13,6 +12,8 @@ public record SpecialOfferCreateResponseDto(
     long price,
     LocalDateTime startsAt,
     LocalDateTime endsAt,
+    LocalDate checkInDate,
+    LocalDate checkOutDate,
     SpecialOfferStatus status
 ) {
     public static SpecialOfferCreateResponseDto from(SpecialOffer specialOffer) {
@@ -22,8 +23,9 @@ public record SpecialOfferCreateResponseDto(
             specialOffer.getPrice(),
             specialOffer.getStartsAt(),
             specialOffer.getEndsAt(),
+            specialOffer.getCheckInDate(),
+            specialOffer.getCheckOutDate(),
             specialOffer.getStatus()
-
         );
     }
 }
