@@ -74,6 +74,14 @@ public class SpecialOfferService {
     }
 
     @Transactional(readOnly = true)
+    public SpecialOffer findById(Long specialOfferId) {
+        return specialOfferRepository
+            .findById(specialOfferId)
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.SPECIAL_OFFER_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
     public SpecialOffer findActiveById(Long specialOfferId) {
         SpecialOffer specialOffer = specialOfferRepository
             .findById(specialOfferId)
