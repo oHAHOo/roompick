@@ -243,6 +243,24 @@ public class RoomService {
             );
     }
 
+    /**
+     * 특가 상품 등록 트랜젝션에서
+     * 대상 객실 행에 비관적 쓰기 락을 획득합니다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Room findByIdAndAccommodationIdForSpecialOfferUpdate(
+        Long accommodationId,
+        Long roomId
+    ) {
+        return roomRepository.findByIdAndAccommodationIdForUpdate(
+            roomId,
+            accommodationId
+        ).orElseThrow(() ->
+            new BusinessException(
+                ErrorCode.ROOM_NOT_FOUND
+            ));
+    }
+
     private Room findByIdAndAccommodationId(
         Long accommodationId,
         Long roomId

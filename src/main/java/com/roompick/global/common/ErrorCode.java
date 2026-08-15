@@ -1,5 +1,6 @@
 package com.roompick.global.common;
 
+import co.elastic.clients.elasticsearch.nodes.Http;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -97,7 +98,11 @@ public enum ErrorCode {
     UNSUPPORTED_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "IMAGE_002", "지원하지 않는 이미지 형식입니다. (jpg, png, webp만 가능)"),
     IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_003", "이미지 파일 용량이 허용 범위를 초과했습니다."),
     IMAGE_UPLOAD_FAILED(HttpStatus.BAD_GATEWAY, "IMAGE_004", "이미지 업로드 중 오류가 발생했습니다."),
-    IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_005", "이미지는 최대 10장까지 등록할 수 있습니다.");
+    IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_005", "이미지는 최대 10장까지 등록할 수 있습니다."),
+
+    // 특가 상품 오류
+    SPECIAL_OFFER_NOT_FOUND(HttpStatus.NOT_FOUND, "SPECIAL_OFFER_NOT_FOUND", "특가 상품을 찾을 수 없습니다."),
+    SPECIAL_OFFER_NOT_ACTIVE(HttpStatus.CONFLICT, "SPECIAL_OFFER_NOT_ACTIVE", "현재 판매중인 특가 상품이 아닙니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

@@ -1,0 +1,100 @@
+package com.roompick.domain.waitlist.entity;
+
+import java.time.LocalDateTime;
+
+import com.roompick.domain.member.entity.Member;
+import com.roompick.domain.specialOffers.entity.SpecialOffer;
+import com.roompick.global.common.BaseTimeEntity;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Getter
+@Table(name = "waitlists")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Waitlist extends BaseTimeEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "waitlist_id")
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "special_offer_id", nullable = false)
+    private SpecialOffer specialOffer;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member member;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private WaitlistStatus status;
+
+    @Column(name = "requested_at", nullable = false)
+    private LocalDateTime requestedAt;
+
+    @Column(name = "hold_expires_at")
+    private LocalDateTime holdExpiresAt;
+
+    private Waitlist(SpecialOffer specialOffer, Member member, WaitlistStatus status, LocalDateTime requestedAt,
+        LocalDateTime holdExpiresAt) {
+        this.specialOffer = specialOffer;
+        this.member = member;
+        this.status = status;
+        this.requestedAt = requestedAt;
+        this.holdExpiresAt = holdExpiresAt;
+    }
+
+    public static Waitlist createHold(SpecialOffer specialOffer, Member member,
+        LocalDateTime requestedAt, LocalDateTime holdExpiresAt) {
+        return new Waitlist(specialOffer, member, WaitlistStatus.HOLD, requestedAt, holdExpiresAt);
+    }
+
+    public static Waitlist createWait(SpecialOffer specialOffer, Member member, LocalDateTime requestedAt) {
+        return new Waitlist(specialOffer, member, WaitlistStatus.WAIT, requestedAt, null);
+    }
+
+    public void promoteToHold(LocalDateTime holdExpiresAt) {
+        validateWaitStatus();
+        this.status = WaitlistStatus.HOLD;
+        this.holdExpiresAt = holdExpiresAt;
+    }
+
+    public void expire() {
+        validateHoldStatus();
+        this.status = WaitlistStatus.EXPIRED;
+    }
+
+    public void confirm() {
+        validateHoldStatus();
+        this.status = WaitlistStatus.CONFIRMED;
+    }
+
+    private void validateWaitStatus() {
+        if (status != WaitlistStatus.WAIT) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+
+    private void validateHoldStatus() {
+        if (status != WaitlistStatus.HOLD) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+    }
+}
