@@ -16,9 +16,13 @@ import com.roompick.domain.specialOffers.service.SpecialOfferService;
 import com.roompick.domain.waitlist.entity.Waitlist;
 import com.roompick.domain.waitlist.entity.WaitlistStatus;
 import com.roompick.domain.waitlist.repository.WaitlistRepository;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class WaitlistService {
@@ -33,6 +37,16 @@ public class WaitlistService {
 
     @Transactional
     public void occupy(Long specialOfferId, Long memberId, LocalDateTime requestedAt) {
+        boolean alreadyRequested = waitlistRepository
+            .findBySpecialOfferIdAndMemberId(specialOfferId, memberId).isPresent();
+
+        if (alreadyRequested) {
+            log.info(
+                "이미 처리된 점유 요청이라 재처리를 건너뜁니다. offerId={}, memberId={}", specialOfferId, memberId
+            );
+            return;
+        }
+
         boolean alreadyOccupied = waitlistRepository
             .existsBySpecialOfferIdAndStatusIn(
                 specialOfferId,
@@ -67,5 +81,11 @@ public class WaitlistService {
             specialOffer.getCheckOutDate(),
             room.getMaxCapacity()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Waitlist findMyWaitlist(Long specialOfferId, Long memberId) {
+        return waitlistRepository.findBySpecialOfferIdAndMemberId(specialOfferId, memberId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.WAITLIST_NOT_FOUND));
     }
 }

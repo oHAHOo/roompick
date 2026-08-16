@@ -103,7 +103,10 @@ public enum ErrorCode {
 
     // 특가 상품 오류
     SPECIAL_OFFER_NOT_FOUND(HttpStatus.NOT_FOUND, "SPECIAL_OFFER_NOT_FOUND", "특가 상품을 찾을 수 없습니다."),
-    SPECIAL_OFFER_NOT_ACTIVE(HttpStatus.CONFLICT, "SPECIAL_OFFER_NOT_ACTIVE", "현재 판매중인 특가 상품이 아닙니다.");
+    SPECIAL_OFFER_NOT_ACTIVE(HttpStatus.CONFLICT, "SPECIAL_OFFER_NOT_ACTIVE", "현재 판매중인 특가 상품이 아닙니다."),
+
+    // 대기열 오류
+    WAITLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITLIST_NOT_FOUND", "점유 요청 내역을 찾을 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

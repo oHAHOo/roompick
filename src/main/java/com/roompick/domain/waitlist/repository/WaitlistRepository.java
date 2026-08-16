@@ -1,6 +1,7 @@
 package com.roompick.domain.waitlist.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -28,4 +29,6 @@ public interface WaitlistRepository extends JpaRepository<Waitlist, Long> {
         @Param("status") WaitlistStatus status,
         @Param("now") java.time.LocalDateTime now
     );
+
+    Optional<Waitlist> findBySpecialOfferIdAndMemberId(Long specialOfferId, Long memberId);
 }

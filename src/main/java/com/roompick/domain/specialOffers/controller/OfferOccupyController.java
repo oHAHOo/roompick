@@ -3,12 +3,14 @@ package com.roompick.domain.specialOffers.controller;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.roompick.domain.specialOffers.dto.OfferOccupyResponseDto;
+import com.roompick.domain.specialOffers.dto.OfferOccupyStatusResponseDto;
 import com.roompick.domain.specialOffers.facade.OfferOccupyFacade;
 import com.roompick.global.common.ApiResponseDto;
 import com.roompick.global.security.AuthMember;
@@ -41,4 +43,24 @@ public class OfferOccupyController {
 
         return result;
     }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponseDto<OfferOccupyStatusResponseDto>> getMyOccupyStatus(
+        @AuthenticationPrincipal AuthMember authMember,
+        @PathVariable Long offerId
+    ) {
+        OfferOccupyStatusResponseDto response = offerOccupyFacade.getMyOccupyStatus(
+            authMember.memberId(),
+            offerId
+        );
+
+        ResponseEntity<ApiResponseDto<OfferOccupyStatusResponseDto>> result =
+            ResponseEntity.status(HttpStatus.OK).body(
+                ApiResponseDto.success(
+                    "점유 요청 상태 조회에 성공했습니다.", response)
+            );
+
+        return result;
+    }
+
 }
