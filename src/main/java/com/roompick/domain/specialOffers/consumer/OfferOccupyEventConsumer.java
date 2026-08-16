@@ -1,5 +1,6 @@
 package com.roompick.domain.specialOffers.consumer;
 
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -22,9 +23,13 @@ public class OfferOccupyEventConsumer {
         groupId = "special-offer-occupy-consumer",
         concurrency = "3"
     )
-    public void consume(OfferOccupyRequestEvent event) {
+    public void consume(ConsumerRecord<String, OfferOccupyRequestEvent> record) {
+        OfferOccupyRequestEvent event = record.value();
+
         log.info(
-            "점유 요청 처리 시작. offerId={}, memberId={}",
+            "점유 요청 처리 시작. partition={}, offset={}, offerId={}, memberId={}",
+            record.partition(),
+            record.offset(),
             event.offerId(),
             event.memberId()
         );

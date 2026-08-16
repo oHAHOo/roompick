@@ -115,13 +115,27 @@ SELECT status, COUNT(*) FROM waitlists WHERE special_offer_id = 1 GROUP BY statu
 -- HOLD: 1, WAIT: 29
 ```
 
-**처리 순서 일치율은 이번 측정에서 수치로 확인하지 못했다.** `requested_at`이
-밀리초 단위인데 30건의 k6 요청이 수 밀리초 간격으로 몰려 여러 행이 동일한
-타임스탬프를 가졌다 — 이 컬럼만으로는 실제 도착 순서를 정밀하게 재구성할
-수 없다. 실제 처리 순서를 결정하는 것은 `requested_at` 값이 아니라 Kafka
-파티션 오프셋이므로, 순서 일치율을 정확히 측정하려면 Producer가 각 요청의
-오프셋을 함께 기록하거나 별도 로깅이 필요하다 — 이번 측정 범위에는
-포함하지 않았다.
+**처리 순서 일치율은 최초 30 VU 측정 시점엔 수치로 확인하지 못했다.**
+`requested_at`이 밀리초 단위인데 30건의 k6 요청이 수 밀리초 간격으로 몰려
+여러 행이 동일한 타임스탬프를 가졌기 때문이다.
+
+이후 `OfferOccupyEventConsumer`가 `ConsumerRecord`에서 파티션·오프셋을 함께
+로깅하도록 수정하고(`partition={}, offset={}, offerId={}, memberId={}`),
+단일 특가에 500 VU를 다시 쏴서 **Kafka 오프셋 순서와 `waitlists` 저장
+순서(`waitlist_id` 오름차순)를 직접 대조**했다.
+
+```bash
+# 컨슈머 로그에서 (offset, memberId) 추출
+grep "offerId=70," app.log | grep -oE "offset=[0-9]+, offerId=70, memberId=[0-9]+"
+
+# DB에서 (waitlist_id, member_id) 추출
+SELECT waitlist_id, member_id FROM waitlists WHERE special_offer_id=70 ORDER BY waitlist_id ASC;
+```
+
+두 순서를 `memberId` 기준으로 나란히 놓고 `diff`한 결과 **500건 전부 완전
+일치했다 (일치율 100%, 500/500).** 오프셋 0번이 곧 `waitlist_id` 최솟값과
+같은 회원이었고, 마지막 오프셋 499번까지 순서가 한 건도 어긋나지 않았다.
+이걸로 "적재된 순서대로 처리된다"는 완료 조건을 숫자로 확인했다.
 
 ### 4.4 메모리 제한을 건 재측정
 
