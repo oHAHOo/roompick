@@ -69,6 +69,42 @@ public class WaitlistService {
         );
         waitlistRepository.save(waitlist);
 
+        createReservationForHold(specialOffer, memberId);
+    }
+
+    @Transactional(readOnly = true)
+    public Waitlist findMyWaitlist(Long specialOfferId, Long memberId) {
+        return waitlistRepository.findBySpecialOfferIdAndMemberId(specialOfferId, memberId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.WAITLIST_NOT_FOUND));
+    }
+
+    @Transactional
+    public int expireAndPromote(LocalDateTime now) {
+        List<Waitlist> expiredHolds = waitlistRepository.findAllExpiredHolds(WaitlistStatus.HOLD, now);
+
+        for (Waitlist exprired : expiredHolds) {
+            exprired.expire();
+
+            Long specialOfferId = exprired.getSpecialOffer().getId();
+
+            waitlistRepository.findFirstBySpecialOfferIdAndStatusOrderByRequestedAtAsc(
+                specialOfferId, WaitlistStatus.WAIT
+            ).ifPresent(next -> promote(next, now));
+        }
+
+        return expiredHolds.size();
+    }
+
+    private void promote(Waitlist waitlist, LocalDateTime now) {
+        LocalDateTime holdExpiresAt = now.plusMinutes(HOLD_DURATION_MINUTES);
+        waitlist.promoteToHold(holdExpiresAt);
+
+        createReservationForHold(
+            waitlist.getSpecialOffer(), waitlist.getMember().getId()
+        );
+    }
+
+    private void createReservationForHold(SpecialOffer specialOffer, Long memberId) {
         Room room = roomService.findReservableRoomForUpdate(
             specialOffer.getRoom().getId(),
             specialOffer.getRoom().getMaxCapacity()
@@ -81,11 +117,5 @@ public class WaitlistService {
             specialOffer.getCheckOutDate(),
             room.getMaxCapacity()
         );
-    }
-
-    @Transactional(readOnly = true)
-    public Waitlist findMyWaitlist(Long specialOfferId, Long memberId) {
-        return waitlistRepository.findBySpecialOfferIdAndMemberId(specialOfferId, memberId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.WAITLIST_NOT_FOUND));
     }
 }

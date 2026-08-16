@@ -1,5 +1,6 @@
 package com.roompick.domain.waitlist.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,18 +18,19 @@ public interface WaitlistRepository extends JpaRepository<Waitlist, Long> {
         List<WaitlistStatus> statuses
     );
 
+    Optional<Waitlist> findBySpecialOfferIdAndMemberId(Long specialOfferId, Long memberId);
+
     @Query("""
         SELECT waitlist
-        FROM Waitlist waitlist
-        WHERE waitlist.specialOffer.id = :specialOfferId
-        AND waitlist.status = :status
+        FROM Waitlist  waitlist
+        WHERE waitlist.status = :status
         AND waitlist.holdExpiresAt <= :now
-""")
-    List<Waitlist> findExpiredHolds(
-        @Param("specialOfferId") Long specialOfferId,
+        """)
+    List<Waitlist> findAllExpiredHolds(
         @Param("status") WaitlistStatus status,
-        @Param("now") java.time.LocalDateTime now
+        @Param("now") LocalDateTime now
     );
 
-    Optional<Waitlist> findBySpecialOfferIdAndMemberId(Long specialOfferId, Long memberId);
+    Optional<Waitlist> findFirstBySpecialOfferIdAndStatusOrderByRequestedAtAsc(Long specialOfferId,
+        WaitlistStatus status);
 }
