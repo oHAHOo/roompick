@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.member.service.MemberService;
+import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
@@ -69,7 +70,7 @@ public class WaitlistService {
         );
         waitlistRepository.save(waitlist);
 
-        createReservationForHold(specialOffer, memberId);
+        createReservationForHold(waitlist);
     }
 
     @Transactional(readOnly = true)
@@ -82,10 +83,11 @@ public class WaitlistService {
     public int expireAndPromote(LocalDateTime now) {
         List<Waitlist> expiredHolds = waitlistRepository.findAllExpiredHolds(WaitlistStatus.HOLD, now);
 
-        for (Waitlist exprired : expiredHolds) {
-            exprired.expire();
+        for (Waitlist expired : expiredHolds) {
+            expired.expire();
+            cancelHoldReservation(expired, now);
 
-            Long specialOfferId = exprired.getSpecialOffer().getId();
+            Long specialOfferId = expired.getSpecialOffer().getId();
 
             waitlistRepository.findFirstBySpecialOfferIdAndStatusOrderByRequestedAtAsc(
                 specialOfferId, WaitlistStatus.WAIT
@@ -99,23 +101,46 @@ public class WaitlistService {
         LocalDateTime holdExpiresAt = now.plusMinutes(HOLD_DURATION_MINUTES);
         waitlist.promoteToHold(holdExpiresAt);
 
-        createReservationForHold(
-            waitlist.getSpecialOffer(), waitlist.getMember().getId()
-        );
+        createReservationForHold(waitlist);
     }
 
-    private void createReservationForHold(SpecialOffer specialOffer, Long memberId) {
+    private void createReservationForHold(Waitlist waitlist) {
+        SpecialOffer specialOffer = waitlist.getSpecialOffer();
+
         Room room = roomService.findReservableRoomForUpdate(
             specialOffer.getRoom().getId(),
             specialOffer.getRoom().getMaxCapacity()
         );
 
-        reservationService.createReservation(
-            memberId,
+        Reservation reservation = reservationService.createReservation(
+            waitlist.getMember().getId(),
             room,
             specialOffer.getCheckInDate(),
             specialOffer.getCheckOutDate(),
             room.getMaxCapacity()
+        );
+
+        waitlist.attachReservation(reservation.getId());
+    }
+
+    /**
+     * 만료된 HOLD가 만들어둔 결제 대기 예약을 명시적으로 취소합니다.
+     *
+     * Reservation.expiresAt은 HOLD TTL과 다른 값으로 독립적으로
+     * 계산되므로, 시간이 지나기만 기다리면 다음 대기자의 예약 생성이
+     * 겹침 검증에 막힐 수 있습니다. 그래서 승계 전에 명시적으로
+     * 취소해 겹침 검증에서 제외합니다.
+     */
+    private void cancelHoldReservation(Waitlist expired, LocalDateTime now) {
+        Long reservationId = expired.getReservationId();
+
+        if (reservationId == null) {
+            return;
+        }
+
+        Reservation reservation = reservationService.findById(reservationId);
+        reservationService.cancelByPaymentFailure(
+            reservation, expired.getMember().getId(), now
         );
     }
 }

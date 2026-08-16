@@ -1,6 +1,7 @@
 package com.roompick.domain.admin.specialoffer.facade;
 
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.admin.specialoffer.dto.SpecialOfferCreateRequestDto;
 import com.roompick.domain.admin.specialoffer.dto.SpecialOfferCreateResponseDto;
@@ -18,6 +19,7 @@ public class AdminSpecialOfferFacade {
     private final RoomService roomService;
     private final SpecialOfferService specialOfferService;
 
+    @Transactional
     public SpecialOfferCreateResponseDto create(Long accommodationId, Long roomId,
         SpecialOfferCreateRequestDto request) {
         Room room =roomService.findByIdAndAccommodationIdForSpecialOfferUpdate(

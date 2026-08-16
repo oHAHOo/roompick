@@ -52,6 +52,9 @@ public class Waitlist extends BaseTimeEntity {
     @Column(name = "hold_expires_at")
     private LocalDateTime holdExpiresAt;
 
+    @Column(name = "reservation_id")
+    private Long reservationId;
+
     private Waitlist(SpecialOffer specialOffer, Member member, WaitlistStatus status, LocalDateTime requestedAt,
         LocalDateTime holdExpiresAt) {
         this.specialOffer = specialOffer;
@@ -59,6 +62,17 @@ public class Waitlist extends BaseTimeEntity {
         this.status = status;
         this.requestedAt = requestedAt;
         this.holdExpiresAt = holdExpiresAt;
+    }
+
+    /**
+     * HOLD 등록 시 실제로 생성된 결제 대기 예약의 ID를 연결합니다.
+     *
+     * HOLD가 만료될 때 이 예약을 명시적으로 취소해야
+     * 다음 대기자에게 승계할 수 있습니다.
+     */
+    public void attachReservation(Long reservationId) {
+        validateHoldStatus();
+        this.reservationId = reservationId;
     }
 
     public static Waitlist createHold(SpecialOffer specialOffer, Member member,
