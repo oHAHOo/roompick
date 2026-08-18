@@ -11,7 +11,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.roompick.domain.specialOffers.event
+        spring.json.trusted.packages: com.roompick.domain.specialOffers.event,com.roompick.domain.payment.event
 
   datasource:
     url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3307}/${DB_NAME:roompick}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8

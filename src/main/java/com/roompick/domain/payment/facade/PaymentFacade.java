@@ -6,9 +6,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 
 import com.roompick.domain.payment.entity.PaymentStatus;
+import com.roompick.domain.payment.event.PaymentCompletedEvent;
+import com.roompick.domain.payment.producer.PaymentCompletedEventProducer;
 import com.roompick.domain.reservation.entity.ReservationStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.roompick.domain.payment.client.portone.PortOneClient;
@@ -55,6 +59,7 @@ public class PaymentFacade {
     private final PortOneProperties portOneProperties;
 
     private final TransactionTemplate transactionTemplate;
+    private final PaymentCompletedEventProducer paymentCompletedEventProducer;
 
     /**
      * 예약을 검증하고 READY 상태의 결제를 준비합니다.
@@ -409,6 +414,20 @@ public class PaymentFacade {
 
         waitlistProcessingFacade.confirmByReservationId(
             reservation.getId()
+        );
+
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    paymentCompletedEventProducer.send(
+                        new PaymentCompletedEvent(
+                            approvedPayment.getId(),
+                            verificationResult.paidAt()
+                        )
+                    );
+                }
+            }
         );
 
         return PaymentCompleteResponseDto.from(
