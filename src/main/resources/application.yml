@@ -15,6 +15,14 @@ spring:
       # S3ImageUploader의 파일당 10MB 제한, 관리자 등록 API의 최대 10장 제한과 맞춘 값입니다.
       max-file-size: 10MB
       max-request-size: 105MB
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
 
 jwt:
   secret: ${JWT_SECRET:roompick-local-dev-only-jwt-secret-please-change-1234567890}
