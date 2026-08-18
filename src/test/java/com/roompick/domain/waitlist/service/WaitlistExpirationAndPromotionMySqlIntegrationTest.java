@@ -2,6 +2,7 @@ package com.roompick.domain.waitlist.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -95,6 +96,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
     private AccommodationRepository accommodationRepository;
     @Autowired
     private RoomRepository roomRepository;
+    @Autowired
+    private Clock clock;
 
     private TestData testData;
 
@@ -125,7 +128,12 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         waitlistService.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
         waitlistService.occupy(testData.offerId(), testData.thirdMemberId(), thirdRequestedAt);
 
-        LocalDateTime afterHoldExpires = firstRequestedAt.plusMinutes(6);
+        /*
+         * holdExpiresAt은 requestedAt이 아니라 occupy() 호출 시점의
+         * 실제 Clock 기준으로 계산되므로, 만료 판정도 같은 Clock
+         * 기준 "실제 현재 시각"을 기준으로 확인해야 한다.
+         */
+        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
 
         // when
         int expiredCount = waitlistService.expireAndPromote(afterHoldExpires);
@@ -159,7 +167,7 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         waitlistService.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
         waitlistService.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
 
-        LocalDateTime beforeHoldExpires = firstRequestedAt.plusMinutes(1);
+        LocalDateTime beforeHoldExpires = LocalDateTime.now(clock).plusMinutes(1);
 
         // when
         int expiredCount = waitlistService.expireAndPromote(beforeHoldExpires);
@@ -183,7 +191,7 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         LocalDateTime requestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         waitlistService.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
 
-        LocalDateTime afterHoldExpires = requestedAt.plusMinutes(6);
+        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
 
         // when
         int expiredCount = waitlistService.expireAndPromote(afterHoldExpires);

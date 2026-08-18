@@ -1,5 +1,6 @@
 package com.roompick.domain.waitlist.service;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -35,6 +36,7 @@ public class WaitlistService {
     private final RoomService roomService;
     private final ReservationService reservationService;
     private final MemberService memberService;
+    private final Clock clock;
 
     @Transactional
     public void occupy(Long specialOfferId, Long memberId, LocalDateTime requestedAt) {
@@ -64,7 +66,15 @@ public class WaitlistService {
             return;
         }
 
-        LocalDateTime holdExpiresAt = requestedAt.plusMinutes(HOLD_DURATION_MINUTES);
+        /*
+         * requestedAt은 HTTP 요청이 접수된 시각(기록·표시용)이고,
+         * holdExpiresAt은 컨슈머가 실제로 HOLD를 부여하는 이 시점부터
+         * HOLD_DURATION_MINUTES를 계산해야 한다. Kafka 컨슈머 랙이 크면
+         * requestedAt 기준으로는 사용자가 실제로 받는 결제 대기 시간이
+         * 부당하게 줄어든다.
+         */
+        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime holdExpiresAt = now.plusMinutes(HOLD_DURATION_MINUTES);
         Waitlist waitlist = Waitlist.createHold(
             specialOffer, member, requestedAt, holdExpiresAt
         );
@@ -120,7 +130,7 @@ public class WaitlistService {
     }
 
     private void promoteNextWaiter(Long specialOfferId, LocalDateTime now) {
-        waitlistRepository.findFirstBySpecialOfferIdAndStatusOrderByRequestedAtAsc(
+        waitlistRepository.findFirstBySpecialOfferIdAndStatusOrderByIdAsc(
             specialOfferId, WaitlistStatus.WAIT
         ).ifPresent(next -> promote(next, now));
     }
