@@ -29,6 +29,7 @@ import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.member.entity.Member;
 import com.roompick.domain.member.repository.MemberRepository;
 import com.roompick.domain.reservation.repository.ReservationRepository;
+import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.domain.specialOffers.entity.SpecialOffer;
@@ -91,6 +92,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
     private SpecialOfferRepository specialOfferRepository;
     @Autowired
     private ReservationRepository reservationRepository;
+    @Autowired
+    private ReservationService reservationService;
     @Autowired
     private MemberRepository memberRepository;
     @Autowired
@@ -204,6 +207,110 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
             .isEqualTo(WaitlistStatus.EXPIRED);
 
         assertThat(reservationRepository.count()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("HOLD 상태에서 결제가 성공하면 CONFIRMED로 전환되고 이후 만료 대상에서 제외된다")
+    void confirmedHoldIsNotExpiredAfterTtl() {
+        // given
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
+
+        Long reservationId = findWaitlist(testData.firstMemberId()).getReservationId();
+
+        // when — 결제 성공 처리
+        waitlistProcessingFacade.confirmByReservationId(reservationId);
+
+        // then
+        assertThat(findWaitlist(testData.firstMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.CONFIRMED);
+
+        // when — TTL이 지난 뒤 만료 스케줄러가 실행돼도
+        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
+        int expiredCount = waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
+
+        // then — CONFIRMED는 만료 대상이 아니므로 그대로 유지된다
+        assertThat(expiredCount).isZero();
+        assertThat(findWaitlist(testData.firstMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.CONFIRMED);
+    }
+
+    @Test
+    @DisplayName("HOLD 상태에서 결제가 실패(취소)하면 EXPIRED로 전환되고 다음 대기자가 승격된다")
+    void expiredByPaymentFailurePromotesNextWaiter() {
+        // given
+        LocalDateTime firstRequestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+        LocalDateTime secondRequestedAt = firstRequestedAt.plusSeconds(1);
+
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
+
+        Long reservationId = findWaitlist(testData.firstMemberId()).getReservationId();
+
+        // when — 결제 실패(또는 사용자 취소)로 예약이 취소된 상황을 흉내냄.
+        // 실제 PaymentFacade/ReservationFacade도 예약 취소를 먼저 수행한 뒤
+        // waitlistProcessingFacade를 호출하므로 같은 순서로 재현한다.
+        //
+        // reservationRepository.findById()로 먼저 엔티티를 꺼내 별도
+        // 트랜잭션에 넘기면 detached 상태라 상태 변경이 반영되지 않으므로,
+        // 조회와 취소를 한 트랜잭션에서 함께 처리하는 서비스 메서드를 쓴다.
+        LocalDateTime failedAt = LocalDateTime.now(clock);
+        reservationService.cancelReservation(testData.firstMemberId(), reservationId);
+
+        waitlistProcessingFacade.expireByReservationIdAndPromoteNext(reservationId, failedAt);
+
+        // then
+        assertThat(findWaitlist(testData.firstMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.EXPIRED);
+
+        assertThat(findWaitlist(testData.secondMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.HOLD);
+    }
+
+    @Test
+    @DisplayName("HOLD 만료 승계와 새 점유 요청이 같은 특가에 동시에 실행돼도 HOLD는 정확히 1건만 남는다")
+    void concurrentExpirationAndOccupyDoNotLeaveDanglingWait() throws Exception {
+        // given — 만료 대상 HOLD 하나만 있고 아직 아무도 WAIT으로 대기하지 않는다
+        LocalDateTime firstRequestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
+
+        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
+
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService executor =
+            java.util.concurrent.Executors.newFixedThreadPool(2);
+
+        // when — 만료 스케줄러와 신규 점유 요청을 동시에 실행
+        java.util.concurrent.Future<Integer> expireFuture = executor.submit(() -> {
+            startLatch.await();
+            return waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
+        });
+        java.util.concurrent.Future<?> occupyFuture = executor.submit(() -> {
+            startLatch.await();
+            waitlistProcessingFacade.occupy(
+                testData.offerId(), testData.secondMemberId(), firstRequestedAt.plusSeconds(1)
+            );
+            return null;
+        });
+
+        startLatch.countDown();
+        expireFuture.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        occupyFuture.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // then — 특가 행 락으로 두 트랜잭션이 직렬화되므로, 어느 순서로 실행되든
+        // 최종적으로 두 번째 회원은 HOLD 상태이고(WAIT으로 영구히 남지 않는다)
+        // 이 특가에 HOLD는 정확히 1건만 존재한다
+        assertThat(findWaitlist(testData.firstMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.EXPIRED);
+
+        assertThat(findWaitlist(testData.secondMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.HOLD);
+
+        long holdCount = waitlistRepository.findAll().stream()
+            .filter(waitlist -> waitlist.getStatus() == WaitlistStatus.HOLD)
+            .count();
+        assertThat(holdCount).isEqualTo(1L);
     }
 
     private Waitlist findWaitlist(Long memberId) {

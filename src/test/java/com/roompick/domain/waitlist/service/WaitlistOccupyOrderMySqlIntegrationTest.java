@@ -138,6 +138,23 @@ class WaitlistOccupyOrderMySqlIntegrationTest {
     }
 
     @Test
+    @DisplayName("HOLD로 생성되는 예약은 객실 가격이 아니라 특가 가격을 적용한다")
+    void holdReservationUsesSpecialOfferPriceNotRoomPrice() {
+        // given — createTestData()가 만드는 객실 가격은 300,000원, 특가 가격은 150,000원
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+
+        // when
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
+
+        // then
+        assertThat(reservationRepository.findAll())
+            .hasSize(1)
+            .first()
+            .extracting(reservation -> reservation.getPricePerNight())
+            .isEqualTo(150_000L);
+    }
+
+    @Test
     @DisplayName("같은 회원의 재처리 요청은 무시되고 중복 예약이 생성되지 않는다")
     void retriedRequestFromSameMemberIsIgnored() {
         // given

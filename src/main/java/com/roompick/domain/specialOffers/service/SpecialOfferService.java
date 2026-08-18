@@ -9,6 +9,7 @@ import java.time.ZoneId;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.room.entity.Room;
@@ -93,6 +94,21 @@ public class SpecialOfferService {
         }
 
         return specialOffer;
+    }
+
+    /**
+     * 같은 특가에 대한 점유 처리·만료·승계를 직렬화하기 위해
+     * 특가 행에 비관적 쓰기 락을 획득합니다.
+     *
+     * WaitlistProcessingFacade가 시작한 트랜잭션에 참여하므로
+     * 기존 트랜잭션이 없으면 호출할 수 없습니다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public SpecialOffer findByIdForUpdate(Long specialOfferId) {
+        return specialOfferRepository
+            .findByIdForUpdate(specialOfferId)
+            .orElseThrow(() ->
+                new BusinessException(ErrorCode.SPECIAL_OFFER_NOT_FOUND));
     }
 
     /**

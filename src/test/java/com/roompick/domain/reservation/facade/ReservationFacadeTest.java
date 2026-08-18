@@ -273,6 +273,88 @@ class ReservationFacadeTest {
 
     @Test
     @DisplayName(
+        "요청한 객실·기간에 ACTIVE 특가가 있으면 "
+            + "일반 예약 생성을 거부한다"
+    )
+    void 활성_특가와_겹치면_일반_예약_생성을_거부한다() {
+        // given
+        Long memberId = 1L;
+        Long roomId = 20L;
+
+        LocalDate checkInDate =
+            LocalDate.of(2026, 8, 10);
+
+        LocalDate checkOutDate =
+            LocalDate.of(2026, 8, 12);
+
+        ReservationCreateRequestDto request =
+            new ReservationCreateRequestDto(
+                roomId,
+                checkInDate,
+                checkOutDate,
+                2
+            );
+
+        Accommodation accommodation =
+            createAccommodation(10L);
+
+        Room room =
+            createRoom(
+                roomId,
+                accommodation
+            );
+
+        given(
+            reservationIdempotencyService
+                .getOrCreate(
+                    memberId,
+                    IDEMPOTENCY_KEY,
+                    request
+                )
+        ).willReturn(reservationIdempotency);
+
+        given(
+            reservationIdempotency.isCompleted()
+        ).willReturn(false);
+
+        given(
+            roomService.findReservableRoomForUpdate(
+                roomId,
+                2
+            )
+        ).willReturn(room);
+
+        given(
+            specialOfferService.existsActiveOfferForRoomAndPeriod(
+                roomId,
+                checkInDate,
+                checkOutDate
+            )
+        ).willReturn(true);
+
+        // when // then
+        assertThatThrownBy(() ->
+            reservationFacade.createReservation(
+                memberId,
+                IDEMPOTENCY_KEY,
+                request
+            )
+        )
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue(
+                "errorCode",
+                ErrorCode.SPECIAL_OFFER_QUEUE_REQUIRED
+            );
+
+        then(timeSalePriceService)
+            .shouldHaveNoInteractions();
+
+        then(reservationService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName(
         "같은 멱등성 키와 요청이 다시 전달되면 "
             + "가격을 다시 계산하지 않고 기존 예약 결과를 반환한다"
     )

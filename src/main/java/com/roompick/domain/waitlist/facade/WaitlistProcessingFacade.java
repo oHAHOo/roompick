@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.member.entity.Member;
@@ -49,8 +50,14 @@ public class WaitlistProcessingFacade {
      *
      * 이미 처리된 요청(재전달)이면 건너뛰고, 이미 HOLD/CONFIRMED가
      * 있으면 WAIT로, 없으면 HOLD로 등록한 뒤 예약을 생성합니다.
+     *
+     * MySQL 기본 격리수준(REPEATABLE READ)에서는 한 트랜잭션 안의
+     * 일반 SELECT가 트랜잭션 시작 시점의 스냅샷을 계속 보므로,
+     * 특가 행 락을 획득한 뒤 조회해도 그사이 다른 트랜잭션이 커밋한
+     * 최신 상태를 못 볼 수 있다. READ_COMMITTED로 낮춰 락 획득 이후의
+     * 일반 조회가 항상 최신 커밋 데이터를 보게 한다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void occupy(Long specialOfferId, Long memberId, LocalDateTime requestedAt) {
         if (waitlistService.existsRequested(specialOfferId, memberId)) {
             log.info(
@@ -60,9 +67,14 @@ public class WaitlistProcessingFacade {
             return;
         }
 
-        boolean alreadyOccupied = waitlistService.existsOccupied(specialOfferId);
+        /*
+         * 같은 offerId를 대상으로 하는 만료 스케줄러(expireAndPromote)나
+         * 다른 승계 경로와 "이미 점유됐는지" 판단이 겹치지 않도록,
+         * 점유 여부를 확인하기 전에 특가 행을 먼저 잠급니다.
+         */
+        SpecialOffer specialOffer = specialOfferService.findByIdForUpdate(specialOfferId);
 
-        SpecialOffer specialOffer = specialOfferService.findById(specialOfferId);
+        boolean alreadyOccupied = waitlistService.existsOccupied(specialOfferId);
         Member member = memberService.findById(memberId);
 
         if (alreadyOccupied) {
@@ -89,15 +101,24 @@ public class WaitlistProcessingFacade {
      *
      * TTL이 지난 HOLD를 EXPIRED로 전환하고, 만들어뒀던 예약을 취소한
      * 뒤 같은 특가의 다음 대기자를 승격합니다.
+     *
+     * occupy()와 마찬가지로 READ_COMMITTED가 필요하다. 이 메서드는
+     * 만료 대상을 먼저 조회한 뒤(스냅샷 확정) 각 특가 행 락을 획득하고
+     * 다음 대기자를 다시 조회하는데, REPEATABLE READ에서는 그 사이
+     * 동시에 커밋된 occupy() 결과(WAIT 생성 등)를 보지 못해 승계가
+     * 누락될 수 있다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public int expireAndPromote(LocalDateTime now) {
         List<Waitlist> expiredHolds = waitlistService.findAllExpiredHolds(now);
 
         for (Waitlist expired : expiredHolds) {
+            Long specialOfferId = expired.getSpecialOffer().getId();
+            specialOfferService.findByIdForUpdate(specialOfferId);
+
             expired.expire();
             cancelHoldReservation(expired, now);
-            promoteNextWaiter(expired.getSpecialOffer().getId(), now);
+            promoteNextWaiter(specialOfferId, now);
         }
 
         return expiredHolds.size();
@@ -121,12 +142,17 @@ public class WaitlistProcessingFacade {
      *
      * 예약 취소 자체는 호출부(PaymentFacade/ReservationFacade)가 이미
      * 처리했으므로 여기서는 waitlist 상태 동기화와 승계만 담당합니다.
+     *
+     * occupy()/expireAndPromote()와 같은 이유로 READ_COMMITTED가 필요하다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void expireByReservationIdAndPromoteNext(Long reservationId, LocalDateTime now) {
         waitlistService.findByReservationId(reservationId).ifPresent(waitlist -> {
+            Long specialOfferId = waitlist.getSpecialOffer().getId();
+            specialOfferService.findByIdForUpdate(specialOfferId);
+
             waitlist.expire();
-            promoteNextWaiter(waitlist.getSpecialOffer().getId(), now);
+            promoteNextWaiter(specialOfferId, now);
         });
     }
 
