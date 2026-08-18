@@ -36,7 +36,9 @@ import com.roompick.domain.reservation.service.ReservationIdempotencyService;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.specialOffers.service.SpecialOfferService;
 import com.roompick.domain.timesale.service.TimeSalePriceService;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -65,6 +67,12 @@ class ReservationFacadeTest {
 
     @Mock
     private TimeSalePriceService timeSalePriceService;
+
+    @Mock
+    private WaitlistProcessingFacade waitlistProcessingFacade;
+
+    @Mock
+    private SpecialOfferService specialOfferService;
 
     @Mock
     private ReservationIdempotency reservationIdempotency;
