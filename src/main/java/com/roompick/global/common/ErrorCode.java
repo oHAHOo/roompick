@@ -1,6 +1,5 @@
 package com.roompick.global.common;
 
-import co.elastic.clients.elasticsearch.nodes.Http;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -104,6 +103,8 @@ public enum ErrorCode {
     // 특가 상품 오류
     SPECIAL_OFFER_NOT_FOUND(HttpStatus.NOT_FOUND, "SPECIAL_OFFER_NOT_FOUND", "특가 상품을 찾을 수 없습니다."),
     SPECIAL_OFFER_NOT_ACTIVE(HttpStatus.CONFLICT, "SPECIAL_OFFER_NOT_ACTIVE", "현재 판매중인 특가 상품이 아닙니다."),
+    OFFER_OCCUPY_PUBLISH_TIMEOUT(HttpStatus.SERVICE_UNAVAILABLE, "OFFER_OCCUPY_PUBLISH_TIMEOUT", "점유 요청 접수가 지연되고 있습니다. 잠시 후 다시 시도해주세요."),
+    OFFER_OCCUPY_PUBLISH_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "OFFER_OCCUPY_PUBLISH_FAILED", "점유 요청 접수에 실패했습니다. 잠시 후 다시 시도해주세요."),
 
     // 대기열 오류
     WAITLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITLIST_NOT_FOUND", "점유 요청 내역을 찾을 수 없습니다.");
