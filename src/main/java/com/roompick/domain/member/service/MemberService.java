@@ -28,6 +28,12 @@ public class MemberService {
     }
 
     @Transactional(readOnly = true)
+    public Member findById(Long memberId) {
+        return memberRepository.findById(memberId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
     public Member authenticate(String email, String rawPassword) {
         Member member = memberRepository.findByEmail(email)
             .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_LOGIN));

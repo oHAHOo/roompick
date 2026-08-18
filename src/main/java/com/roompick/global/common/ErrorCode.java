@@ -21,6 +21,7 @@ public enum ErrorCode {
     DUPLICATED_EMAIL(HttpStatus.BAD_REQUEST, "MEMBER_001", "이미 사용 중인 이메일입니다."),
     INVALID_LOGIN(HttpStatus.UNAUTHORIZED, "MEMBER_003", "이메일 또는 비밀번호가 일치하지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "MEMBER_004", "유효하지 않은 리프레시 토큰입니다."),
+    MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER_005", "회원을 찾을 수 없습니다."),
 
     // 숙소 오류
     ACCOMMODATION_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "ACCOMMODATION_NAME_REQUIRED", "숙소 이름은 필수입니다."),
@@ -97,7 +98,17 @@ public enum ErrorCode {
     UNSUPPORTED_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "IMAGE_002", "지원하지 않는 이미지 형식입니다. (jpg, png, webp만 가능)"),
     IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_003", "이미지 파일 용량이 허용 범위를 초과했습니다."),
     IMAGE_UPLOAD_FAILED(HttpStatus.BAD_GATEWAY, "IMAGE_004", "이미지 업로드 중 오류가 발생했습니다."),
-    IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_005", "이미지는 최대 10장까지 등록할 수 있습니다.");
+    IMAGE_COUNT_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_005", "이미지는 최대 10장까지 등록할 수 있습니다."),
+
+    // 특가 상품 오류
+    SPECIAL_OFFER_NOT_FOUND(HttpStatus.NOT_FOUND, "SPECIAL_OFFER_NOT_FOUND", "특가 상품을 찾을 수 없습니다."),
+    SPECIAL_OFFER_NOT_ACTIVE(HttpStatus.CONFLICT, "SPECIAL_OFFER_NOT_ACTIVE", "현재 판매중인 특가 상품이 아닙니다."),
+    SPECIAL_OFFER_QUEUE_REQUIRED(HttpStatus.CONFLICT, "SPECIAL_OFFER_QUEUE_REQUIRED", "해당 객실·기간은 진행 중인 특가 상품이 있어 특가 점유 요청 API를 이용해야 합니다."),
+    OFFER_OCCUPY_PUBLISH_TIMEOUT(HttpStatus.SERVICE_UNAVAILABLE, "OFFER_OCCUPY_PUBLISH_TIMEOUT", "점유 요청 접수가 지연되고 있습니다. 잠시 후 다시 시도해주세요."),
+    OFFER_OCCUPY_PUBLISH_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "OFFER_OCCUPY_PUBLISH_FAILED", "점유 요청 접수에 실패했습니다. 잠시 후 다시 시도해주세요."),
+
+    // 대기열 오류
+    WAITLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "WAITLIST_NOT_FOUND", "점유 요청 내역을 찾을 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

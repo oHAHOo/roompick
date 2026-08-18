@@ -42,6 +42,7 @@ import com.roompick.domain.payment.service.PaymentService;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.entity.ReservationStatus;
 import com.roompick.domain.reservation.service.ReservationService;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.config.portone.PortOneProperties;
@@ -99,6 +100,9 @@ class PaymentFacadeTest {
 
     @Mock
     private TransactionTemplate transactionTemplate;
+
+    @Mock
+    private WaitlistProcessingFacade waitlistProcessingFacade;
 
     @Mock
     private TransactionStatus transactionStatus;
