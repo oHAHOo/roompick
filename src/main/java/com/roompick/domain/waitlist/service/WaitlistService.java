@@ -145,7 +145,8 @@ public class WaitlistService {
             room,
             specialOffer.getCheckInDate(),
             specialOffer.getCheckOutDate(),
-            room.getMaxCapacity()
+            room.getMaxCapacity(),
+            specialOffer.getPrice()
         );
 
         waitlist.attachReservation(reservation.getId());
