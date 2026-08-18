@@ -20,6 +20,8 @@ public interface WaitlistRepository extends JpaRepository<Waitlist, Long> {
 
     Optional<Waitlist> findBySpecialOfferIdAndMemberId(Long specialOfferId, Long memberId);
 
+    Optional<Waitlist> findByReservationId(Long reservationId);
+
     @Query("""
         SELECT waitlist
         FROM Waitlist  waitlist

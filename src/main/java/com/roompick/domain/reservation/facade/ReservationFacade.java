@@ -16,6 +16,7 @@ import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
 import com.roompick.domain.timesale.service.TimeSalePriceService;
+import com.roompick.domain.waitlist.service.WaitlistService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,6 +38,8 @@ public class ReservationFacade {
 
     private final TimeSalePriceService
         timeSalePriceService;
+
+    private final WaitlistService waitlistService;
 
     /**
      * 인증된 회원의 예약을 멱등하게 생성합니다.
@@ -159,6 +162,7 @@ public class ReservationFacade {
     /**
      * 인증된 회원의 결제 대기 예약을 취소합니다.
      */
+    @Transactional
     public ReservationCancelResponseDto
     cancelReservation(
         Long memberId,
@@ -170,6 +174,11 @@ public class ReservationFacade {
                     memberId,
                     reservationId
                 );
+
+        waitlistService.expireByReservationIdAndPromoteNext(
+            reservation.getId(),
+            reservation.getCanceledAt()
+        );
 
         return ReservationCancelResponseDto.from(
             reservation

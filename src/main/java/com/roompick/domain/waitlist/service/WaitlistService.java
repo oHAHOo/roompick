@@ -86,15 +86,43 @@ public class WaitlistService {
         for (Waitlist expired : expiredHolds) {
             expired.expire();
             cancelHoldReservation(expired, now);
-
-            Long specialOfferId = expired.getSpecialOffer().getId();
-
-            waitlistRepository.findFirstBySpecialOfferIdAndStatusOrderByRequestedAtAsc(
-                specialOfferId, WaitlistStatus.WAIT
-            ).ifPresent(next -> promote(next, now));
+            promoteNextWaiter(expired.getSpecialOffer().getId(), now);
         }
 
         return expiredHolds.size();
+    }
+
+    /**
+     * 결제 성공 시 HOLD 상태의 waitlist를 CONFIRMED로 전환합니다.
+     *
+     * 해당 예약이 특가 대기열을 거치지 않은 일반 예약이면
+     * 연결된 waitlist가 없으므로 아무 일도 하지 않습니다.
+     */
+    @Transactional
+    public void confirmByReservationId(Long reservationId) {
+        waitlistRepository.findByReservationId(reservationId)
+            .ifPresent(Waitlist::confirm);
+    }
+
+    /**
+     * 결제 실패(또는 사용자 취소)로 예약이 취소됐을 때
+     * HOLD 상태의 waitlist를 EXPIRED로 전환하고 다음 대기자를 승격합니다.
+     *
+     * 예약 취소 자체는 호출부(PaymentFacade)가 이미 처리했으므로
+     * 여기서는 waitlist 상태 동기화와 승계만 담당합니다.
+     */
+    @Transactional
+    public void expireByReservationIdAndPromoteNext(Long reservationId, LocalDateTime now) {
+        waitlistRepository.findByReservationId(reservationId).ifPresent(waitlist -> {
+            waitlist.expire();
+            promoteNextWaiter(waitlist.getSpecialOffer().getId(), now);
+        });
+    }
+
+    private void promoteNextWaiter(Long specialOfferId, LocalDateTime now) {
+        waitlistRepository.findFirstBySpecialOfferIdAndStatusOrderByRequestedAtAsc(
+            specialOfferId, WaitlistStatus.WAIT
+        ).ifPresent(next -> promote(next, now));
     }
 
     private void promote(Waitlist waitlist, LocalDateTime now) {

@@ -23,6 +23,7 @@ import com.roompick.domain.payment.entity.Payment;
 import com.roompick.domain.payment.service.PaymentService;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.service.ReservationService;
+import com.roompick.domain.waitlist.service.WaitlistService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.config.portone.PortOneProperties;
@@ -32,6 +33,11 @@ import lombok.RequiredArgsConstructor;
 /**
  * 결제와 예약 Service를 조합하여
  * 결제 전체 흐름을 처리하는 Facade입니다.
+ *
+ * 결제 성공·실패 시점에 WaitlistService를 함께 호출해
+ * 특가 대기열(waitlist) 상태를 예약 상태와 동기화합니다.
+ * 특가 대기열을 거치지 않은 일반 예약의 결제는 연결된
+ * waitlist가 없으므로 이 호출이 아무 영향을 주지 않습니다.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,6 +48,7 @@ public class PaymentFacade {
 
     private final ReservationService reservationService;
     private final PaymentService paymentService;
+    private final WaitlistService waitlistService;
 
     private final PortOneClient portOneClient;
     private final PortOnePaymentVerifier portOnePaymentVerifier;
@@ -138,6 +145,10 @@ public class PaymentFacade {
             approvedAt
         );
 
+        waitlistService.confirmByReservationId(
+            reservation.getId()
+        );
+
         return PaymentApproveResponseDto.from(
             approvedPayment
         );
@@ -206,6 +217,11 @@ public class PaymentFacade {
                 memberId,
                 failedAt
             );
+
+        waitlistService.expireByReservationIdAndPromoteNext(
+            reservation.getId(),
+            failedAt
+        );
 
         return PaymentFailResponseDto.from(
             failedPayment
@@ -389,6 +405,10 @@ public class PaymentFacade {
             reservation,
             memberId,
             verificationResult.paidAt()
+        );
+
+        waitlistService.confirmByReservationId(
+            reservation.getId()
         );
 
         return PaymentCompleteResponseDto.from(
