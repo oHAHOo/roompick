@@ -17,7 +17,7 @@ import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
 import com.roompick.domain.specialOffers.service.SpecialOfferService;
 import com.roompick.domain.timesale.service.TimeSalePriceService;
-import com.roompick.domain.waitlist.service.WaitlistService;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -46,7 +46,7 @@ public class ReservationFacade {
     private final TimeSalePriceService
         timeSalePriceService;
 
-    private final WaitlistService waitlistService;
+    private final WaitlistProcessingFacade waitlistProcessingFacade;
 
     private final SpecialOfferService specialOfferService;
 
@@ -201,7 +201,7 @@ public class ReservationFacade {
                     reservationId
                 );
 
-        waitlistService.expireByReservationIdAndPromoteNext(
+        waitlistProcessingFacade.expireByReservationIdAndPromoteNext(
             reservation.getId(),
             reservation.getCanceledAt()
         );

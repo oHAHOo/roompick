@@ -44,8 +44,8 @@ import com.roompick.domain.specialOffers.entity.SpecialOffer;
 import com.roompick.domain.specialOffers.entity.SpecialOfferStatus;
 import com.roompick.domain.specialOffers.event.OfferOccupyRequestEvent;
 import com.roompick.domain.specialOffers.repository.SpecialOfferRepository;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.domain.waitlist.repository.WaitlistRepository;
-import com.roompick.domain.waitlist.service.WaitlistService;
 import com.roompick.global.config.kafka.KafkaTopicConfig;
 
 /**
@@ -53,11 +53,11 @@ import com.roompick.global.config.kafka.KafkaTopicConfig;
  * 전달했을 때, 재처리 멱등성이 실제 Kafka 재전달 경로에서도
  * 유지되는지 검증합니다.
  *
- * WaitlistService.occupy()를 스파이해서 첫 호출에서만 예외를 던지게
- * 만들어 리스너 처리 실패를 재현합니다. Spring Kafka의 기본
+ * WaitlistProcessingFacade.occupy()를 스파이해서 첫 호출에서만 예외를
+ * 던지게 만들어 리스너 처리 실패를 재현합니다. Spring Kafka의 기본
  * 에러 핸들러(DefaultErrorHandler)가 같은 레코드를 오프셋 커밋 없이
  * 재시도하므로, 컨슈머가 죽었다가 재시작해 같은 메시지를 다시 받는
- * 상황과 동일한 코드 경로(WaitlistService.occupy() 재호출)를 탄다.
+ * 상황과 동일한 코드 경로(WaitlistProcessingFacade.occupy() 재호출)를 탄다.
  */
 @Tag("integration")
 @Testcontainers
@@ -127,7 +127,7 @@ class OfferOccupyEventConsumerRedeliveryIntegrationTest {
     private RoomRepository roomRepository;
 
     @MockitoSpyBean
-    private WaitlistService waitlistService;
+    private WaitlistProcessingFacade waitlistProcessingFacade;
 
     private TestData testData;
 
@@ -157,7 +157,7 @@ class OfferOccupyEventConsumerRedeliveryIntegrationTest {
                 throw new RuntimeException("첫 처리 시도 실패를 흉내낸 예외입니다.");
             }
             return invocation.callRealMethod();
-        }).when(waitlistService).occupy(
+        }).when(waitlistProcessingFacade).occupy(
             eq(testData.offerId()), eq(testData.memberId()), any()
         );
 
@@ -178,7 +178,7 @@ class OfferOccupyEventConsumerRedeliveryIntegrationTest {
         assertThat(waitlistRepository.count()).isEqualTo(1L);
         assertThat(reservationRepository.count()).isEqualTo(1L);
 
-        verify(waitlistService, times(2))
+        verify(waitlistProcessingFacade, times(2))
             .occupy(eq(testData.offerId()), eq(testData.memberId()), any());
     }
 

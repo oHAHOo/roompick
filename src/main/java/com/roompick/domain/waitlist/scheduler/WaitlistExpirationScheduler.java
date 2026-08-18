@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.roompick.domain.waitlist.service.WaitlistService;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class WaitlistExpirationScheduler {
 
-    private final WaitlistService waitlistService;
+    private final WaitlistProcessingFacade waitlistProcessingFacade;
     private final Clock clock;
 
     @Scheduled(
@@ -25,7 +25,7 @@ public class WaitlistExpirationScheduler {
     )
     public void expireAndPromote() {
         try {
-            int expiredCount = waitlistService.expireAndPromote(
+            int expiredCount = waitlistProcessingFacade.expireAndPromote(
                 LocalDateTime.now(clock)
             );
 

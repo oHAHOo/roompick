@@ -34,6 +34,7 @@ import com.roompick.domain.specialOffers.entity.SpecialOffer;
 import com.roompick.domain.specialOffers.repository.SpecialOfferRepository;
 import com.roompick.domain.waitlist.entity.Waitlist;
 import com.roompick.domain.waitlist.entity.WaitlistStatus;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.domain.waitlist.repository.WaitlistRepository;
 
 /**
@@ -41,7 +42,7 @@ import com.roompick.domain.waitlist.repository.WaitlistRepository;
  * 처리되는지 실제 MySQL 환경에서 검증합니다.
  *
  * Kafka 파티션 순서 보장 자체는 라이브러리 책임이므로,
- * 여기서는 WaitlistService.occupy()가 호출된 순서대로
+ * 여기서는 WaitlistProcessingFacade.occupy()가 호출된 순서대로
  * 첫 요청만 HOLD가 되고 이후 요청은 WAIT으로 쌓이는지
  * 애플리케이션 로직만 검증합니다.
  */
@@ -69,7 +70,7 @@ class WaitlistOccupyOrderMySqlIntegrationTest {
             .withPassword(DATABASE_PASSWORD);
     private static final ZoneId TEST_ZONE_ID = ZoneId.of("Asia/Seoul");
     @Autowired
-    private WaitlistService waitlistService;
+    private WaitlistProcessingFacade waitlistProcessingFacade;
     @Autowired
     private WaitlistRepository waitlistRepository;
     @Autowired
@@ -120,9 +121,9 @@ class WaitlistOccupyOrderMySqlIntegrationTest {
         LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
 
         // when — 파티션에 적재된 순서를 그대로 흉내내어 순차 호출
-        waitlistService.occupy(testData.offerId(), testData.firstMemberId(), baseTime);
-        waitlistService.occupy(testData.offerId(), testData.secondMemberId(), baseTime.plusSeconds(1));
-        waitlistService.occupy(testData.offerId(), testData.thirdMemberId(), baseTime.plusSeconds(2));
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), baseTime);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.secondMemberId(), baseTime.plusSeconds(1));
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.thirdMemberId(), baseTime.plusSeconds(2));
 
         // then
         Waitlist firstWaitlist = findWaitlist(testData.firstMemberId());
@@ -143,8 +144,8 @@ class WaitlistOccupyOrderMySqlIntegrationTest {
         LocalDateTime requestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
 
         // when — 같은 이벤트가 두 번 처리된 상황을 흉내냄
-        waitlistService.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
-        waitlistService.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
 
         // then
         assertThat(waitlistRepository.count()).isEqualTo(1L);

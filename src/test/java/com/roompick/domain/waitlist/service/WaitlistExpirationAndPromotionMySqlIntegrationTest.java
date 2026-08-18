@@ -36,6 +36,7 @@ import com.roompick.domain.specialOffers.entity.SpecialOfferStatus;
 import com.roompick.domain.specialOffers.repository.SpecialOfferRepository;
 import com.roompick.domain.waitlist.entity.Waitlist;
 import com.roompick.domain.waitlist.entity.WaitlistStatus;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.domain.waitlist.repository.WaitlistRepository;
 
 /**
@@ -83,7 +84,7 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
     }
 
     @Autowired
-    private WaitlistService waitlistService;
+    private WaitlistProcessingFacade waitlistProcessingFacade;
     @Autowired
     private WaitlistRepository waitlistRepository;
     @Autowired
@@ -124,9 +125,9 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         LocalDateTime secondRequestedAt = firstRequestedAt.plusSeconds(1);
         LocalDateTime thirdRequestedAt = firstRequestedAt.plusSeconds(2);
 
-        waitlistService.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
-        waitlistService.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
-        waitlistService.occupy(testData.offerId(), testData.thirdMemberId(), thirdRequestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.thirdMemberId(), thirdRequestedAt);
 
         /*
          * holdExpiresAt은 requestedAt이 아니라 occupy() 호출 시점의
@@ -136,7 +137,7 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
 
         // when
-        int expiredCount = waitlistService.expireAndPromote(afterHoldExpires);
+        int expiredCount = waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
 
         // then
         assertThat(expiredCount).isEqualTo(1);
@@ -164,13 +165,13 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         LocalDateTime firstRequestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         LocalDateTime secondRequestedAt = firstRequestedAt.plusSeconds(1);
 
-        waitlistService.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
-        waitlistService.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
 
         LocalDateTime beforeHoldExpires = LocalDateTime.now(clock).plusMinutes(1);
 
         // when
-        int expiredCount = waitlistService.expireAndPromote(beforeHoldExpires);
+        int expiredCount = waitlistProcessingFacade.expireAndPromote(beforeHoldExpires);
 
         // then
         assertThat(expiredCount).isZero();
@@ -189,12 +190,12 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
     void expiredHoldWithNoWaitersOnlyExpires() {
         // given
         LocalDateTime requestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
-        waitlistService.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
+        waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
 
         LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
 
         // when
-        int expiredCount = waitlistService.expireAndPromote(afterHoldExpires);
+        int expiredCount = waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
 
         // then
         assertThat(expiredCount).isEqualTo(1);

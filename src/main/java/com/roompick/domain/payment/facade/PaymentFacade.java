@@ -23,7 +23,7 @@ import com.roompick.domain.payment.entity.Payment;
 import com.roompick.domain.payment.service.PaymentService;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.service.ReservationService;
-import com.roompick.domain.waitlist.service.WaitlistService;
+import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 import com.roompick.global.config.portone.PortOneProperties;
@@ -48,7 +48,7 @@ public class PaymentFacade {
 
     private final ReservationService reservationService;
     private final PaymentService paymentService;
-    private final WaitlistService waitlistService;
+    private final WaitlistProcessingFacade waitlistProcessingFacade;
 
     private final PortOneClient portOneClient;
     private final PortOnePaymentVerifier portOnePaymentVerifier;
@@ -145,7 +145,7 @@ public class PaymentFacade {
             approvedAt
         );
 
-        waitlistService.confirmByReservationId(
+        waitlistProcessingFacade.confirmByReservationId(
             reservation.getId()
         );
 
@@ -218,7 +218,7 @@ public class PaymentFacade {
                 failedAt
             );
 
-        waitlistService.expireByReservationIdAndPromoteNext(
+        waitlistProcessingFacade.expireByReservationIdAndPromoteNext(
             reservation.getId(),
             failedAt
         );
@@ -407,7 +407,7 @@ public class PaymentFacade {
             verificationResult.paidAt()
         );
 
-        waitlistService.confirmByReservationId(
+        waitlistProcessingFacade.confirmByReservationId(
             reservation.getId()
         );
 
