@@ -103,6 +103,7 @@ public enum ErrorCode {
     // 특가 상품 오류
     SPECIAL_OFFER_NOT_FOUND(HttpStatus.NOT_FOUND, "SPECIAL_OFFER_NOT_FOUND", "특가 상품을 찾을 수 없습니다."),
     SPECIAL_OFFER_NOT_ACTIVE(HttpStatus.CONFLICT, "SPECIAL_OFFER_NOT_ACTIVE", "현재 판매중인 특가 상품이 아닙니다."),
+    SPECIAL_OFFER_QUEUE_REQUIRED(HttpStatus.CONFLICT, "SPECIAL_OFFER_QUEUE_REQUIRED", "해당 객실·기간은 진행 중인 특가 상품이 있어 특가 점유 요청 API를 이용해야 합니다."),
     OFFER_OCCUPY_PUBLISH_TIMEOUT(HttpStatus.SERVICE_UNAVAILABLE, "OFFER_OCCUPY_PUBLISH_TIMEOUT", "점유 요청 접수가 지연되고 있습니다. 잠시 후 다시 시도해주세요."),
     OFFER_OCCUPY_PUBLISH_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "OFFER_OCCUPY_PUBLISH_FAILED", "점유 요청 접수에 실패했습니다. 잠시 후 다시 시도해주세요."),
 

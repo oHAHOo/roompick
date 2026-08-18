@@ -15,14 +15,21 @@ import com.roompick.domain.reservation.service.ReservationIdempotencyService;
 import com.roompick.domain.reservation.service.ReservationService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.specialOffers.service.SpecialOfferService;
 import com.roompick.domain.timesale.service.TimeSalePriceService;
 import com.roompick.domain.waitlist.service.WaitlistService;
+import com.roompick.global.common.BusinessException;
+import com.roompick.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * 객실·예약·타임세일 도메인의
  * 예약 생성 흐름을 조율합니다.
+ *
+ * 요청한 객실·기간에 ACTIVE 특가가 있으면 일반 예약 생성을 거부합니다.
+ * 특가 대기열(Kafka)을 거치지 않고 이 API로 직접 특가 객실을 예약하는
+ * 우회 경로를 막기 위한 검증입니다.
  */
 @Component
 @RequiredArgsConstructor
@@ -40,6 +47,8 @@ public class ReservationFacade {
         timeSalePriceService;
 
     private final WaitlistService waitlistService;
+
+    private final SpecialOfferService specialOfferService;
 
     /**
      * 인증된 회원의 예약을 멱등하게 생성합니다.
@@ -85,6 +94,23 @@ public class ReservationFacade {
                     request.roomId(),
                     request.guestCount()
                 );
+
+        /*
+         * 요청한 객실·기간에 ACTIVE 특가가 있으면 특가 대기열을 거치지
+         * 않은 일반 예약 생성을 거부합니다. 특가 대기열(Kafka)을 우회해
+         * 순서 보장 없이 곧바로 락 경쟁으로 넘어가는 경로를 막습니다.
+         */
+        if (
+            specialOfferService.existsActiveOfferForRoomAndPeriod(
+                room.getId(),
+                request.checkInDate(),
+                request.checkOutDate()
+            )
+        ) {
+            throw new BusinessException(
+                ErrorCode.SPECIAL_OFFER_QUEUE_REQUIRED
+            );
+        }
 
         /*
          * 객실 락을 획득한 후 현재 적용 가격을 계산합니다.

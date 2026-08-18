@@ -95,6 +95,23 @@ public class SpecialOfferService {
         return specialOffer;
     }
 
+    /**
+     * 요청한 객실·기간이 ACTIVE 상태 특가와 겹치는지 확인합니다.
+     *
+     * 일반 예약 API가 특가 대기열(Kafka)을 우회해 같은 객실·기간을
+     * 직접 예약하는 것을 막기 위해 ReservationFacade에서 호출됩니다.
+     */
+    @Transactional(readOnly = true)
+    public boolean existsActiveOfferForRoomAndPeriod(
+        Long roomId,
+        LocalDate checkInDate,
+        LocalDate checkOutDate
+    ) {
+        return specialOfferRepository.existsActiveOverlapping(
+            roomId, SpecialOfferStatus.ACTIVE, checkInDate, checkOutDate
+        );
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(
             clock.instant(),
