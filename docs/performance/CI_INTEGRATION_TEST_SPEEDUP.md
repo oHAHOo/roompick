@@ -54,7 +54,51 @@ GitHub Actions가 자동으로 병렬 실행한다.
       스키마를 분리 (데이터 격리는 그대로 유지)
 ```
 
-자세한 사용 방법은 `docs/CODE_CONVENTION.md` 19절을 참고한다.
+MySQL은 클래스마다 데이터베이스 이름을 다르게 지정해 데이터가 섞이지
+않게 격리한다. `createDatabaseIfAbsent()`가 없으면 데이터베이스를 만들고,
+`jdbcUrl()`이 그 데이터베이스를 가리키는 접속 URL을 만들어준다.
+
+```java
+@Tag("integration")
+@SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=create")
+class ReservationConcurrencyMySqlIntegrationTest {
+
+    private static final String DATABASE_NAME = "roompick_reservation_lock_test";
+
+    @DynamicPropertySource
+    static void registerMySqlProperties(DynamicPropertyRegistry registry) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
+        registry.add("spring.datasource.url", () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME));
+        registry.add("spring.datasource.username", () -> SharedMySqlTestContainer.USERNAME);
+        registry.add("spring.datasource.password", () -> SharedMySqlTestContainer.PASSWORD);
+    }
+}
+```
+
+Redis는 스키마 개념이 없고 각 클래스가 이미 자기 키만 정리하고 있어서,
+데이터베이스 분리 없이 호스트·포트만 등록하면 된다.
+
+```java
+@DynamicPropertySource
+static void registerRedisProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.data.redis.host", SharedRedisTestContainer::host);
+    registry.add("spring.data.redis.port", SharedRedisTestContainer::port);
+}
+```
+
+`SharedMySqlTestContainer`의 `static` 초기화 블록은 컨테이너를 한 번만
+기동한 뒤, `roompick` 앱 계정이 컨테이너 기동 시 지정된 데이터베이스
+하나에만 권한을 갖는 문제를 피하려고 root 계정으로 전역 권한
+(`GRANT ALL PRIVILEGES ON *.*`)을 부여한다. 이때 두 가지를 함께
+처리했다.
+
+- 기본 root 계정은 `root@localhost`에만 생성돼 컨테이너 밖에서 접속하는
+  Testcontainers 연결이 거부된다 → `MYSQL_ROOT_HOST=%` 환경변수로 임의
+  호스트에서도 접속을 허용했다.
+- Testcontainers의 `MySQLContainer`는 내부적으로 지정한 앱 계정 비밀번호를
+  `MYSQL_ROOT_PASSWORD`에도 그대로 적용해 덮어쓴다. 별도의 root
+  비밀번호를 지정해도 무시되므로, root 접속에도 앱 계정과 같은 비밀번호를
+  사용했다.
 
 ## 5. 측정 결과
 
@@ -85,9 +129,10 @@ CI 실행, 2026-08-19)를 비교했다.
 
 ## 6. 한계와 후속 과제
 
-- 새로 추가하는 MySQL·Redis 통합 테스트도 이 패턴을 따르지 않으면
-  컨테이너 수가 다시 늘어나 효과가 서서히 사라진다. `docs/CODE_CONVENTION.md`
-  19절에 컨벤션으로 남겨뒀다.
+- 새로 추가하는 MySQL·Redis 통합 테스트도 이 패턴(4.2절)을 따르지 않고
+  다시 개별 `@Container`를 선언하면, 컨테이너 수가 서서히 늘어나 이번에
+  줄인 효과가 사라진다. 이를 강제하는 자동화 장치는 없고 코드 리뷰에서
+  확인해야 한다.
 - unit test(9분56초)가 이제 CI 전체 시간의 병목이다. 추가로 줄이려면
   unit test 자체의 원인(예: `@SpringBootTest` 컨텍스트 로딩 비용)을
   별도로 분석해야 한다.
