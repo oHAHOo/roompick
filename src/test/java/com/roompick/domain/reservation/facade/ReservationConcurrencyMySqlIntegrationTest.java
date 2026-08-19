@@ -27,10 +27,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -45,6 +41,7 @@ import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 /**
  * 실제 MySQL 환경에서 동일 객실 예약 생성의
@@ -58,7 +55,6 @@ import com.roompick.global.common.ErrorCode;
  * 테스트 클래스에는 @Transactional을 적용하지 않습니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest(
     properties = {
         /*
@@ -78,8 +74,6 @@ import com.roompick.global.common.ErrorCode;
 @ActiveProfiles("test")
 class ReservationConcurrencyMySqlIntegrationTest {
 
-    private static final int MYSQL_PORT = 3306;
-
     private static final int CONCURRENT_REQUEST_COUNT = 2;
 
     private static final String FIRST_IDEMPOTENCY_KEY =
@@ -90,12 +84,6 @@ class ReservationConcurrencyMySqlIntegrationTest {
 
     private static final String DATABASE_NAME =
         "roompick_reservation_lock_test";
-
-    private static final String DATABASE_USERNAME =
-        "roompick";
-
-    private static final String DATABASE_PASSWORD =
-        "roompick-password";
 
     private static final ZoneId TEST_ZONE_ID =
         ZoneId.of("Asia/Seoul");
@@ -109,24 +97,6 @@ class ReservationConcurrencyMySqlIntegrationTest {
     private static final long MAXIMUM_LOCK_WAIT_MILLIS =
         6_000L;
 
-    @Container
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(
-            DockerImageName.parse("mysql:8.4")
-        )
-            .withDatabaseName(
-                DATABASE_NAME
-            )
-            .withUsername(
-                DATABASE_USERNAME
-            )
-            .withPassword(
-                DATABASE_PASSWORD
-            )
-            .withStartupTimeout(
-                Duration.ofMinutes(2)
-            );
-
     /**
      * application-test.yml의 H2 설정 대신
      * Testcontainers MySQL 접속 정보를 사용합니다.
@@ -135,31 +105,20 @@ class ReservationConcurrencyMySqlIntegrationTest {
     static void registerMySqlProperties(
         DynamicPropertyRegistry registry
     ) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
         registry.add(
             "spring.datasource.url",
-            () ->
-                "jdbc:mysql://"
-                    + MYSQL_CONTAINER.getHost()
-                    + ":"
-                    + MYSQL_CONTAINER.getMappedPort(
-                    MYSQL_PORT
-                )
-                    + "/"
-                    + DATABASE_NAME
-                    + "?useSSL=false"
-                    + "&allowPublicKeyRetrieval=true"
-                    + "&characterEncoding=UTF-8"
-                    + "&serverTimezone=Asia/Seoul"
+            () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME)
         );
 
         registry.add(
             "spring.datasource.username",
-            () -> DATABASE_USERNAME
+            () -> SharedMySqlTestContainer.USERNAME
         );
 
         registry.add(
             "spring.datasource.password",
-            () -> DATABASE_PASSWORD
+            () -> SharedMySqlTestContainer.PASSWORD
         );
 
         registry.add(

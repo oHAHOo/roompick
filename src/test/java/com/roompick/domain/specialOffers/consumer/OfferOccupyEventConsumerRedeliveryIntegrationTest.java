@@ -27,10 +27,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -47,6 +43,7 @@ import com.roompick.domain.specialOffers.repository.SpecialOfferRepository;
 import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.domain.waitlist.repository.WaitlistRepository;
 import com.roompick.global.config.kafka.KafkaTopicConfig;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 /**
  * 컨슈머가 메시지 처리 도중 실패한 뒤 Kafka가 같은 메시지를 다시
@@ -60,7 +57,6 @@ import com.roompick.global.config.kafka.KafkaTopicConfig;
  * 상황과 동일한 코드 경로(WaitlistProcessingFacade.occupy() 재호출)를 탄다.
  */
 @Tag("integration")
-@Testcontainers
 @EmbeddedKafka(
     partitions = 1,
     topics = { KafkaTopicConfig.OFFER_OCCUPY_REQUEST_TOPIC },
@@ -83,31 +79,16 @@ import com.roompick.global.config.kafka.KafkaTopicConfig;
 @ActiveProfiles("test")
 class OfferOccupyEventConsumerRedeliveryIntegrationTest {
 
-    private static final int MYSQL_PORT = 3306;
     private static final String DATABASE_NAME = "roompick_consumer_redelivery_test";
-    private static final String DATABASE_USERNAME = "roompick";
-    private static final String DATABASE_PASSWORD = "roompick-password";
     private static final ZoneId TEST_ZONE_ID = ZoneId.of("Asia/Seoul");
     private static final Duration AWAIT_TIMEOUT = Duration.ofSeconds(15);
 
-    @Container
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
-            .withDatabaseName(DATABASE_NAME)
-            .withUsername(DATABASE_USERNAME)
-            .withPassword(DATABASE_PASSWORD);
-
     @DynamicPropertySource
     static void registerMySqlProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () ->
-            "jdbc:mysql://" + MYSQL_CONTAINER.getHost()
-                + ":" + MYSQL_CONTAINER.getMappedPort(MYSQL_PORT)
-                + "/" + DATABASE_NAME
-                + "?useSSL=false&allowPublicKeyRetrieval=true"
-                + "&characterEncoding=UTF-8&serverTimezone=Asia/Seoul"
-        );
-        registry.add("spring.datasource.username", () -> DATABASE_USERNAME);
-        registry.add("spring.datasource.password", () -> DATABASE_PASSWORD);
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
+        registry.add("spring.datasource.url", () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME));
+        registry.add("spring.datasource.username", () -> SharedMySqlTestContainer.USERNAME);
+        registry.add("spring.datasource.password", () -> SharedMySqlTestContainer.PASSWORD);
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
     }
 

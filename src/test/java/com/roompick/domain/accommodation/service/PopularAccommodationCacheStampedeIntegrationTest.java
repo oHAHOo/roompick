@@ -27,10 +27,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
@@ -38,6 +34,7 @@ import com.roompick.domain.accommodation.exception.PopularAccommodationRankingUn
 import com.roompick.domain.accommodation.facade.AccommodationFacade;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+import com.roompick.testsupport.SharedRedisTestContainer;
 
 /**
  * 실제 Redis 응답 캐시와 Mock Service를 조합해 Single Flight를 검증합니다.
@@ -48,7 +45,6 @@ import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
  * 해석하지 않습니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest
 @ActiveProfiles("test")
 class PopularAccommodationCacheStampedeIntegrationTest {
@@ -58,26 +54,16 @@ class PopularAccommodationCacheStampedeIntegrationTest {
 
     private static final String CACHE_NAME = "popularAccommodations";
 
-    private static final int REDIS_PORT = 6379;
-
     private static final int THREAD_COUNT = 10;
 
     private static final int LIMIT = 1;
 
     private static final long TEST_TIMEOUT_SECONDS = 5L;
 
-    @Container
-    static final GenericContainer<?> REDIS_CONTAINER =
-        new GenericContainer<>(DockerImageName.parse("redis:7.2-alpine"))
-            .withExposedPorts(REDIS_PORT);
-
     @DynamicPropertySource
     static void registerRedisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", REDIS_CONTAINER::getHost);
-        registry.add(
-            "spring.data.redis.port",
-            () -> REDIS_CONTAINER.getMappedPort(REDIS_PORT)
-        );
+        registry.add("spring.data.redis.host", SharedRedisTestContainer::host);
+        registry.add("spring.data.redis.port", SharedRedisTestContainer::port);
         registry.add(
             "roompick.cache.popular-accommodations.single-flight.wait-timeout",
             () -> "2s"

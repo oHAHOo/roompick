@@ -16,8 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
-import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.elasticsearch.ElasticsearchContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -28,6 +29,7 @@ import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.accommodation.service.AccommodationElasticsearchLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.accommodation.service.AccommodationSearchReindexService;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 /**
  * MySQL 숙소 데이터를 Elasticsearch에 재색인한 뒤
@@ -54,24 +56,31 @@ class AccommodationElasticsearchLocationSearchIntegrationTest {
     private static final double SEOUL_CITY_HALL_LONGITUDE =
         126.978000;
 
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL =
-        new MySQLContainer<>(
-            "mysql:8.4"
-        )
-            .withDatabaseName(
-                "roompick_elasticsearch_search_test"
-            )
-            .withUsername(
-                "roompick"
-            )
-            .withPassword(
-                "roompick-password"
-            )
-            .withStartupTimeout(
-                Duration.ofMinutes(2)
-            );
+    private static final String DATABASE_NAME =
+        "roompick_elasticsearch_search_test";
+
+    @DynamicPropertySource
+    static void registerMySqlProperties(
+        DynamicPropertyRegistry registry
+    ) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
+        registry.add(
+            "spring.datasource.url",
+            () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME)
+        );
+        registry.add(
+            "spring.datasource.username",
+            () -> SharedMySqlTestContainer.USERNAME
+        );
+        registry.add(
+            "spring.datasource.password",
+            () -> SharedMySqlTestContainer.PASSWORD
+        );
+        registry.add(
+            "spring.datasource.driver-class-name",
+            () -> "com.mysql.cj.jdbc.Driver"
+        );
+    }
 
     @Container
     @ServiceConnection

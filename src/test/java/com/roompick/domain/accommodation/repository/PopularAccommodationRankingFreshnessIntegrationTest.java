@@ -16,13 +16,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+import com.roompick.testsupport.SharedRedisTestContainer;
 
 /**
  * 누적 인기 숙소 랭킹과 기간별 DAILY/WEEKLY 랭킹의
@@ -31,12 +28,9 @@ import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
  * 누적 랭킹은 제품 발전 과정의 V1 재현 시나리오이며,
  * 현재 운영 기능인 DAILY/WEEKLY 랭킹과 분리된 테스트 전용 키를 사용합니다.
  */
-@Testcontainers
 @DataRedisTest
 @Import(PopularAccommodationRankingRepository.class)
 class PopularAccommodationRankingFreshnessIntegrationTest {
-
-    private static final int REDIS_PORT = 6379;
 
     /**
      * 운영 Redis 키와 충돌하지 않는 V1 재현 전용 누적 랭킹 키입니다.
@@ -49,14 +43,6 @@ class PopularAccommodationRankingFreshnessIntegrationTest {
     private static final String CUMULATIVE_RESPONSE_CACHE_KEY =
         "popularAccommodations::"
             + "roompick:test:popular:accommodations:cumulative:3";
-
-    @Container
-    private static final GenericContainer<?> REDIS_CONTAINER =
-        new GenericContainer<>(
-            DockerImageName.parse("redis:7")
-        ).withExposedPorts(
-            REDIS_PORT
-        );
 
     @Autowired
     private PopularAccommodationRankingRepository
@@ -83,14 +69,12 @@ class PopularAccommodationRankingFreshnessIntegrationTest {
     ) {
         registry.add(
             "spring.data.redis.host",
-            REDIS_CONTAINER::getHost
+            SharedRedisTestContainer::host
         );
 
         registry.add(
             "spring.data.redis.port",
-            () -> REDIS_CONTAINER.getMappedPort(
-                REDIS_PORT
-            )
+            SharedRedisTestContainer::port
         );
     }
 

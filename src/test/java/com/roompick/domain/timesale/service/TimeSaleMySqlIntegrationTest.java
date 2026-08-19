@@ -32,10 +32,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -49,6 +45,7 @@ import com.roompick.domain.timesale.entity.TimeSaleStatus;
 import com.roompick.domain.timesale.repository.TimeSaleRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 /**
  * 실제 MySQL 환경에서 타임세일 저장·조회,
@@ -58,7 +55,6 @@ import com.roompick.global.common.ErrorCode;
  * 각 테스트는 실제 MySQL 쿼리를 실행합니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest(
     properties = {
         /*
@@ -84,16 +80,8 @@ import com.roompick.global.common.ErrorCode;
 )
 class TimeSaleMySqlIntegrationTest {
 
-    private static final int MYSQL_PORT = 3306;
-
     private static final String DATABASE_NAME =
         "roompick_time_sale_test";
-
-    private static final String DATABASE_USERNAME =
-        "roompick";
-
-    private static final String DATABASE_PASSWORD =
-        "roompick-password";
 
     private static final ZoneId TEST_ZONE_ID =
         ZoneId.of("Asia/Seoul");
@@ -121,26 +109,6 @@ class TimeSaleMySqlIntegrationTest {
     private static final Duration ASYNC_TIMEOUT =
         Duration.ofSeconds(15);
 
-    @Container
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(
-            DockerImageName.parse(
-                "mysql:8.4"
-            )
-        )
-            .withDatabaseName(
-                DATABASE_NAME
-            )
-            .withUsername(
-                DATABASE_USERNAME
-            )
-            .withPassword(
-                DATABASE_PASSWORD
-            )
-            .withStartupTimeout(
-                Duration.ofMinutes(2)
-            );
-
     /**
      * application-test.yml의 H2 설정 대신
      * Testcontainers MySQL 접속 정보를 등록합니다.
@@ -149,31 +117,20 @@ class TimeSaleMySqlIntegrationTest {
     static void registerMySqlProperties(
         DynamicPropertyRegistry registry
     ) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
         registry.add(
             "spring.datasource.url",
-            () ->
-                "jdbc:mysql://"
-                    + MYSQL_CONTAINER.getHost()
-                    + ":"
-                    + MYSQL_CONTAINER.getMappedPort(
-                    MYSQL_PORT
-                )
-                    + "/"
-                    + DATABASE_NAME
-                    + "?useSSL=false"
-                    + "&allowPublicKeyRetrieval=true"
-                    + "&characterEncoding=UTF-8"
-                    + "&serverTimezone=Asia/Seoul"
+            () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME)
         );
 
         registry.add(
             "spring.datasource.username",
-            () -> DATABASE_USERNAME
+            () -> SharedMySqlTestContainer.USERNAME
         );
 
         registry.add(
             "spring.datasource.password",
-            () -> DATABASE_PASSWORD
+            () -> SharedMySqlTestContainer.PASSWORD
         );
 
         registry.add(

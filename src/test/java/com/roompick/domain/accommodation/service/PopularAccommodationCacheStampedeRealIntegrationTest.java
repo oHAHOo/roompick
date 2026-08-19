@@ -6,7 +6,6 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +24,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -33,11 +31,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
@@ -46,6 +39,8 @@ import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.accommodation.repository.PopularAccommodationRankingRepository;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+import com.roompick.testsupport.SharedMySqlTestContainer;
+import com.roompick.testsupport.SharedRedisTestContainer;
 
 import jakarta.persistence.EntityManagerFactory;
 
@@ -54,7 +49,6 @@ import jakarta.persistence.EntityManagerFactory;
  * 랭킹 Repository 실행 횟수와 Hibernate SELECT 횟수를 검증합니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest(
     properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -67,9 +61,7 @@ import jakarta.persistence.EntityManagerFactory;
 @ActiveProfiles("test")
 class PopularAccommodationCacheStampedeRealIntegrationTest {
 
-    private static final int MYSQL_PORT = 3306;
-
-    private static final int REDIS_PORT = 6379;
+    private static final String DATABASE_NAME = "roompick_stampede_test";
 
     private static final int REQUEST_COUNT = 10;
 
@@ -77,46 +69,27 @@ class PopularAccommodationCacheStampedeRealIntegrationTest {
 
     private static final long TEST_TIMEOUT_SECONDS = 10L;
 
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
-            .withDatabaseName("roompick_stampede_test")
-            .withUsername("roompick")
-            .withPassword("roompick-password")
-            .withStartupTimeout(Duration.ofMinutes(2));
-
-    @Container
-    static final GenericContainer<?> REDIS_CONTAINER =
-        new GenericContainer<>(DockerImageName.parse("redis:7.2-alpine"))
-            .withExposedPorts(REDIS_PORT);
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
         registry.add(
             "spring.datasource.url",
-            () -> "jdbc:mysql://"
-                + MYSQL_CONTAINER.getHost()
-                + ":"
-                + MYSQL_CONTAINER.getMappedPort(MYSQL_PORT)
-                + "/roompick_stampede_test"
-                + "?useSSL=false&allowPublicKeyRetrieval=true"
-                + "&characterEncoding=UTF-8&serverTimezone=Asia/Seoul"
+            () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME)
         );
-        registry.add("spring.datasource.username", () -> "roompick");
+        registry.add(
+            "spring.datasource.username",
+            () -> SharedMySqlTestContainer.USERNAME
+        );
         registry.add(
             "spring.datasource.password",
-            () -> "roompick-password"
+            () -> SharedMySqlTestContainer.PASSWORD
         );
         registry.add(
             "spring.datasource.driver-class-name",
             () -> "com.mysql.cj.jdbc.Driver"
         );
-        registry.add("spring.data.redis.host", REDIS_CONTAINER::getHost);
-        registry.add(
-            "spring.data.redis.port",
-            () -> REDIS_CONTAINER.getMappedPort(REDIS_PORT)
-        );
+        registry.add("spring.data.redis.host", SharedRedisTestContainer::host);
+        registry.add("spring.data.redis.port", SharedRedisTestContainer::port);
     }
 
     @Autowired
