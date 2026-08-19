@@ -21,7 +21,7 @@ public class OfferOccupyEventConsumer {
     @KafkaListener(
         topics = KafkaTopicConfig.OFFER_OCCUPY_REQUEST_TOPIC,
         groupId = "special-offer-occupy-consumer",
-        concurrency = "3"
+        concurrency = "1"
     )
     public void consume(ConsumerRecord<String, OfferOccupyRequestEvent> record) {
         OfferOccupyRequestEvent event = record.value();

@@ -1,10 +1,11 @@
 # 배포 (AWS EC2 + RDS)
 
-이 문서는 RoomPick MVP를 외부에서 접근 가능한 개발 서버로 배포하는 절차를 설명합니다. 프로덕션급 고가용성 구성이 아니라, MVP 완료 조건인 "외부에서 접근할 수 있는 개발 서버 배포" 수준을 목표로 합니다.
+이 문서는 RoomPick MVP를 외부에서 접근할 수 있는 서버에 배포하는 절차를 설명합니다. 여러 대의 서버가 동시에 떠 있어서 하나가 죽어도 서비스가 끊기지 않는 운영 환경이 아니라, MVP 완료 조건인 "외부에서 접근할 수 있는 개발 서버 배포" 수준을 목표로 합니다.
 
 ## 구성
 
-- **EC2 단일 인스턴스**: 애플리케이션 컨테이너 + Prometheus/Grafana 모니터링 컨테이너 실행
+- **앱 EC2 인스턴스**: 애플리케이션 컨테이너 + Redis 실행
+- **모니터링 EC2 인스턴스**: Prometheus + Grafana + Kafka 실행 (11절 참고)
 - **RDS MySQL**: EC2와 분리된 관리형 데이터베이스
 - **리전**: `ap-northeast-2` (서울)
 
@@ -14,7 +15,7 @@
 
 ## 1. 사전 준비 (계정 소유자가 직접 수행)
 
-AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아래 단계는 계정 소유자가 본인 브라우저/터미널에서 직접 진행합니다.
+AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아래 단계는 계정 소유자가 본인 브라우저·터미널에서 직접 진행합니다.
 
 1. IAM 사용자 생성 (AWS 콘솔 → IAM → 사용자 생성)
    - 권한: `AmazonEC2FullAccess`, `AmazonRDSFullAccess`
@@ -45,25 +46,28 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 | 항목 | 값 | 비고 |
 | --- | --- | --- |
 | 리전 | `ap-northeast-2` | 서울 |
-| EC2 인스턴스 | `t3.small` | 앱 + Prometheus + Grafana 함께 운영 (2vCPU/2GB) |
+| EC2 인스턴스 | `t3.small` | 앱 + Redis 운영 (2vCPU/2GB) |
 | EC2 AMI | Amazon Linux 2023 | Docker를 user-data로 설치 |
 | RDS 인스턴스 | `db.t4g.micro` | 프리티어 대상 (12개월) |
-| RDS 스토리지 | gp3 20GB, 단일 AZ | 멀티 AZ 미사용 (비용 절감) |
+| RDS 스토리지 | gp3 20GB, 단일 AZ | 여러 AZ에 복제하지 않음 (비용 절감) |
 | RDS 퍼블릭 액세스 | 비활성화 | EC2 보안그룹에서만 접근 |
+
+Prometheus·Grafana·Kafka는 별도 EC2 인스턴스에서 운영합니다. 11절 참고.
 
 ## 3. 네트워크 / 보안그룹
 
 기본 VPC를 사용합니다.
 
-- **EC2 보안그룹**
+- **EC2 보안그룹** (`roompick-ec2-sg`)
   - `22` (SSH): 내 IP만 허용
-  - `8080` (앱): `0.0.0.0/0` 허용
-  - `3000` (Grafana): 팀 고정 IP만 허용 — 로그인 자체 보호에 더해 네트워크 레벨로도 제한
-  - `9090` (Prometheus): 내 IP만 허용 — Prometheus는 자체 인증이 없어 공개 노출 금지
-  - `8081` (Actuator management 포트): 보안그룹에 규칙을 추가하지 않음 — `127.0.0.1`에만
-    바인딩되고 `roompick-net` 내부 컨테이너 간 통신으로만 접근 가능하므로 공개 노출되지 않음
+  - `8080` (앱): 전체 공개(`0.0.0.0/0`) 허용
+  - `8081` (앱의 상태 확인·지표 제공 기능인 Actuator가 쓰는 포트): 모니터링 인스턴스의
+    보안그룹(`roompick-kafka-monitoring-sg`)에서 오는 접속만 허용합니다. Prometheus가 이
+    포트에서 앱의 지표를 주기적으로 가져갑니다. 그 외에는 접근할 수 없습니다(11절 참고).
 - **RDS 보안그룹**
   - `3306`: EC2 보안그룹에서 들어오는 트래픽만 허용 (퍼블릭 미노출)
+
+Prometheus(`9090`)·Grafana(`3000`)의 보안그룹 규칙은 별도 모니터링 인스턴스의 보안그룹에 있습니다. 11절 참고.
 
 ## 4. 프로비저닝 절차 (요약)
 
@@ -105,7 +109,7 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
      --network roompick-net \
      --env-file .env.prod \
      -p 8080:8080 \
-     -p 127.0.0.1:8081:8081 \
+     -p <앱 인스턴스 프라이빗 IP>:8081:8081 \
      --restart unless-stopped \
      --log-opt max-size=10m \
      --log-opt max-file=3 \
@@ -113,16 +117,17 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
    ```
 
    `--log-opt`는 컨테이너 로그(`docker logs`로 보는 stdout/stderr)가 무한정 쌓여 EC2 디스크를
-   채우는 것을 막기 위한 로테이션 설정입니다(파일당 최대 10MB, 최대 3개 = 총 30MB 제한).
+   채우는 것을 막는 설정입니다. 파일당 최대 10MB, 최대 3개까지만 남기고 오래된 로그는
+   지웁니다(총 30MB 제한).
 
-   `8081`은 Actuator management 포트(`management.server.port`, prod 프로필 전용)입니다.
-   `127.0.0.1`에만 바인딩하므로 EC2 로컬(SSH 세션)에서만 `curl`로 접근 가능하고, 외부에는
-   전혀 노출되지 않습니다. Prometheus는 이 포트를 호스트 바인딩이 아니라 `roompick-net`
-   내부에서 컨테이너 이름(`roompick-backend:8081`)으로 직접 접근합니다.
+   `8081`은 Actuator가 쓰는 포트(`management.server.port`, prod 프로필 전용)입니다. 앱
+   인스턴스의 프라이빗 IP에만 연결하므로, 같은 VPC 안의 다른 인스턴스(모니터링 인스턴스의
+   Prometheus)에서만 접근할 수 있고 퍼블릭 인터넷에는 노출되지 않습니다. 보안그룹에서도
+   모니터링 인스턴스의 보안그룹에서 오는 접속만 허용하도록 제한합니다(3절, 11절 참고).
 
-   `roompick-net`은 Redis 컨테이너가 붙어있는 Docker 네트워크입니다. 이 옵션이 빠지면
-   앱이 기본 `bridge` 네트워크에 떠서 `redis` 호스트명을 찾지 못해 헬스체크가 `DOWN`이
-   됩니다.
+   `roompick-net`은 Redis 컨테이너가 붙어있는 Docker 네트워크입니다. 이 옵션을 빼고 실행하면
+   앱이 기본 `bridge` 네트워크에 뜨는데, 이 네트워크에서는 `redis`라는 이름으로 접속할 수
+   없어서 헬스체크가 `DOWN`으로 나옵니다.
 
 ## 6. 비밀 관리
 
@@ -136,20 +141,23 @@ AWS 자격증명은 대화형 AI 도구가 대신 입력하지 않습니다. 아
 curl http://<EC2 퍼블릭 IP>:8080/api/v1/accommodations
 ```
 
-정상 응답(200)을 확인합니다. Actuator `health`는 `8081`(loopback 전용)에 있으므로
-공개 IP로는 확인할 수 없고, EC2에 SSH 접속한 뒤 확인합니다.
+정상 응답(200)을 확인합니다. Actuator가 제공하는 `health` 엔드포인트는 `8081`(앱 인스턴스
+프라이빗 IP 전용)에만 있어서 퍼블릭 IP로는 확인할 수 없습니다. 같은 VPC 안(예: 모니터링
+인스턴스)에서 확인합니다.
 
 ```bash
-ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
-curl http://127.0.0.1:8081/actuator/health
+curl http://<앱 인스턴스 프라이빗 IP>:8081/actuator/health
 ```
 
-`{"status":"UP"}` 응답을 확인합니다.
+`{"status":"UP"}` 응답을 확인합니다. 앱 인스턴스가 자기 자신의 이 프라이빗 IP로 curl하면
+연결되지 않습니다 — Docker가 게시한 포트로 자기 자신에게 접속할 때 흔히 나타나는 동작이며,
+다른 인스턴스에서 접속하면 정상 동작합니다. 앱 인스턴스 스스로 확인해야 하면
+`curl http://127.0.0.1:8080/api/v1/accommodations`로 대신 확인합니다.
 
 ## 8. 비용 안내
 
 - 프리티어(가입 후 12개월) 기간에는 EC2 `t3.micro` + RDS `db.t4g.micro` 조합이 대체로 무료 한도 내에서 운영 가능합니다.
-- 프리티어 종료 후에는 EC2/RDS 인스턴스 시간당 요금 + RDS 스토리지 요금이 발생합니다. 실제 리소스 생성 전에 최신 요금을 다시 확인합니다.
+- 프리티어 종료 후에는 EC2/RDS 인스턴스 시간당 요금과 RDS 스토리지 요금이 발생합니다. 실제 리소스 생성 전에 최신 요금을 다시 확인합니다.
 
 ## 9. CI/CD 자동 배포
 
@@ -159,7 +167,7 @@ curl http://127.0.0.1:8081/actuator/health
 2. **build-and-push**: GitHub 러너에서 `docker build` 후 GHCR(`ghcr.io/imsun9/roompick-backend`)에 `latest`, 커밋 SHA 태그로 push
 3. **deploy**: GitHub Actions가 SSH로 EC2에 접속해 새 이미지를 `pull`하고 기존 컨테이너를 교체
 
-EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드된 이미지를 받기만 하므로, `t3.micro`의 메모리 부족(OOM) 문제가 재발하지 않습니다.
+EC2는 더 이상 직접 `docker build`를 하지 않습니다. 이미 빌드된 이미지를 받기만 하므로, `t3.micro`에서 이미지 빌드 중 메모리가 부족해 실패하던 문제(OOM)가 다시 생기지 않습니다.
 
 수동으로 다시 배포하고 싶을 때는 GitHub 저장소 Actions 탭에서 `CD` 워크플로우를 `workflow_dispatch`로 직접 실행할 수 있습니다.
 
@@ -171,11 +179,12 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 | `EC2_SSH_KEY` | EC2 접속용 키페어의 개인키(`.pem`) 전체 내용 |
 | `AWS_ACCESS_KEY_ID` | 1단계에서 발급한 IAM 사용자의 Access Key ID |
 | `AWS_SECRET_ACCESS_KEY` | 1단계에서 발급한 IAM 사용자의 Secret Access Key |
-| `EC2_SG_ID` | EC2용 보안그룹 ID (`sg-`로 시작, 3-4단계에서 만든 EC2 보안그룹). AWS 콘솔 → EC2 → 보안 그룹에서 확인 |
+| `EC2_SG_ID` | EC2용 보안그룹 ID (`sg-`로 시작, 3~4단계에서 만든 EC2 보안그룹). AWS 콘솔 → EC2 → 보안 그룹에서 확인 |
 
-`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`는 CD가 배포 실행마다 GitHub Actions 러너의
-공인 IP를 `EC2_SG_ID` 보안그룹의 22번 포트에 임시로 추가·제거하는 데 사용합니다
-(`.github/workflows/cd.yml`, [docs/bug/cd-ec2-ssh-timeout-security-group.md](bug/cd-ec2-ssh-timeout-security-group.md) 참고).
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`는 CD가 배포를 실행할 때마다 GitHub Actions
+러너의 공인 IP를 `EC2_SG_ID` 보안그룹의 22번 포트에 잠깐 추가했다가 배포가 끝나면 다시
+지우는 데 사용합니다(`.github/workflows/cd.yml`,
+[docs/bug/cd-ec2-ssh-timeout-security-group.md](bug/cd-ec2-ssh-timeout-security-group.md) 참고).
 1단계에서 만든 IAM 사용자의 키를 그대로 등록하면 됩니다.
 
 `GITHUB_TOKEN`은 Actions가 자동으로 제공하므로 별도 등록이 필요 없습니다.
@@ -187,30 +196,31 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 검증해야 합니다. 검증 방식으로 두 가지를 검토했습니다.
 
 - **A. `flywayMigrate` Gradle 태스크**: Flyway만 단독 실행해 마이그레이션 SQL 자체를 검증.
-  Flyway Gradle 플러그인 추가가 필요하지만, 앱 기동 없이 SQL만 실행하므로 빠르고 실패 시
-  원인(Flyway 에러 로그)이 명확함.
-- **B. prod 유사 프로필로 앱 실기동**: 마이그레이션 + Hibernate `ddl-auto: validate`의
-  엔티티-스키마 일치까지 한 번에 검증하고 실제 배포 경로와 가장 가깝지만, 앱 전체를
-  띄우는 만큼 느리고 실패 시 원인(Flyway vs Hibernate vs 다른 빈 초기화)을 특정하기
-  상대적으로 어려움.
+  Flyway Gradle 플러그인 추가가 필요하지만, 앱을 띄우지 않고 SQL만 실행하므로 빠르고
+  실패했을 때 원인(Flyway 에러 로그)이 바로 드러남.
+- **B. prod와 비슷한 프로필로 앱을 실제로 띄움**: 마이그레이션과 Hibernate
+  `ddl-auto: validate`가 하는 엔티티-스키마 일치 확인까지 한 번에 검증하고 실제 배포
+  경로와 가장 가깝지만, 앱 전체를 띄우는 만큼 느리고 실패했을 때 원인(Flyway인지
+  Hibernate인지 다른 빈 초기화 문제인지)을 찾기 상대적으로 어려움.
 
 **A안 채택.** 마이그레이션 파일이 아직 4개뿐이라 검증 대상이 단순하고, CI를 자주 돌리는
-단계에서는 실행 속도와 실패 시 원인 파악의 명확성이 더 중요하다고 판단했습니다. 엔티티와
-스키마 일치 여부는 이미 `test` job과 실제 배포 시 `ddl-auto: validate`가 걸러주므로, 이
-검증에서 굳이 앱 전체 기동까지 중복으로 확인할 필요는 없습니다.
+단계에서는 실행 속도와 실패 원인을 빠르게 찾는 게 더 중요하다고 판단했습니다. 엔티티와
+스키마가 일치하는지는 이미 `test` 작업과 실제 배포 시 `ddl-auto: validate`가 걸러주므로,
+이 검증에서 앱 전체를 또 띄워 중복으로 확인할 필요는 없습니다.
 
 ## 10. 장애 시 재배포·롤백 절차
 
 ### 10-1. 배포 실패 감지
 
-- GitHub Actions `CD` 워크플로우가 실패하면(테스트/빌드/배포 어느 단계든) `deploy` job의
-  `Deploy to EC2 over SSH` 스텝은 실행되지 않거나 중간에 실패로 끝나므로, **기존에 떠 있던
-  컨테이너는 그대로 남아 서비스가 유지됩니다.** 즉 새 이미지 pull이나 컨테이너 교체가
-  실패해도 자동으로 서비스가 끊기지는 않습니다.
-- 단, 컨테이너 교체 스텝(`docker stop` → `docker rm` → `docker run`) 도중에 실패하면
-  이전 컨테이너는 이미 내려간 상태에서 새 컨테이너 기동이 안 됐을 수 있습니다. 이 경우
-  `curl http://<EC2 퍼블릭 IP>:8080/api/v1/accommodations`가 응답하지 않는 것으로 확인합니다
-  (Actuator `health`는 `8081`(loopback 전용)이라 EC2 로컬에서만 확인 가능합니다).
+- GitHub Actions `CD` 워크플로우가 실패하면(테스트·빌드·배포 어느 단계든) `deploy` 작업의
+  `Deploy to EC2 over SSH` 단계가 실행되지 않거나 중간에 실패로 끝납니다. 이 경우 **기존에
+  떠 있던 컨테이너는 그대로 남아 서비스가 유지됩니다.** 즉 새 이미지를 받아오거나 컨테이너를
+  교체하는 데 실패해도 자동으로 서비스가 끊기지는 않습니다.
+- 단, 컨테이너 교체 단계(`docker stop` → `docker rm` → `docker run`) 도중에 실패하면
+  이전 컨테이너는 이미 내려간 상태에서 새 컨테이너가 뜨지 못했을 수 있습니다. 이 경우
+  `curl http://<EC2 퍼블릭 IP>:8080/api/v1/accommodations`가 응답하지 않는 것으로
+  확인합니다(Actuator의 `health`는 `8081`(앱 인스턴스 프라이빗 IP 전용)에만 있어서 같은
+  VPC 안에서만 확인할 수 있습니다).
 
 ### 10-2. 이전 버전으로 롤백
 
@@ -231,13 +241,16 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
      --network roompick-net \
      --env-file /home/ec2-user/app/.env.prod \
      -p 8080:8080 \
-     -p 127.0.0.1:8081:8081 \
+     -p <앱 인스턴스 프라이빗 IP>:8081:8081 \
      --restart unless-stopped \
      --log-opt max-size=10m \
      --log-opt max-file=3 \
      ghcr.io/imsun9/roompick-backend:<이전 커밋 SHA>
    ```
-4. `curl http://127.0.0.1:8081/actuator/health`(EC2 로컬)로 정상 기동 확인
+4. `curl http://<앱 인스턴스 프라이빗 IP>:8081/actuator/health`(같은 VPC 안의 다른
+   인스턴스에서)로 정상 기동을 확인합니다. 앱 인스턴스가 자기 자신의 이 주소로 curl하면
+   연결되지 않으니(7절 참고), 앱 인스턴스 스스로 확인해야 하면
+   `curl http://127.0.0.1:8080/api/v1/accommodations`로 대신 확인합니다.
 
 ### 10-3. 코드 원인 수정 후 재배포
 
@@ -250,64 +263,89 @@ EC2는 더 이상 직접 `docker build`를 하지 않습니다 — 이미 빌드
 
 ### 10-4. DB 마이그레이션이 원인인 경우
 
-`ddl-auto: validate`이므로 Flyway가 적용한 스키마와 엔티티가 어긋나면 앱이 기동 자체를
-못 합니다. 이 경우 이미지 롤백만으로는 부족하고, 문제가 된 `V*__*.sql` 마이그레이션을
+`ddl-auto: validate`이므로 Flyway가 적용한 스키마와 엔티티가 어긋나면 앱이 아예 뜨지
+못합니다. 이 경우 이미지 롤백만으로는 부족하고, 문제가 된 `V*__*.sql` 마이그레이션을
 되돌리는 새 마이그레이션(`V(n+1)__revert_xxx.sql`)을 추가해야 합니다. Flyway는 이미 적용된
-마이그레이션 파일을 수정하면 체크섬 불일치로 실패하므로, 기존 파일을 고치지 말고 항상
+마이그레이션 파일을 수정하면 체크섬이 달라져 실패하므로, 기존 파일을 고치지 말고 항상
 새 버전을 추가합니다.
 
-## 11. 모니터링 (Prometheus + Grafana)
+## 11. 모니터링·메시징 (별도 EC2: Prometheus + Grafana + Kafka)
 
-앱과 같은 EC2(`t3.small`)에서 `monitoring/docker-compose.yml`로 Prometheus와 Grafana를
-별도 컨테이너로 구동합니다. 앱은 기존과 동일하게 `docker run`으로 실행되며, Actuator는
-prod 프로필에서 `management.server.port=8081`로 분리되어 있습니다. Prometheus는
-호스트를 거치지 않고 `roompick-net` 내부에서 컨테이너 이름(`roompick-backend:8081`)으로
-직접 스크레이핑합니다.
+Prometheus·Grafana·Kafka는 앱 인스턴스와 별도인 `roompick-kafka-monitoring`(`t3.small`,
+`ap-northeast-2a`) 인스턴스에서 구동합니다. 앱 인스턴스와는 같은 VPC 안에서 프라이빗
+IP·보안그룹으로만 통신하며, 퍼블릭 인터넷에는 노출하지 않습니다. Redis는 앱과 강하게
+묶여 있어 이번 분리 대상에서 제외하고 앱 인스턴스에 그대로 둡니다.
 
-### 11-1. 최초 구동
+| 항목 | 값 |
+| --- | --- |
+| 인스턴스 | `roompick-kafka-monitoring`, `t3.small`, Amazon Linux 2023 |
+| 보안그룹 | `roompick-kafka-monitoring-sg` |
+| `22`(SSH) | 팀 고정 IP만 허용 |
+| `9090`(Prometheus) | 팀 고정 IP만 허용 — Prometheus는 로그인 기능이 없어 공개로 열면 안 됨 |
+| `3000`(Grafana) | 팀 고정 IP만 허용 |
+| `9092`(Kafka) | 앱 인스턴스의 보안그룹(`roompick-ec2-sg`)에 속한 인스턴스만 허용 |
+
+IP 주소가 아니라 보안그룹을 기준으로 허용하므로, 앱 인스턴스의 IP가 바뀌어도 규칙을 다시 설정할 필요가 없습니다.
+
+앱 인스턴스(`roompick-ec2-sg`)에는 `8081`(Actuator) 인바운드를 이 모니터링 인스턴스의
+보안그룹에서 오는 접속만 허용하도록 추가되어 있고(3절), Actuator 컨테이너의 포트 연결도
+`127.0.0.1:8081:8081`이 아니라 `<앱 인스턴스 프라이빗 IP>:8081:8081`로 바꿔서 같은 VPC
+안에서만 접근할 수 있게 했습니다(5절). 퍼블릭 노출은 이전과 마찬가지로 없습니다.
+
+### 11-1. 최초 구동 (모니터링 인스턴스에서)
 
 ```bash
-ssh -i <키페어>.pem ec2-user@<EC2 퍼블릭 IP>
-docker network inspect roompick-net > /dev/null 2>&1 || docker network create roompick-net
-cd roompick-backend/monitoring
-echo "GF_SECURITY_ADMIN_PASSWORD=<운영용 Grafana 비밀번호>" > .env   # 기본 admin/admin 기동 방지, git에 포함하지 않음
-docker compose up -d
+ssh -i <키페어>.pem ec2-user@<모니터링 인스턴스 퍼블릭 IP>
+git clone <repo-url> && cd roompick-backend
+echo "GF_SECURITY_ADMIN_PASSWORD=<운영용 Grafana 비밀번호>" > monitoring/.env   # 기본 admin/admin 기동 방지, git에 포함하지 않음
+docker compose -f monitoring/docker-compose.yml up -d
+docker compose -f kafka/docker-compose.kafka.yml up -d
 ```
 
-`roompick-net`은 앱 컨테이너가 이미 사용 중인 네트워크와 동일합니다(5절). 앱 컨테이너가
-먼저 떠 있어야 Prometheus가 `roompick-backend:8081`을 이름으로 찾을 수 있습니다.
+`monitoring/prometheus.yml`의 지표 수집 대상과 `kafka/docker-compose.kafka.yml`의
+`KAFKA_ADVERTISED_LISTENERS` 값은 컨테이너 이름이 아니라 각 인스턴스의 **프라이빗 IP**를
+직접 적어둡니다. 서로 다른 인스턴스라서 컨테이너 이름으로는 서로를 찾을 수 없기
+때문입니다. 인스턴스를 다시 만들어 프라이빗 IP가 바뀌면 두 값 모두 새로 갱신해야 합니다.
 
 ### 11-2. 확인
 
 ```bash
-curl http://localhost:9090/api/v1/targets   # roompick-backend job이 up인지 확인
+curl http://localhost:9090/api/v1/targets   # roompick-backend 수집 대상이 up인지 확인
 ```
 
-- Grafana: `http://<EC2 퍼블릭 IP>:3000` (`GF_SECURITY_ADMIN_PASSWORD`로 지정한 비밀번호로 로그인,
-  기본 `admin`/`admin` 계정으로는 기동되지 않습니다)
-- Grafana Data source로 Prometheus 추가 시 URL은 컨테이너 간 통신이므로 `http://prometheus:9090`
+- Grafana: `http://<모니터링 인스턴스 퍼블릭 IP>:3000` (`GF_SECURITY_ADMIN_PASSWORD`로
+  지정한 비밀번호로 로그인. 기본 `admin`/`admin` 계정으로는 뜨지 않습니다)
+- Grafana에서 데이터 소스로 Prometheus를 추가할 때 URL은 같은 인스턴스 안에서 컨테이너
+  이름으로 통신하므로 `http://prometheus:9090`
+- Kafka 접속 주소는 `<모니터링 인스턴스 프라이빗 IP>:9092`이며, 앱 인스턴스의 `.env.prod`에
+  있는 `KAFKA_BOOTSTRAP_SERVERS`가 이 값을 가리켜야 합니다.
 
 ### 11-3. 알려진 제약
 
-- Prometheus(`9090`)는 자체 인증이 없어 보안그룹에서 내 IP로만 허용합니다(2절 참고).
-- Grafana(`3000`)는 보안그룹에서 팀 고정 IP로만 허용합니다(2절 참고). `GF_SECURITY_ADMIN_PASSWORD`를
-  설정하지 않으면 `docker compose up`이 즉시 실패합니다.
-- Actuator 상세 지표(`/actuator/metrics/**`, `/actuator/prometheus`)는 `8081`(loopback +
-  `roompick-net` 내부 전용)에만 있어 `8080` 공개 포트로는 접근할 수 없습니다.
-- Prometheus/Grafana 데이터는 Docker named volume(`prometheus-data`, `grafana-data`)에
-  저장되므로 컨테이너를 재생성해도 유지되지만, EC2 인스턴스 자체가 삭제되면 함께 사라집니다.
+- 모니터링 인스턴스가 자기 자신의 프라이빗 IP로 앱 인스턴스에 접속하는 것처럼, 인스턴스가
+  자기 자신에게 다시 접속하는 상황이 아니라 **다른** 인스턴스가 서로 접속하는 상황에서만
+  이 구성이 의미가 있습니다. 자기 자신의 프라이빗 IP로 접속하면 연결되지 않을 수 있습니다
+  (7절 참고). 실제로 확인해야 하는 건 "다른 인스턴스에서 접근되는지"이므로 문제가 아닙니다.
+- Prometheus·Grafana·Kafka의 데이터는 각각 Docker volume에 저장되므로 컨테이너를
+  다시 만들어도 데이터는 남지만, 이 인스턴스 자체를 삭제하면 데이터도 함께 사라집니다.
+- Kafka는 서버 1대로만 운영합니다. 별도의 조정 서버(ZooKeeper) 없이 Kafka 자신이 조정
+  기능까지 맡는 방식(KRaft)을 쓰지만, 서버가 여러 대로 복제되어 있지는 않으므로 이 서버가
+  멈추면 Kafka 전체가 멈춥니다. MVP 단계의 트래픽 규모에 맞춘 구성입니다.
+- 분리하기 전 기존 인스턴스에 쌓여있던 Prometheus 지표 기록과 Grafana 대시보드는 옮기지
+  않고 새로 시작했습니다.
 
 ## 12. 이번 범위에 포함하지 않는 항목 (향후 별도 작업)
 
-다음 항목은 이번 배포 범위에 포함하지 않았습니다. 필요 시 팀 논의 후 별도 작업으로 진행합니다.
+다음 항목은 이번 배포 범위에 포함하지 않았습니다. 필요하면 팀 논의 후 별도 작업으로 진행합니다.
 
 - HTTPS 적용 (도메인 + Nginx + Let's Encrypt)
 - ECS/Fargate 등 컨테이너 오케스트레이션으로 전환
-- IAM 사용자 최소 권한 전환: 현재 CD가 쓰는 IAM 사용자가 `AmazonEC2FullAccess`,
-  `AmazonRDSFullAccess`를 갖고 있으나, 실제 필요한 권한은 `EC2_SG_ID` 보안그룹의
-  `AuthorizeSecurityGroupIngress`/`RevokeSecurityGroupIngress`뿐이다. 커스텀 정책으로
-  좁히거나 CD 전용 IAM 사용자를 새로 분리한다.
-- 장기 AWS Access Key 제거: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`를 GitHub Secrets에
-  장기 보관하는 대신, GitHub OIDC + `role-to-assume` 방식으로 전환해 만료 없는 키 자체를
-  없앤다. 전환 전까지는 이 키가 노출되면 EC2/RDS 전체가 위험해지므로, 위 IAM 최소 권한
-  전환과 함께 진행하는 것이 안전하다.
+- IAM 사용자 권한 최소화: 현재 CD가 쓰는 IAM 사용자가 `AmazonEC2FullAccess`,
+  `AmazonRDSFullAccess`를 갖고 있지만, 실제로 필요한 권한은 `EC2_SG_ID` 보안그룹의 규칙을
+  추가·삭제하는 권한(`AuthorizeSecurityGroupIngress`/`RevokeSecurityGroupIngress`)뿐입니다.
+  꼭 필요한 권한만 담은 정책으로 좁히거나, CD 전용 IAM 사용자를 새로 만듭니다.
+- 장기 AWS Access Key 제거: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`를 GitHub
+  Secrets에 계속 보관하는 대신, GitHub의 OIDC 기능으로 배포할 때마다 짧게만 유효한 키를
+  발급받는 방식(`role-to-assume`)으로 바꿔서, 만료 없는 키 자체를 없앱니다. 전환 전까지는
+  이 키가 유출되면 EC2·RDS 전체가 위험해지므로, 위 IAM 권한 최소화와 함께 진행하는 것이
+  안전합니다.
