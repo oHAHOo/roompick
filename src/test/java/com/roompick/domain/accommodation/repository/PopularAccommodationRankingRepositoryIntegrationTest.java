@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.redis.DataRedisTest;
@@ -20,6 +21,7 @@ import com.roompick.testsupport.SharedRedisTestContainer;
  * 실제 Redis 컨테이너를 사용하여
  * 인기 숙소 Sorted Set 점수와 TTL 설정을 검증합니다.
  */
+@Tag("integration")
 @DataRedisTest
 @Import(PopularAccommodationRankingRepository.class)
 class PopularAccommodationRankingRepositoryIntegrationTest {

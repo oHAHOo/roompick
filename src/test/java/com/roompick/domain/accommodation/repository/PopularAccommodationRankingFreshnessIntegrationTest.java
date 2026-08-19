@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.redis.DataRedisTest;
@@ -28,6 +29,7 @@ import com.roompick.testsupport.SharedRedisTestContainer;
  * 누적 랭킹은 제품 발전 과정의 V1 재현 시나리오이며,
  * 현재 운영 기능인 DAILY/WEEKLY 랭킹과 분리된 테스트 전용 키를 사용합니다.
  */
+@Tag("integration")
 @DataRedisTest
 @Import(PopularAccommodationRankingRepository.class)
 class PopularAccommodationRankingFreshnessIntegrationTest {
