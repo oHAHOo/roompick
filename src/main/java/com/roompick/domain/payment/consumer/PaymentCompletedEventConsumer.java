@@ -21,7 +21,7 @@ public class PaymentCompletedEventConsumer {
     @KafkaListener(
         topics = KafkaTopicConfig.PAYMENT_COMPLETED_TOPIC,
         groupId = "payment-completed-notification-consumer",
-        concurrency = "3"
+        concurrency = "1"
     )
     public void consume(ConsumerRecord<String, PaymentCompletedEvent> record) {
         PaymentCompletedEvent event = record.value();
