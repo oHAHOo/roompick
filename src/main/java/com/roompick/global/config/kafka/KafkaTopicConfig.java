@@ -9,10 +9,16 @@ import org.springframework.kafka.config.TopicBuilder;
 public class KafkaTopicConfig {
 
     public static final String OFFER_OCCUPY_REQUEST_TOPIC = "offer-occupy-request";
+    public static final String PAYMENT_COMPLETED_TOPIC = "payment-completed";
 
     @Bean
     public NewTopic offerOccupyRequestTopic() {
         return TopicBuilder.name(OFFER_OCCUPY_REQUEST_TOPIC).partitions(3).replicas(1).build();
+    }
+
+    @Bean
+    public NewTopic paymentCompletedTopic() {
+        return TopicBuilder.name(PAYMENT_COMPLETED_TOPIC).partitions(3).replicas(1).build();
     }
 
 }

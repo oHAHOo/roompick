@@ -26,6 +26,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.roompick.domain.payment.client.portone.PortOneClient;
@@ -38,6 +41,8 @@ import com.roompick.domain.payment.dto.response.PaymentFailResponseDto;
 import com.roompick.domain.payment.dto.response.PaymentPrepareResponseDto;
 import com.roompick.domain.payment.entity.Payment;
 import com.roompick.domain.payment.entity.PaymentStatus;
+import com.roompick.domain.payment.event.PaymentCompletedEvent;
+import com.roompick.domain.payment.producer.PaymentCompletedEventProducer;
 import com.roompick.domain.payment.service.PaymentService;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.entity.ReservationStatus;
@@ -103,6 +108,9 @@ class PaymentFacadeTest {
 
     @Mock
     private WaitlistProcessingFacade waitlistProcessingFacade;
+
+    @Mock
+    private PaymentCompletedEventProducer paymentCompletedEventProducer;
 
     @Mock
     private TransactionStatus transactionStatus;
@@ -830,6 +838,34 @@ class PaymentFacadeTest {
                 PORTONE_MEMBER_ID,
                 PORTONE_PAID_AT
             );
+
+        ArgumentCaptor<PaymentCompletedEvent>
+            paymentCompletedEventCaptor =
+            ArgumentCaptor.forClass(
+                PaymentCompletedEvent.class
+            );
+
+        then(paymentCompletedEventProducer)
+            .should(times(1))
+            .send(
+                paymentCompletedEventCaptor.capture()
+            );
+
+        PaymentCompletedEvent
+            publishedPaymentCompletedEvent =
+            paymentCompletedEventCaptor.getValue();
+
+        assertThat(
+            publishedPaymentCompletedEvent.paymentId()
+        ).isEqualTo(
+            PORTONE_PAYMENT_INTERNAL_ID
+        );
+
+        assertThat(
+            publishedPaymentCompletedEvent.completedAt()
+        ).isEqualTo(
+            PORTONE_PAID_AT
+        );
     }
 
     @Test
@@ -1221,9 +1257,34 @@ class PaymentFacadeTest {
                 > callback =
                 invocation.getArgument(0);
 
-            return callback.doInTransaction(
-                transactionStatus
-            );
+            /*
+             * 실제 TransactionTemplate은 콜백 실행 중
+             * synchronization을 활성화하고, 커밋에 성공하면
+             * afterCommit 콜백을 실행한다. 이 mock은 그 흐름을
+             * 그대로 재현해 registerSynchronization() 호출과
+             * afterCommit() 콜백이 테스트에서도 동작하게 한다.
+             */
+            TransactionSynchronizationManager
+                .initSynchronization();
+            try {
+                PaymentCompleteResponseDto result =
+                    callback.doInTransaction(
+                        transactionStatus
+                    );
+
+                TransactionSynchronizationUtils
+                    .triggerAfterCommit();
+                TransactionSynchronizationUtils
+                    .triggerAfterCompletion(
+                        TransactionSynchronization
+                            .STATUS_COMMITTED
+                    );
+
+                return result;
+            } finally {
+                TransactionSynchronizationManager
+                    .clearSynchronization();
+            }
         });
     }
 
