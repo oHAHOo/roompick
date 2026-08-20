@@ -120,4 +120,17 @@ public class SpecialOffer extends BaseTimeEntity {
             status = SpecialOfferStatus.ENDED;
         }
     }
+
+    /**
+     * 현재 시각에 점유 및 대기열 승계가 가능한 특가인지 확인합니다.
+     *
+     * 상태 갱신 스케줄러가 아직 ENDED를 반영하지 못했더라도
+     * 종료 시각이 지났다면 새로운 HOLD를 만들 수 없습니다.
+     */
+    public boolean isActiveAt(LocalDateTime now) {
+        return now != null
+            && status == SpecialOfferStatus.ACTIVE
+            && !now.isBefore(startsAt)
+            && now.isBefore(endsAt);
+    }
 }
