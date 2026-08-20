@@ -22,15 +22,12 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.support.PopularAccommodationKeyGenerator;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+import com.roompick.testsupport.SharedRedisTestContainer;
 
 /**
  * 인기 숙소 조회 결과의 Redis 캐시 동작을
@@ -40,7 +37,6 @@ import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
  * TTL 만료 후 데이터가 다시 조회되는지도 확인합니다.
  */
 @Tag("integration")
-@Testcontainers
 /*
  * 이 테스트 클래스에서만 인기 숙소 캐시 TTL을 1초로 설정합니다.
  *
@@ -61,18 +57,6 @@ class PopularAccommodationQueryCacheIntegrationTest {
     private static final String CACHE_NAME =
         "popularAccommodations";
 
-    private static final int REDIS_PORT = 6379;
-
-    /**
-     * 테스트에서 사용할 실제 Redis 컨테이너입니다.
-     */
-    @Container
-    static final GenericContainer<?> REDIS_CONTAINER =
-        new GenericContainer<>(
-            DockerImageName.parse("redis:7.2-alpine")
-        )
-            .withExposedPorts(REDIS_PORT);
-
     /**
      * Testcontainers가 실행한 Redis의 접속 정보를
      * Spring Redis 설정에 동적으로 주입합니다.
@@ -83,14 +67,12 @@ class PopularAccommodationQueryCacheIntegrationTest {
     ) {
         registry.add(
             "spring.data.redis.host",
-            REDIS_CONTAINER::getHost
+            SharedRedisTestContainer::host
         );
 
         registry.add(
             "spring.data.redis.port",
-            () -> REDIS_CONTAINER.getMappedPort(
-                REDIS_PORT
-            )
+            SharedRedisTestContainer::port
         );
     }
 

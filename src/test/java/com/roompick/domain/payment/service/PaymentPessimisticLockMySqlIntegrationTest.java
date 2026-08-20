@@ -25,11 +25,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
@@ -46,6 +41,7 @@ import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 /**
  * 실제 MySQL에서 Payment 비관적 쓰기 락의 동작을 검증합니다.
@@ -57,7 +53,6 @@ import com.roompick.global.common.ErrorCode;
  * 테스트 클래스에는 @Transactional을 적용하지 않습니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest(
     properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -71,16 +66,8 @@ import com.roompick.global.common.ErrorCode;
 @ActiveProfiles("test")
 class PaymentPessimisticLockMySqlIntegrationTest {
 
-    private static final int MYSQL_PORT = 3306;
-
     private static final String DATABASE_NAME =
         "roompick_lock_test";
-
-    private static final String DATABASE_USERNAME =
-        "roompick";
-
-    private static final String DATABASE_PASSWORD =
-        "roompick-password";
 
     private static final ZoneId TEST_ZONE_ID =
         ZoneId.of("Asia/Seoul");
@@ -97,54 +84,24 @@ class PaymentPessimisticLockMySqlIntegrationTest {
     private static final Duration DIFFERENT_PAYMENT_COMPLETION_TIMEOUT =
         Duration.ofSeconds(3);
 
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(
-            DockerImageName.parse("mysql:8.4")
-        )
-            .withDatabaseName(
-                DATABASE_NAME
-            )
-            .withUsername(
-                DATABASE_USERNAME
-            )
-            .withPassword(
-                DATABASE_PASSWORD
-            )
-            .withStartupTimeout(
-                Duration.ofMinutes(2)
-            );
-
     @DynamicPropertySource
     static void registerMySqlProperties(
         DynamicPropertyRegistry registry
     ) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
         registry.add(
             "spring.datasource.url",
-            () ->
-                "jdbc:mysql://"
-                    + MYSQL_CONTAINER.getHost()
-                    + ":"
-                    + MYSQL_CONTAINER.getMappedPort(
-                    MYSQL_PORT
-                )
-                    + "/"
-                    + DATABASE_NAME
-                    + "?useSSL=false"
-                    + "&allowPublicKeyRetrieval=true"
-                    + "&characterEncoding=UTF-8"
-                    + "&serverTimezone=Asia/Seoul"
+            () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME)
         );
 
         registry.add(
             "spring.datasource.username",
-            () -> DATABASE_USERNAME
+            () -> SharedMySqlTestContainer.USERNAME
         );
 
         registry.add(
             "spring.datasource.password",
-            () -> DATABASE_PASSWORD
+            () -> SharedMySqlTestContainer.PASSWORD
         );
 
         registry.add(

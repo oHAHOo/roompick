@@ -643,6 +643,7 @@ log.info("Reservation confirmed. reservationId={}, memberId={}", reservationId, 
 - 외부 결제 연동은 Fake 또는 Mock으로 격리한다.
 - 테스트 데이터는 테스트 내부에서 명확하게 생성한다.
 - 테스트끼리 실행 순서와 데이터에 의존하지 않는다.
+- 통합 테스트에서 MySQL·Redis가 필요하면 테스트 클래스마다 `@Container`로 컨테이너를 새로 만들지 않고, `com.roompick.testsupport.SharedMySqlTestContainer` / `SharedRedisTestContainer`가 제공하는 공유 컨테이너를 사용한다.
 
 ```java
 @Test
@@ -663,6 +664,37 @@ void 결제에_실패하면_점유한_객실을_복구한다() {
 
 @Test
 void 다른_회원의_예약은_취소할_수_없다() {
+}
+```
+
+### MySQL·Redis 통합 테스트 컨테이너
+
+`@Container`로 MySQL·Redis 컨테이너를 직접 선언하지 않고, 공유 컨테이너의 호스트·포트만 `@DynamicPropertySource`에 등록한다. 데이터베이스 이름은 클래스마다 다르게 지정해 데이터가 섞이지 않게 격리한다.
+
+```java
+@Tag("integration")
+@SpringBootTest(properties = "spring.jpa.hibernate.ddl-auto=create")
+class ReservationConcurrencyMySqlIntegrationTest {
+
+    private static final String DATABASE_NAME = "roompick_reservation_lock_test";
+
+    @DynamicPropertySource
+    static void registerMySqlProperties(DynamicPropertyRegistry registry) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
+        registry.add("spring.datasource.url", () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME));
+        registry.add("spring.datasource.username", () -> SharedMySqlTestContainer.USERNAME);
+        registry.add("spring.datasource.password", () -> SharedMySqlTestContainer.PASSWORD);
+    }
+}
+```
+
+Redis는 클래스마다 데이터베이스를 나눌 필요 없이 호스트·포트만 등록한다.
+
+```java
+@DynamicPropertySource
+static void registerRedisProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.data.redis.host", SharedRedisTestContainer::host);
+    registry.add("spring.data.redis.port", SharedRedisTestContainer::port);
 }
 ```
 

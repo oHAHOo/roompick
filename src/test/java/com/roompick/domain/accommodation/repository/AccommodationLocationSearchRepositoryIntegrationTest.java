@@ -3,7 +3,6 @@ package com.roompick.domain.accommodation.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -13,16 +12,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationLocationBoundingBox;
 import com.roompick.global.config.JpaConfig;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 import jakarta.persistence.EntityManager;
 
@@ -35,7 +32,6 @@ import jakarta.persistence.EntityManager;
  * ST_Distance_Sphere() 정확 거리 계산을 함께 검증합니다.
  */
 @Tag("integration")
-@Testcontainers
 @DataJpaTest(
     properties = {
         /*
@@ -58,16 +54,31 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
     private static final double SEOUL_CITY_HALL_LATITUDE = 37.566500;
     private static final double SEOUL_CITY_HALL_LONGITUDE = 126.978000;
 
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(
-            DockerImageName.parse("mysql:8.4")
-        )
-            .withDatabaseName("roompick_location_search_test")
-            .withUsername("roompick")
-            .withPassword("roompick-password")
-            .withStartupTimeout(Duration.ofMinutes(2));
+    private static final String DATABASE_NAME =
+        "roompick_location_search_test";
+
+    @DynamicPropertySource
+    static void registerMySqlProperties(
+        DynamicPropertyRegistry registry
+    ) {
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
+        registry.add(
+            "spring.datasource.url",
+            () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME)
+        );
+        registry.add(
+            "spring.datasource.username",
+            () -> SharedMySqlTestContainer.USERNAME
+        );
+        registry.add(
+            "spring.datasource.password",
+            () -> SharedMySqlTestContainer.PASSWORD
+        );
+        registry.add(
+            "spring.datasource.driver-class-name",
+            () -> "com.mysql.cj.jdbc.Driver"
+        );
+    }
 
     @Autowired
     private AccommodationRepository accommodationRepository;

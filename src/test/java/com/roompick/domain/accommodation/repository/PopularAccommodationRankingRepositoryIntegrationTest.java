@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.data.redis.DataRedisTest;
@@ -13,38 +14,20 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
+
+import com.roompick.testsupport.SharedRedisTestContainer;
 
 /**
  * 실제 Redis 컨테이너를 사용하여
  * 인기 숙소 Sorted Set 점수와 TTL 설정을 검증합니다.
  */
-@Testcontainers
+@Tag("integration")
 @DataRedisTest
 @Import(PopularAccommodationRankingRepository.class)
 class PopularAccommodationRankingRepositoryIntegrationTest {
 
-    private static final int REDIS_PORT = 6379;
-
     private static final String DAILY_KEY =
         "roompick:popular:accommodations:daily:2026-07-29";
-
-    /**
-     * 테스트마다 독립적인 Redis 7 컨테이너를 사용합니다.
-     *
-     * 로컬에서 실행 중인 roompick-redis의 6379 포트와 겹치지 않도록
-     * Testcontainers가 임의의 호스트 포트를 자동으로 할당합니다.
-     */
-    @Container
-    private static final GenericContainer<?> REDIS_CONTAINER =
-        new GenericContainer<>(
-            DockerImageName.parse("redis:7")
-        ).withExposedPorts(
-            REDIS_PORT
-        );
 
     @Autowired
     private PopularAccommodationRankingRepository
@@ -62,14 +45,12 @@ class PopularAccommodationRankingRepositoryIntegrationTest {
     ) {
         registry.add(
             "spring.data.redis.host",
-            REDIS_CONTAINER::getHost
+            SharedRedisTestContainer::host
         );
 
         registry.add(
             "spring.data.redis.port",
-            () -> REDIS_CONTAINER.getMappedPort(
-                REDIS_PORT
-            )
+            SharedRedisTestContainer::port
         );
     }
 

@@ -19,20 +19,16 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.testsupport.SharedRedisTestContainer;
 
 /**
  * 숙소 정보 변경 트랜잭션의 성공·롤백 여부에 따라
  * 인기 숙소 Redis 캐시가 올바르게 삭제되는지 검증합니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest
 @ActiveProfiles("test")
 class PopularAccommodationCacheEvictionTransactionIntegrationTest {
@@ -40,29 +36,18 @@ class PopularAccommodationCacheEvictionTransactionIntegrationTest {
     private static final String CACHE_NAME =
         "popularAccommodations";
 
-    private static final int REDIS_PORT = 6379;
-
-    @Container
-    static final GenericContainer<?> REDIS_CONTAINER =
-        new GenericContainer<>(
-            DockerImageName.parse("redis:7.2-alpine")
-        )
-            .withExposedPorts(REDIS_PORT);
-
     @DynamicPropertySource
     static void registerRedisProperties(
         DynamicPropertyRegistry registry
     ) {
         registry.add(
             "spring.data.redis.host",
-            REDIS_CONTAINER::getHost
+            SharedRedisTestContainer::host
         );
 
         registry.add(
             "spring.data.redis.port",
-            () -> REDIS_CONTAINER.getMappedPort(
-                REDIS_PORT
-            )
+            SharedRedisTestContainer::port
         );
     }
 

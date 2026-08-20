@@ -17,10 +17,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
@@ -36,6 +32,7 @@ import com.roompick.domain.waitlist.entity.Waitlist;
 import com.roompick.domain.waitlist.entity.WaitlistStatus;
 import com.roompick.domain.waitlist.facade.WaitlistProcessingFacade;
 import com.roompick.domain.waitlist.repository.WaitlistRepository;
+import com.roompick.testsupport.SharedMySqlTestContainer;
 
 /**
  * 동일 특가 상품에 대한 점유 요청이 도착 순서대로
@@ -47,7 +44,6 @@ import com.roompick.domain.waitlist.repository.WaitlistRepository;
  * 애플리케이션 로직만 검증합니다.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest(
     properties = {
         "spring.jpa.hibernate.ddl-auto=create",
@@ -58,16 +54,7 @@ import com.roompick.domain.waitlist.repository.WaitlistRepository;
 @ActiveProfiles("test")
 class WaitlistOccupyOrderMySqlIntegrationTest {
 
-    private static final int MYSQL_PORT = 3306;
     private static final String DATABASE_NAME = "roompick_waitlist_order_test";
-    private static final String DATABASE_USERNAME = "roompick";
-    private static final String DATABASE_PASSWORD = "roompick-password";
-    @Container
-    static final MySQLContainer<?> MYSQL_CONTAINER =
-        new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
-            .withDatabaseName(DATABASE_NAME)
-            .withUsername(DATABASE_USERNAME)
-            .withPassword(DATABASE_PASSWORD);
     private static final ZoneId TEST_ZONE_ID = ZoneId.of("Asia/Seoul");
     @Autowired
     private WaitlistProcessingFacade waitlistProcessingFacade;
@@ -87,15 +74,10 @@ class WaitlistOccupyOrderMySqlIntegrationTest {
 
     @DynamicPropertySource
     static void registerMySqlProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () ->
-            "jdbc:mysql://" + MYSQL_CONTAINER.getHost()
-                + ":" + MYSQL_CONTAINER.getMappedPort(MYSQL_PORT)
-                + "/" + DATABASE_NAME
-                + "?useSSL=false&allowPublicKeyRetrieval=true"
-                + "&characterEncoding=UTF-8&serverTimezone=Asia/Seoul"
-        );
-        registry.add("spring.datasource.username", () -> DATABASE_USERNAME);
-        registry.add("spring.datasource.password", () -> DATABASE_PASSWORD);
+        SharedMySqlTestContainer.createDatabaseIfAbsent(DATABASE_NAME);
+        registry.add("spring.datasource.url", () -> SharedMySqlTestContainer.jdbcUrl(DATABASE_NAME));
+        registry.add("spring.datasource.username", () -> SharedMySqlTestContainer.USERNAME);
+        registry.add("spring.datasource.password", () -> SharedMySqlTestContainer.PASSWORD);
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
     }
 
