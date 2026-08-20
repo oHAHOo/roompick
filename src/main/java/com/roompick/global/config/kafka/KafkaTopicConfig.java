@@ -13,12 +13,12 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic offerOccupyRequestTopic() {
-        return TopicBuilder.name(OFFER_OCCUPY_REQUEST_TOPIC).partitions(3).replicas(1).build();
+        return TopicBuilder.name(OFFER_OCCUPY_REQUEST_TOPIC).partitions(1).replicas(1).build();
     }
 
     @Bean
     public NewTopic paymentCompletedTopic() {
-        return TopicBuilder.name(PAYMENT_COMPLETED_TOPIC).partitions(3).replicas(1).build();
+        return TopicBuilder.name(PAYMENT_COMPLETED_TOPIC).partitions(1).replicas(1).build();
     }
 
 }
