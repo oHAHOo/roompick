@@ -4,6 +4,7 @@ import static com.roompick.global.config.SchedulerConfig.WAITLIST_TASK_SCHEDULER
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class WaitlistExpirationScheduler {
 
+    private static final ZoneId SERVICE_ZONE_ID =
+        ZoneId.of("Asia/Seoul");
+
     private final WaitlistProcessingFacade waitlistProcessingFacade;
     private final Clock clock;
 
@@ -29,7 +33,7 @@ public class WaitlistExpirationScheduler {
     public void expireAndPromote() {
         try {
             int expiredCount = waitlistProcessingFacade.expireAndPromote(
-                LocalDateTime.now(clock)
+                LocalDateTime.now(clock.withZone(SERVICE_ZONE_ID))
             );
 
             log.info("대기열 만료 및 승계 처리 완료. expiredCount={}", expiredCount);

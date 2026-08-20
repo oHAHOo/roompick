@@ -2,6 +2,7 @@ package com.roompick.domain.waitlist.facade;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
@@ -37,6 +38,8 @@ import lombok.extern.slf4j.Slf4j;
 public class WaitlistProcessingFacade {
 
     private static final int HOLD_DURATION_MINUTES = 5;
+    private static final ZoneId SERVICE_ZONE_ID =
+        ZoneId.of("Asia/Seoul");
 
     private final WaitlistService waitlistService;
     private final SpecialOfferService specialOfferService;
@@ -89,7 +92,8 @@ public class WaitlistProcessingFacade {
          * requestedAt 기준으로는 사용자가 실제로 받는 결제 대기 시간이
          * 부당하게 줄어든다.
          */
-        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime now =
+            LocalDateTime.now(clock.withZone(SERVICE_ZONE_ID));
         LocalDateTime holdExpiresAt = now.plusMinutes(HOLD_DURATION_MINUTES);
         Waitlist waitlist = waitlistService.saveHold(specialOffer, member, requestedAt, holdExpiresAt);
 

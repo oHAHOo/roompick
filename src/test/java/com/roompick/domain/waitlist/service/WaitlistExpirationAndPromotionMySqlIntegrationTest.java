@@ -137,7 +137,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
          * 실제 Clock 기준으로 계산되므로, 만료 판정도 같은 Clock
          * 기준 "실제 현재 시각"을 기준으로 확인해야 한다.
          */
-        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
+        LocalDateTime afterHoldExpires =
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID)).plusMinutes(6);
 
         // when
         int expiredCount = waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
@@ -171,7 +172,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
         waitlistProcessingFacade.occupy(testData.offerId(), testData.secondMemberId(), secondRequestedAt);
 
-        LocalDateTime beforeHoldExpires = LocalDateTime.now(clock).plusMinutes(1);
+        LocalDateTime beforeHoldExpires =
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID)).plusMinutes(1);
 
         // when
         int expiredCount = waitlistProcessingFacade.expireAndPromote(beforeHoldExpires);
@@ -195,7 +197,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         LocalDateTime requestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), requestedAt);
 
-        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
+        LocalDateTime afterHoldExpires =
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID)).plusMinutes(6);
 
         // when
         int expiredCount = waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
@@ -228,7 +231,7 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         );
 
         LocalDateTime afterOfferEnds =
-            LocalDateTime.now(clock).plusHours(2);
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID)).plusHours(2);
 
         // when
         int expiredCount =
@@ -260,7 +263,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
             .isEqualTo(WaitlistStatus.CONFIRMED);
 
         // when — TTL이 지난 뒤 만료 스케줄러가 실행돼도
-        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
+        LocalDateTime afterHoldExpires =
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID)).plusMinutes(6);
         int expiredCount = waitlistProcessingFacade.expireAndPromote(afterHoldExpires);
 
         // then — CONFIRMED는 만료 대상이 아니므로 그대로 유지된다
@@ -288,7 +292,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         // reservationRepository.findById()로 먼저 엔티티를 꺼내 별도
         // 트랜잭션에 넘기면 detached 상태라 상태 변경이 반영되지 않으므로,
         // 조회와 취소를 한 트랜잭션에서 함께 처리하는 서비스 메서드를 쓴다.
-        LocalDateTime failedAt = LocalDateTime.now(clock);
+        LocalDateTime failedAt =
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID));
         reservationService.cancelReservation(testData.firstMemberId(), reservationId);
 
         waitlistProcessingFacade.expireByReservationIdAndPromoteNext(reservationId, failedAt);
@@ -308,7 +313,8 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
         LocalDateTime firstRequestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
         waitlistProcessingFacade.occupy(testData.offerId(), testData.firstMemberId(), firstRequestedAt);
 
-        LocalDateTime afterHoldExpires = LocalDateTime.now(clock).plusMinutes(6);
+        LocalDateTime afterHoldExpires =
+            LocalDateTime.now(clock.withZone(TEST_ZONE_ID)).plusMinutes(6);
 
         java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.ExecutorService executor =
