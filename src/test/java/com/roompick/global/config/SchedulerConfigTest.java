@@ -111,13 +111,16 @@ class SchedulerConfigTest {
         Class<?> schedulerClass,
         String expectedSchedulerName
     ) {
+        MethodIntrospector.MetadataLookup<Scheduled> scheduledLookup =
+            method -> AnnotatedElementUtils.findMergedAnnotation(
+                method,
+                Scheduled.class
+            );
+
         Map<Method, Scheduled> scheduledMethods =
             MethodIntrospector.selectMethods(
                 schedulerClass,
-                method -> AnnotatedElementUtils.findMergedAnnotation(
-                    method,
-                    Scheduled.class
-                )
+                scheduledLookup
             );
 
         assertThat(scheduledMethods.values())
