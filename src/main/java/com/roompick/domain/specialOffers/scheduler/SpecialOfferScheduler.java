@@ -1,5 +1,7 @@
 package com.roompick.domain.specialOffers.scheduler;
 
+import static com.roompick.global.config.SchedulerConfig.SPECIAL_OFFER_TASK_SCHEDULER;
+
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -19,7 +21,8 @@ public class SpecialOfferScheduler {
         fixedDelayString =
             "${specialoffer.scheduler.fixed-delay:30000}",
         initialDelayString =
-            "${specialoffer.scheduler.initial-delay:30000}"
+            "${specialoffer.scheduler.initial-delay:30000}",
+        scheduler = SPECIAL_OFFER_TASK_SCHEDULER
     )
     public void updateStatueses() {
         int endedCount = endDueOffersSafely();
@@ -36,7 +39,11 @@ public class SpecialOfferScheduler {
         try {
             return specialOfferService.activateDueOffers();
         } catch (Exception exception) {
-            log.error("특가 활성 상태 변경 실패", exception);
+            log.error(
+                "특가 활성 상태 변경 실패",
+                exception
+            );
+
             return 0;
         }
     }
@@ -45,7 +52,11 @@ public class SpecialOfferScheduler {
         try {
             return specialOfferService.endDueOffers();
         } catch (Exception exception) {
-            log.error("특가 종료 상태 변경 실패", exception);
+            log.error(
+                "특가 종료 상태 변경 실패",
+                exception
+            );
+
             return 0;
         }
     }

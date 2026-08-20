@@ -1,5 +1,7 @@
 package com.roompick.domain.timesale.scheduler;
 
+import static com.roompick.global.config.SchedulerConfig.TIME_SALE_TASK_SCHEDULER;
+
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -33,7 +35,8 @@ public class TimeSaleScheduler {
         fixedDelayString =
             "${timesale.scheduler.fixed-delay:30000}",
         initialDelayString =
-            "${timesale.scheduler.initial-delay:30000}"
+            "${timesale.scheduler.initial-delay:30000}",
+        scheduler = TIME_SALE_TASK_SCHEDULER
     )
     public void updateStatuses() {
         int endedCount =
