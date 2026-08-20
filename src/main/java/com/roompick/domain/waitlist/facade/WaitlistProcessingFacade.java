@@ -114,11 +114,12 @@ public class WaitlistProcessingFacade {
 
         for (Waitlist expired : expiredHolds) {
             Long specialOfferId = expired.getSpecialOffer().getId();
-            specialOfferService.findByIdForUpdate(specialOfferId);
+            SpecialOffer specialOffer =
+                specialOfferService.findByIdForUpdate(specialOfferId);
 
             expired.expire();
             cancelHoldReservation(expired, now);
-            promoteNextWaiter(specialOfferId, now);
+            promoteNextWaiter(specialOffer, now);
         }
 
         return expiredHolds.size();
@@ -149,15 +150,29 @@ public class WaitlistProcessingFacade {
     public void expireByReservationIdAndPromoteNext(Long reservationId, LocalDateTime now) {
         waitlistService.findByReservationId(reservationId).ifPresent(waitlist -> {
             Long specialOfferId = waitlist.getSpecialOffer().getId();
-            specialOfferService.findByIdForUpdate(specialOfferId);
+            SpecialOffer specialOffer =
+                specialOfferService.findByIdForUpdate(specialOfferId);
 
             waitlist.expire();
-            promoteNextWaiter(specialOfferId, now);
+            promoteNextWaiter(specialOffer, now);
         });
     }
 
-    private void promoteNextWaiter(Long specialOfferId, LocalDateTime now) {
-        waitlistService.findNextWaiter(specialOfferId)
+    private void promoteNextWaiter(
+        SpecialOffer specialOffer,
+        LocalDateTime now
+    ) {
+        if (!specialOffer.isActiveAt(now)) {
+            log.info(
+                "판매 중인 특가가 아니므로 대기열 승계를 건너뜁니다. "
+                    + "offerId={}, status={}",
+                specialOffer.getId(),
+                specialOffer.getStatus()
+            );
+            return;
+        }
+
+        waitlistService.findNextWaiter(specialOffer.getId())
             .ifPresent(next -> promote(next, now));
     }
 

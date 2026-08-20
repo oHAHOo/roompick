@@ -6,9 +6,12 @@ import static com.roompick.global.config.SchedulerConfig.WAITLIST_TASK_SCHEDULER
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodIntrospector;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
@@ -87,41 +90,41 @@ class SchedulerConfigTest {
 
     @Test
     @DisplayName("각 스케줄링 작업은 지정된 실행기를 사용한다")
-    void scheduledMethodsUseDedicatedTaskSchedulers()
-        throws NoSuchMethodException {
-
+    void scheduledMethodsUseDedicatedTaskSchedulers() {
         assertSchedulerName(
             TimeSaleScheduler.class,
-            "updateStatuses",
             TIME_SALE_TASK_SCHEDULER
         );
 
         assertSchedulerName(
             SpecialOfferScheduler.class,
-            "updateStatueses",
             SPECIAL_OFFER_TASK_SCHEDULER
         );
 
         assertSchedulerName(
             WaitlistExpirationScheduler.class,
-            "expireAndPromote",
             WAITLIST_TASK_SCHEDULER
         );
     }
 
     private void assertSchedulerName(
         Class<?> schedulerClass,
-        String methodName,
         String expectedSchedulerName
-    ) throws NoSuchMethodException {
-        Method scheduledMethod =
-            schedulerClass.getDeclaredMethod(methodName);
+    ) {
+        Map<Method, Scheduled> scheduledMethods =
+            MethodIntrospector.selectMethods(
+                schedulerClass,
+                method -> AnnotatedElementUtils.findMergedAnnotation(
+                    method,
+                    Scheduled.class
+                )
+            );
 
-        Scheduled scheduled =
-            scheduledMethod.getAnnotation(Scheduled.class);
-
-        assertThat(scheduled).isNotNull();
-        assertThat(scheduled.scheduler())
-            .isEqualTo(expectedSchedulerName);
+        assertThat(scheduledMethods.values())
+            .singleElement()
+            .satisfies(scheduled ->
+                assertThat(scheduled.scheduler())
+                    .isEqualTo(expectedSchedulerName)
+            );
     }
 }

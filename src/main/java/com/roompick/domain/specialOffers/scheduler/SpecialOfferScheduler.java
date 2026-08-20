@@ -39,11 +39,7 @@ public class SpecialOfferScheduler {
         try {
             return specialOfferService.activateDueOffers();
         } catch (Exception exception) {
-            log.error(
-                "특가 활성 상태 변경 실패",
-                exception
-            );
-
+            log.error("특가 활성 상태 변경 실패", exception);
             return 0;
         }
     }
@@ -52,11 +48,7 @@ public class SpecialOfferScheduler {
         try {
             return specialOfferService.endDueOffers();
         } catch (Exception exception) {
-            log.error(
-                "특가 종료 상태 변경 실패",
-                exception
-            );
-
+            log.error("특가 종료 상태 변경 실패", exception);
             return 0;
         }
     }

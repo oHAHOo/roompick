@@ -17,7 +17,7 @@ public class SchedulerConfig {
         "waitlistTaskScheduler";
 
     private static final int POOL_SIZE = 1;
-    private static final int AWAIT_TERMINATION_SECONDS = 30;
+    private static final int AWAIT_TERMINATION_SECONDS = 10;
 
     @Bean(name = TIME_SALE_TASK_SCHEDULER)
     public ThreadPoolTaskScheduler timeSaleTaskScheduler() {

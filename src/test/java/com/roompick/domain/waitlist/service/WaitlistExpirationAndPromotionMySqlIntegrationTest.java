@@ -210,6 +210,40 @@ class WaitlistExpirationAndPromotionMySqlIntegrationTest {
     }
 
     @Test
+    @DisplayName("특가 종료 시각 이후에는 만료된 HOLD의 다음 대기자를 승격하지 않는다")
+    void expiredHoldDoesNotPromoteWaiterAfterOfferEnds() {
+        // given
+        LocalDateTime firstRequestedAt = LocalDateTime.of(2026, 1, 1, 10, 0);
+        LocalDateTime secondRequestedAt = firstRequestedAt.plusSeconds(1);
+
+        waitlistProcessingFacade.occupy(
+            testData.offerId(),
+            testData.firstMemberId(),
+            firstRequestedAt
+        );
+        waitlistProcessingFacade.occupy(
+            testData.offerId(),
+            testData.secondMemberId(),
+            secondRequestedAt
+        );
+
+        LocalDateTime afterOfferEnds =
+            LocalDateTime.now(clock).plusHours(2);
+
+        // when
+        int expiredCount =
+            waitlistProcessingFacade.expireAndPromote(afterOfferEnds);
+
+        // then
+        assertThat(expiredCount).isEqualTo(1);
+        assertThat(findWaitlist(testData.firstMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.EXPIRED);
+        assertThat(findWaitlist(testData.secondMemberId()).getStatus())
+            .isEqualTo(WaitlistStatus.WAIT);
+        assertThat(reservationRepository.count()).isEqualTo(1L);
+    }
+
+    @Test
     @DisplayName("HOLD 상태에서 결제가 성공하면 CONFIRMED로 전환되고 이후 만료 대상에서 제외된다")
     void confirmedHoldIsNotExpiredAfterTtl() {
         // given

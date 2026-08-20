@@ -24,12 +24,13 @@ RoomPick의 타임세일, 선착순 특가, 대기열 만료 스케줄러에 각
 - 같은 스케줄러의 인스턴스 내부 중첩 실행 방지
 - 애플리케이션 종료 시 graceful shutdown 적용
 - 장시간 작업이 다른 스케줄러를 지연시키지 않는지 검증
+- 특가 종료와 대기열 승계가 동시에 실행될 때의 안전성 검증
 
 ### 제외 범위
 
 - 다중 애플리케이션 인스턴스의 중복 실행 방지
 - ShedLock 또는 Redis 기반 분산 락
-- 스케줄러 비즈니스 로직 변경
+- 타임세일·특가의 기존 상태 전이 규칙 변경
 - DB 커넥션 풀, Redis, Kafka 등의 자원 격리
 
 > 전용 실행기는 하나의 애플리케이션 인스턴스 내부에서 실행 스레드를 분리하는 방법입니다. 애플리케이션 인스턴스가 여러 개라면 각각의 인스턴스에서 동일한 스케줄러가 실행될 수 있습니다.
@@ -90,43 +91,48 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class SchedulerConfig {
 
-    public static final String TIME_SALE_SCHEDULER =
+    public static final String TIME_SALE_TASK_SCHEDULER =
         "timeSaleTaskScheduler";
 
-    public static final String SPECIAL_OFFER_SCHEDULER =
+    public static final String SPECIAL_OFFER_TASK_SCHEDULER =
         "specialOfferTaskScheduler";
 
-    public static final String WAITLIST_SCHEDULER =
+    public static final String WAITLIST_TASK_SCHEDULER =
         "waitlistTaskScheduler";
 
-    @Bean(name = TIME_SALE_SCHEDULER)
+    private static final int POOL_SIZE = 1;
+    private static final int AWAIT_TERMINATION_SECONDS = 10;
+
+    @Bean(name = TIME_SALE_TASK_SCHEDULER)
     public ThreadPoolTaskScheduler timeSaleTaskScheduler() {
-        return createScheduler("timesale-scheduler-");
+        return createTaskScheduler("timesale-scheduler-");
     }
 
-    @Bean(name = SPECIAL_OFFER_SCHEDULER)
+    @Bean(name = SPECIAL_OFFER_TASK_SCHEDULER)
     public ThreadPoolTaskScheduler specialOfferTaskScheduler() {
-        return createScheduler("special-offer-scheduler-");
+        return createTaskScheduler("special-offer-scheduler-");
     }
 
-    @Bean(name = WAITLIST_SCHEDULER)
+    @Bean(name = WAITLIST_TASK_SCHEDULER)
     public ThreadPoolTaskScheduler waitlistTaskScheduler() {
-        return createScheduler("waitlist-scheduler-");
+        return createTaskScheduler("waitlist-scheduler-");
     }
 
-    private ThreadPoolTaskScheduler createScheduler(
+    private ThreadPoolTaskScheduler createTaskScheduler(
         String threadNamePrefix
     ) {
         ThreadPoolTaskScheduler scheduler =
             new ThreadPoolTaskScheduler();
 
-        scheduler.setPoolSize(1);
+        scheduler.setPoolSize(POOL_SIZE);
         scheduler.setThreadNamePrefix(threadNamePrefix);
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
-        scheduler.setAwaitTerminationSeconds(30);
+        scheduler.setAwaitTerminationSeconds(
+            AWAIT_TERMINATION_SECONDS
+        );
         scheduler.setRemoveOnCancelPolicy(true);
 
         return scheduler;
@@ -139,12 +145,12 @@ public class SchedulerConfig {
 ```java
 @Scheduled(
     fixedDelayString =
-        "${timesale.scheduler.fixed-delay-ms:30000}",
+        "${timesale.scheduler.fixed-delay:30000}",
     initialDelayString =
-        "${timesale.scheduler.initial-delay-ms:30000}",
-    scheduler = SchedulerConfig.TIME_SALE_SCHEDULER
+        "${timesale.scheduler.initial-delay:30000}",
+    scheduler = SchedulerConfig.TIME_SALE_TASK_SCHEDULER
 )
-public void updateTimeSaleStatuses() {
+public void updateStatuses() {
     // 기존 타임세일 처리 로직
 }
 ```
@@ -154,12 +160,12 @@ public void updateTimeSaleStatuses() {
 ```java
 @Scheduled(
     fixedDelayString =
-        "${special-offer.scheduler.fixed-delay-ms:30000}",
+        "${specialoffer.scheduler.fixed-delay:30000}",
     initialDelayString =
-        "${special-offer.scheduler.initial-delay-ms:30000}",
-    scheduler = SchedulerConfig.SPECIAL_OFFER_SCHEDULER
+        "${specialoffer.scheduler.initial-delay:30000}",
+    scheduler = SchedulerConfig.SPECIAL_OFFER_TASK_SCHEDULER
 )
-public void updateSpecialOfferStatuses() {
+public void updateStatueses() {
     // 기존 선착순 특가 처리 로직
 }
 ```
@@ -169,12 +175,12 @@ public void updateSpecialOfferStatuses() {
 ```java
 @Scheduled(
     fixedDelayString =
-        "${waitlist.scheduler.fixed-delay-ms:10000}",
+        "${waitlist.scheduler.fixed-delay:10000}",
     initialDelayString =
-        "${waitlist.scheduler.initial-delay-ms:10000}",
-    scheduler = SchedulerConfig.WAITLIST_SCHEDULER
+        "${waitlist.scheduler.initial-delay:10000}",
+    scheduler = SchedulerConfig.WAITLIST_TASK_SCHEDULER
 )
-public void expireAndPromoteWaitlists() {
+public void expireAndPromote() {
     // 기존 대기열 만료 및 승계 처리 로직
 }
 ```
@@ -188,18 +194,18 @@ public void expireAndPromoteWaitlists() {
 ```yaml
 timesale:
   scheduler:
-    fixed-delay-ms: 30000
-    initial-delay-ms: 15000
+    fixed-delay: 30000
+    initial-delay: 30000
 
-special-offer:
+specialoffer:
   scheduler:
-    fixed-delay-ms: 30000
-    initial-delay-ms: 10000
+    fixed-delay: 30000
+    initial-delay: 30000
 
 waitlist:
   scheduler:
-    fixed-delay-ms: 10000
-    initial-delay-ms: 5000
+    fixed-delay: 10000
+    initial-delay: 10000
 ```
 
 초기 실행 시간을 분산하면 애플리케이션 시작 직후 세 스케줄러의 DB 요청이 동시에 발생하는 것을 줄일 수 있습니다.
@@ -232,12 +238,14 @@ waitlist:
 
 ```java
 scheduler.setWaitForTasksToCompleteOnShutdown(true);
-scheduler.setAwaitTerminationSeconds(30);
+scheduler.setAwaitTerminationSeconds(10);
 ```
 
-작업이 30초 안에 종료되지 않으면 애플리케이션 종료가 계속됩니다.
+각 실행기는 작업 완료를 최대 10초 동안 기다립니다. 세 실행기의 빈 종료가
+순차적으로 처리되는 최악의 경우에도 전체 대기 시간은 최대 30초입니다.
 
-실제 작업의 최대 실행 시간을 고려해 종료 대기 시간을 설정해야 합니다.
+컨테이너의 SIGTERM 유예 시간은 이 전체 대기 시간보다 길게 설정해야 하며,
+실제 작업의 최대 실행 시간도 함께 고려해야 합니다.
 
 ## 10. 주의 사항
 
@@ -268,6 +276,16 @@ scheduler.setAwaitTerminationSeconds(30);
 애플리케이션이 두 개 실행되면 각 인스턴스의 스케줄러가 모두 동작합니다.
 
 다중 인스턴스 중복 실행 방지는 별도의 분산 락 작업으로 분리합니다.
+
+### 10.4 특가 종료와 대기열 승계
+
+실행기를 분리하면 `SpecialOfferScheduler`와
+`WaitlistExpirationScheduler`가 동시에 실행될 수 있습니다.
+
+대기열 승계는 특가 행의 비관적 락을 획득한 뒤 상태와 판매 시간 범위를
+확인합니다. 상태 갱신 스케줄러가 아직 `ENDED`를 반영하지 못했더라도
+종료 시각이 지났다면 다음 대기자를 `HOLD`로 승격하거나 예약을 생성하지
+않습니다.
 
 ## 11. 작업 순서
 
