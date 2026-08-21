@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
+import com.roompick.domain.accommodation.service.PopularAccommodationCacheEvictionService;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
@@ -23,6 +24,8 @@ import lombok.RequiredArgsConstructor;
 public class RoomService {
 
     private final RoomRepository roomRepository;
+    private final PopularAccommodationCacheEvictionService
+        popularAccommodationCacheEvictionService;
 
     /**
      * 객실 상세 조회에 필요한 객실만 조회합니다.
@@ -187,6 +190,8 @@ public class RoomService {
     /**
      * 지정한 숙소에 실제로 소속된 객실을
      * 사용자에게 비공개합니다.
+     *
+     * 변경이 정상적으로 커밋되면 인기 숙소 캐시도 삭제합니다.
      */
     @Transactional
     public Room deactivateRoom(
@@ -200,6 +205,8 @@ public class RoomService {
             );
 
         room.deactivate();
+
+        popularAccommodationCacheEvictionService.evictAll();
 
         return room;
     }

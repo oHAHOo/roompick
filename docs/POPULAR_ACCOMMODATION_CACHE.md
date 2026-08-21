@@ -239,6 +239,7 @@ PopularAccommodationQueryService
 
 - 숙소 공개 정보 수정
 - 숙소 상태를 `INACTIVE`로 변경
+- 객실 단건 논리 삭제
 
 기간, 날짜와 `limit`별로 여러 캐시 Key가 생성될 수 있으므로
 `popularAccommodations` 캐시의 전체 항목을 삭제합니다.
@@ -298,17 +299,13 @@ DB 커밋 전에 캐시를 먼저 삭제하면 다른 요청이 아직 커밋되
 DB 변경이 롤백됐는데 캐시만 삭제되는 상황을 방지하여
 DB 데이터와 캐시의 처리 시점을 일치시킵니다.
 
-현재 관리자 숙소 API에는 숙소 등록 기능만 존재합니다.
-
-숙소 공개 정보 수정 및 비공개 전환 API가 추가되면
-다음 Service 메서드를 호출해야 합니다.
+관리자 숙소 논리 삭제 API는 다음 Service 메서드를 호출합니다.
 
 ```text
-AccommodationService.updatePublicInformation()
 AccommodationService.inactivateAccommodation()
 ```
 
-두 메서드는 숙소 Entity 변경 후
+이 메서드는 숙소 Entity 변경 후
 인기 숙소 캐시 삭제를 요청하도록 구현되어 있습니다.
 
 ---

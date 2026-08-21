@@ -3,8 +3,11 @@ package com.roompick.domain.admin.room.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -616,5 +619,106 @@ class AdminRoomControllerTest {
             )
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자는 객실을 논리 삭제할 수 있다")
+    void 관리자는_객실을_논리_삭제할_수_있다()
+        throws Exception {
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(
+                jsonPath("$.message")
+                    .value("객실이 삭제되었습니다.")
+            )
+            .andExpect(jsonPath("$.data").doesNotExist());
+
+        then(adminRoomFacade)
+            .should()
+            .deleteRoom(1L, 10L);
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 회원은 객실을 삭제할 수 없다")
+    void 일반_회원은_객실을_삭제할_수_없다()
+        throws Exception {
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.FORBIDDEN.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 객실을 삭제할 수 없다")
+    void 인증되지_않은_회원은_객실을_삭제할_수_없다()
+        throws Exception {
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}",
+                    1L,
+                    10L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.UNAUTHORIZED.getCode())
+            );
+
+        verifyNoInteractions(adminRoomFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("존재하지 않는 객실 삭제 요청은 404를 반환한다")
+    void 존재하지_않는_객실_삭제_요청은_404를_반환한다()
+        throws Exception {
+
+        willThrow(
+            new BusinessException(
+                ErrorCode.ROOM_NOT_FOUND
+            )
+        )
+            .given(adminRoomFacade)
+            .deleteRoom(1L, 999L);
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}",
+                    1L,
+                    999L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.ROOM_NOT_FOUND.getCode())
+            );
     }
 }

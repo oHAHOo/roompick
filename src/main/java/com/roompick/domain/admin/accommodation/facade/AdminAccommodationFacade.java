@@ -53,6 +53,14 @@ public class AdminAccommodationFacade {
         }
     }
 
+    public void deleteAccommodation(
+        Long accommodationId
+    ) {
+        accommodationService.inactivateAccommodation(
+            accommodationId
+        );
+    }
+
     private List<String> uploadImages(
         List<MultipartFile> images
     ) {

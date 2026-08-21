@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -121,15 +122,26 @@ public interface RoomRepository
     );
 
     /**
-     * 특정 숙소에 포함된 객실을 한 번의 쿼리로 조회합니다.
+     * 숙소 논리 삭제 시 소속 객실을 한 번의 벌크 UPDATE로
+     * 모두 비활성화합니다.
+     *
+     * 벌크 연산은 JPA Auditing을 거치지 않으므로
+     * updatedAt도 쿼리에서 함께 갱신합니다.
      */
+    @Modifying(
+        flushAutomatically = true,
+        clearAutomatically = true
+    )
     @Query("""
-        SELECT room
-        FROM Room room
+        UPDATE Room room
+        SET room.status =
+                com.roompick.domain.room.entity.RoomStatus.INACTIVE,
+            room.updatedAt = CURRENT_TIMESTAMP
         WHERE room.accommodation.id = :accommodationId
-        ORDER BY room.id ASC
+          AND room.status <>
+                com.roompick.domain.room.entity.RoomStatus.INACTIVE
         """)
-    List<Room> findAllByAccommodationId(
+    int deactivateAllByAccommodationId(
         @Param("accommodationId")
         Long accommodationId
     );

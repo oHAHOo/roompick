@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -80,6 +81,28 @@ public class AdminRoomController {
                     ApiResponseDto.success(
                         "객실 상태가 변경되었습니다.",
                         response
+                    )
+                );
+
+        return result;
+    }
+
+    @DeleteMapping("/{roomId}")
+    public ResponseEntity<ApiResponseDto<Void>> deleteRoom(
+        @PathVariable Long accommodationId,
+        @PathVariable Long roomId
+    ) {
+        adminRoomFacade.deleteRoom(
+            accommodationId,
+            roomId
+        );
+
+        ResponseEntity<ApiResponseDto<Void>> result =
+            ResponseEntity
+                .status(HttpStatus.OK)
+                .body(
+                    ApiResponseDto.success(
+                        "객실이 삭제되었습니다."
                     )
                 );
 

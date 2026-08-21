@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.service.PopularAccommodationCacheEvictionService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
@@ -34,6 +35,10 @@ class RoomServiceTest {
 
     @Mock
     private RoomRepository roomRepository;
+
+    @Mock
+    private PopularAccommodationCacheEvictionService
+        popularAccommodationCacheEvictionService;
 
     @Mock
     private Accommodation accommodation;
@@ -440,6 +445,9 @@ class RoomServiceTest {
         // then
         assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
         then(roomRepository).should(never()).save(any(Room.class));
+        then(popularAccommodationCacheEvictionService)
+            .should()
+            .evictAll();
     }
 
     @Test
@@ -518,6 +526,9 @@ class RoomServiceTest {
         // then
         assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
         then(roomRepository).should(never()).save(any(Room.class));
+        then(popularAccommodationCacheEvictionService)
+            .should()
+            .evictAll();
     }
 
     @Test

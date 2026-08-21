@@ -112,4 +112,18 @@ class AdminAccommodationFacadeTest {
                 List.of()
             );
     }
+
+    @Test
+    @DisplayName("숙소와 소속 객실을 함께 논리 삭제한다")
+    void 숙소와_소속_객실을_함께_논리_삭제한다() {
+        Long accommodationId = 1L;
+
+        adminAccommodationFacade.deleteAccommodation(
+            accommodationId
+        );
+
+        then(accommodationService)
+            .should()
+            .inactivateAccommodation(accommodationId);
+    }
 }

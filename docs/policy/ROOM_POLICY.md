@@ -1,7 +1,7 @@
 # 객실 정책
 
-- 문서 버전: `v0.2`
-- 최종 수정일: 2026-07-28
+- 문서 버전: `v0.3`
+- 최종 수정일: 2026-08-21
 - 담당자: IMSUN9(Service), minjae123123(관리자 등록 Controller·Facade)
 - 근거 코드: `Room`, `RoomStatus`, `RoomService`, `AdminRoomFacade`, `AdminRoomController`
 
@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | 객실 등록 (`POST /api/v1/admin/**`) | `ADMIN` | Controller·Facade는 minjae123123 담당, 실제 등록 로직은 IMSUN9 소유 `RoomService` 사용 |
 | 객실 공개 상태 변경 (`PATCH /api/v1/admin/**/status`) | `ADMIN` | `ACTIVE`, `INACTIVE`만 요청 가능 |
+| 객실 논리 삭제 (`DELETE /api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}`) | `ADMIN` | 객실을 물리 삭제하지 않고 `INACTIVE`로 변경 |
 | 객실 상세·목록 조회 (`GET /api/v1/rooms/**`) | 없음(비로그인 가능) | `SecurityConfig`의 `PUBLIC_GET_PATHS` 규칙 적용 |
 
 관리자 기능에서 객실 Repository를 직접 호출하지 않는다.
@@ -92,7 +93,10 @@ SOLD_OUT
 - `PENDING_PAYMENT` 또는 `CONFIRMED` 예약이 존재해도 관리자는 객실을 `INACTIVE`로 변경할 수 있다.
 - 객실을 `INACTIVE`로 변경해도 기존 예약은 취소하거나 변경하지 않는다. 이후 신규 공개 조회와 신규 예약만 차단한다.
 - 객실 비공개 전환 시 예약 존재 여부를 조회하거나 검증하지 않는다.
-- 숙소 상태 변경 시 소속 객실 상태를 일괄 변경하지 않는다.
+- 객실 논리 삭제는 `INACTIVE` 상태 변경으로 처리하며 이미 비활성화된 객실에도 멱등하게 동작한다.
+- 객실 논리 삭제 시 기존 예약·타임세일·특가·대기열·이미지와 S3 객체는 삭제하지 않는다.
+- 객실 단건 논리 삭제가 완료되면 인기 숙소 응답 캐시를 전체 무효화한다.
+- 숙소 논리 삭제 시에는 소속 객실도 모두 `INACTIVE`로 변경한다.
 
 ---
 
