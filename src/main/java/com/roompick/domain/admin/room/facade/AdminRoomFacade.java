@@ -90,4 +90,14 @@ public class AdminRoomFacade {
 
         return RoomStatusUpdateResponseDto.from(room);
     }
+
+    public void deleteRoom(
+        Long accommodationId,
+        Long roomId
+    ) {
+        roomService.deactivateRoom(
+            accommodationId,
+            roomId
+        );
+    }
 }

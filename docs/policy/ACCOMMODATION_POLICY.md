@@ -1,7 +1,7 @@
 # 숙소 정책
 
-- 문서 버전: `v0.2`
-- 최종 수정일: 2026-08-13
+- 문서 버전: `v0.3`
+- 최종 수정일: 2026-08-21
 - 담당자: IMSUN9(Service), minjae123123(관리자 등록 Controller·Facade)
 - 근거 코드: `Accommodation`, `AccommodationStatus`, `AccommodationService`,
   `AdminAccommodationFacade`, `AdminAccommodationController`
@@ -13,6 +13,7 @@
 | 동작 | 필요 권한 | 비고 |
 | --- | --- | --- |
 | 숙소 등록 (`POST /api/v1/admin/**`) | `ADMIN` | `SecurityConfig`의 `/api/v1/admin/**` 규칙 적용. Controller·Facade는 minjae123123 담당, 실제 등록 로직은 IMSUN9 소유 `AccommodationService` 사용 |
+| 숙소 논리 삭제 (`DELETE /api/v1/admin/accommodations/{accommodationId}`) | `ADMIN` | 숙소와 소속 객실을 모두 `INACTIVE`로 변경 |
 | 숙소 상세 조회 (`GET /api/v1/accommodations/**`) | 없음(비로그인 가능) | `SecurityConfig`의 `PUBLIC_GET_PATHS` 규칙 적용 |
 | 장소 후보 검색 (`GET /api/v1/places/search`) | 없음(비로그인 가능) | Kakao Local API를 호출하며 숙소 DB를 조회하지 않음 |
 
@@ -36,7 +37,12 @@
   반환한다.
   - 구현: `RoomService.validateAccommodationActive()` (자세한 내용은
     [`ROOM_POLICY.md`](ROOM_POLICY.md) 참고)
-- 숙소 수정·삭제·상태 변경 API는 MVP 범위에 포함하지 않는다(`docs/MVP_CONTEXT.md` 6절 참고).
+- 숙소 삭제는 물리 삭제가 아니라 `INACTIVE` 상태로 전환하는 논리 삭제로 처리한다.
+- 숙소 논리 삭제 시 소속 객실도 모두 `INACTIVE`로 변경한다.
+- 숙소와 객실 상태 변경은 하나의 Facade 트랜잭션으로 처리하며, 일부 처리에 실패하면 전체를 롤백한다.
+- 이미 `INACTIVE`인 숙소에 다시 삭제를 요청해도 성공하는 멱등 API로 동작한다.
+- 기존 예약·결제·타임세일·특가·대기열·이미지와 S3 객체는 삭제하지 않는다.
+- 숙소 논리 삭제가 커밋되면 인기 숙소 캐시를 무효화한다.
 
 ## 4. 조회 규칙
 

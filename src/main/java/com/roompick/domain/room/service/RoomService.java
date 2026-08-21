@@ -205,6 +205,24 @@ public class RoomService {
     }
 
     /**
+     * 숙소 논리 삭제 시 소속 객실을 모두 비활성화합니다.
+     *
+     * 객실과 연결된 예약·특가 이력을 보존하기 위해
+     * 객실 Entity는 물리 삭제하지 않습니다.
+     */
+    @Transactional
+    public void deactivateAllRoomsByAccommodationId(
+        Long accommodationId
+    ) {
+        List<Room> rooms =
+            roomRepository.findAllByAccommodationId(
+                accommodationId
+            );
+
+        rooms.forEach(Room::deactivate);
+    }
+
+    /**
      * 관리자 기능에서 지정한 숙소에 실제로 소속된
      * 객실과 숙소 정보를 함께 조회합니다.
      *

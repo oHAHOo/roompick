@@ -5,7 +5,9 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -48,6 +50,26 @@ public class AdminAccommodationController {
                     ApiResponseDto.success(
                         "숙소가 등록되었습니다.",
                         response
+                    )
+                );
+
+        return result;
+    }
+
+    @DeleteMapping("/{accommodationId}")
+    public ResponseEntity<ApiResponseDto<Void>> deleteAccommodation(
+        @PathVariable Long accommodationId
+    ) {
+        adminAccommodationFacade.deleteAccommodation(
+            accommodationId
+        );
+
+        ResponseEntity<ApiResponseDto<Void>> result =
+            ResponseEntity
+                .status(HttpStatus.OK)
+                .body(
+                    ApiResponseDto.success(
+                        "숙소가 삭제되었습니다."
                     )
                 );
 

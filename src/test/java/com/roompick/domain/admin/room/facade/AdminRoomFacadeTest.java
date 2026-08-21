@@ -202,4 +202,23 @@ class AdminRoomFacadeTest {
         then(roomService).should()
             .deactivateRoom(accommodationId, roomId);
     }
+
+    @Test
+    @DisplayName("관리자 객실 논리 삭제 요청을 처리한다")
+    void 관리자_객실_논리_삭제_요청을_처리한다() {
+        Long accommodationId = 1L;
+        Long roomId = 10L;
+
+        adminRoomFacade.deleteRoom(
+            accommodationId,
+            roomId
+        );
+
+        then(roomService)
+            .should()
+            .deactivateRoom(
+                accommodationId,
+                roomId
+            );
+    }
 }

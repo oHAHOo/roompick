@@ -521,6 +521,36 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("숙소의 모든 객실을 비활성화한다")
+    void 숙소의_모든_객실을_비활성화한다() {
+        Long accommodationId = 1L;
+        Room firstRoom = createRoom();
+        Room secondRoom = createRoom();
+        secondRoom.deactivate();
+
+        given(
+            roomRepository.findAllByAccommodationId(
+                accommodationId
+            )
+        ).willReturn(
+            List.of(firstRoom, secondRoom)
+        );
+
+        roomService.deactivateAllRoomsByAccommodationId(
+            accommodationId
+        );
+
+        assertThat(firstRoom.getStatus())
+            .isEqualTo(RoomStatus.INACTIVE);
+        assertThat(secondRoom.getStatus())
+            .isEqualTo(RoomStatus.INACTIVE);
+
+        then(roomRepository)
+            .should(never())
+            .save(any(Room.class));
+    }
+
+    @Test
     @DisplayName("다른 숙소에 소속된 객실의 상태 변경 요청은 404로 처리한다")
     void 다른_숙소의_객실은_상태를_변경할_수_없다() {
         // given

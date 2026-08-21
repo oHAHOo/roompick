@@ -2,8 +2,11 @@ package com.roompick.domain.admin.accommodation.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -24,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
 import com.roompick.domain.admin.accommodation.facade.AdminAccommodationFacade;
+import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
 @ActiveProfiles("test")
@@ -249,5 +253,105 @@ class AdminAccommodationControllerTest {
             .andExpect(status().isBadRequest());
 
         verifyNoInteractions(adminAccommodationFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자는 숙소를 논리 삭제할 수 있다")
+    void 관리자는_숙소를_논리_삭제할_수_있다()
+        throws Exception {
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}",
+                    1L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(
+                jsonPath("$.message")
+                    .value("숙소가 삭제되었습니다.")
+            )
+            .andExpect(jsonPath("$.data").doesNotExist());
+
+        then(adminAccommodationFacade)
+            .should()
+            .deleteAccommodation(1L);
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 회원은 숙소를 삭제할 수 없다")
+    void 일반_회원은_숙소를_삭제할_수_없다()
+        throws Exception {
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}",
+                    1L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isForbidden())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.FORBIDDEN.getCode())
+            );
+
+        verifyNoInteractions(adminAccommodationFacade);
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 회원은 숙소를 삭제할 수 없다")
+    void 인증되지_않은_회원은_숙소를_삭제할_수_없다()
+        throws Exception {
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}",
+                    1L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isUnauthorized())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(ErrorCode.UNAUTHORIZED.getCode())
+            );
+
+        verifyNoInteractions(adminAccommodationFacade);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("존재하지 않는 숙소 삭제 요청은 404를 반환한다")
+    void 존재하지_않는_숙소_삭제_요청은_404를_반환한다()
+        throws Exception {
+
+        willThrow(
+            new BusinessException(
+                ErrorCode.ACCOMMODATION_NOT_FOUND
+            )
+        )
+            .given(adminAccommodationFacade)
+            .deleteAccommodation(999L);
+
+        mockMvc.perform(
+                delete(
+                    "/api/v1/admin/accommodations/{accommodationId}",
+                    999L
+                )
+                    .with(csrf())
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(
+                jsonPath("$.code")
+                    .value(
+                        ErrorCode.ACCOMMODATION_NOT_FOUND
+                            .getCode()
+                    )
+            );
     }
 }

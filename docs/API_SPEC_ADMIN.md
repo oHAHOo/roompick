@@ -1,10 +1,10 @@
 # RoomPick API 명세서 — 조민재 담당
 
-- 문서 버전: `v0.2`
+- 문서 버전: `v0.3`
 - 작성일: 2026-07-22
-- 최종 수정일: 2026-07-28
+- 최종 수정일: 2026-08-21
 - 담당자: minjae123123
-- 담당 기능: 관리자 숙소·객실 등록
+- 담당 기능: 관리자 숙소·객실 등록·상태 변경·논리 삭제
 - 협업 도메인: 숙소, 객실, 회원·인증·보안
 
 이 문서는 RoomPick MVP의 관리자 전용 숙소·객실 등록 API와 팀원 간 구현 경계를 정의한다. 결제 API는 minjae123123 담당의 별도 명세에서 관리한다. 객실 상태의 의미와 날짜별 `SOLD_OUT` 계산 규칙은 `docs/policy/ROOM_POLICY.md`를 우선 기준으로 삼는다.
@@ -21,7 +21,7 @@
 6. 관리자 ID와 상태는 Request Body로 받지 않는다.
 7. 관리자가 `SOLD_OUT` 상태를 직접 지정하거나 변경하지 않는다.
 8. `SOLD_OUT`은 사용자가 선택한 숙박 기간의 활성 예약 존재 여부로 계산한다.
-9. 숙소·객실 수정·삭제·관리 목록과 검색은 MVP에서 제외한다.
+9. 숙소·객실 수정·관리 목록과 검색은 제외하며, 삭제는 `INACTIVE` 상태로 전환하는 논리 삭제로 처리한다.
 10. Controller는 Facade만 호출하고, AdminFacade가 숙소·객실 Service를 조율한다.
 11. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다.
 12. 객실 공개·비공개 상태는 관리자 상태 변경 API로 전환한다.
@@ -72,6 +72,8 @@ Content-Type: application/json
 | 1 | `POST` | `/api/v1/admin/accommodations` | 관리자 숙소 등록 | `ADMIN` 필요 |
 | 2 | `POST` | `/api/v1/admin/accommodations/{accommodationId}/rooms` | 관리자 객실 등록 | `ADMIN` 필요 |
 | 3 | `PATCH` | `/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status` | 관리자 객실 공개 상태 변경 | `ADMIN` 필요 |
+| 4 | `DELETE` | `/api/v1/admin/accommodations/{accommodationId}` | 관리자 숙소 논리 삭제 | `ADMIN` 필요 |
+| 5 | `DELETE` | `/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}` | 관리자 객실 논리 삭제 | `ADMIN` 필요 |
 
 ---
 
@@ -313,11 +315,94 @@ Content-Type: application/json
 - 객실을 `INACTIVE`로 변경하는 것은 숙소 상태와 관계없이 허용한다.
 - `PENDING_PAYMENT` 또는 `CONFIRMED` 예약이 있어도 객실을 `INACTIVE`로 변경할 수 있다.
 - 객실 비공개 전환은 기존 예약을 취소하거나 변경하지 않으며 이후 신규 공개 조회와 신규 예약만 차단한다.
-- 숙소 상태 변경 시 소속 객실 상태를 일괄 변경하지 않는다.
+- 객실 상태 변경 API는 다른 객실의 상태에 영향을 주지 않는다.
 
 ---
 
-## 7. 담당자별 구현 경계
+## 7. 관리자 숙소 논리 삭제
+
+인증된 관리자가 숙소를 삭제한다. 거래 이력을 보존하기 위해 DB 행을 물리 삭제하지 않고 숙소와 소속 객실을 모두 `INACTIVE`로 변경한다.
+
+### Request
+
+```http
+DELETE /api/v1/admin/accommodations/1
+Authorization: Bearer {accessToken}
+```
+
+Request Body는 사용하지 않는다.
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "숙소가 삭제되었습니다.",
+  "data": null
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
+| `403` | `FORBIDDEN` | 일반 회원이 관리자 API를 호출한 경우 |
+| `404` | `ACCOMMODATION_NOT_FOUND` | 숙소가 존재하지 않는 경우 |
+
+### 삭제 정책
+
+- 숙소와 소속 객실의 상태 변경은 하나의 트랜잭션으로 처리한다.
+- 숙소와 소속 객실을 모두 `INACTIVE`로 변경한다.
+- 이미 `INACTIVE`인 숙소에 다시 요청해도 `200 OK`를 반환한다.
+- 기존 예약·결제·타임세일·특가·대기열·이미지 데이터는 삭제하지 않는다.
+- S3 이미지 객체도 삭제하지 않는다.
+- 인기 숙소 캐시는 트랜잭션 커밋 이후 무효화한다.
+
+---
+
+## 8. 관리자 객실 논리 삭제
+
+인증된 관리자가 지정한 숙소에 소속된 객실을 삭제한다. 객실 DB 행은 유지하고 상태만 `INACTIVE`로 변경한다.
+
+### Request
+
+```http
+DELETE /api/v1/admin/accommodations/1/rooms/10
+Authorization: Bearer {accessToken}
+```
+
+Request Body는 사용하지 않는다.
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "객실이 삭제되었습니다.",
+  "data": null
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
+| `403` | `FORBIDDEN` | 일반 회원이 관리자 API를 호출한 경우 |
+| `404` | `ROOM_NOT_FOUND` | 객실이 존재하지 않거나 URL의 숙소에 소속되지 않은 경우 |
+
+### 삭제 정책
+
+- 객실 상태를 `INACTIVE`로 변경한다.
+- 이미 `INACTIVE`인 객실에 다시 요청해도 `200 OK`를 반환한다.
+- 기존 예약·타임세일·특가·대기열·이미지 데이터는 삭제하지 않는다.
+- S3 이미지 객체도 삭제하지 않는다.
+- 소속 숙소와 다른 객실의 상태는 변경하지 않는다.
+
+---
+
+## 9. 담당자별 구현 경계
 
 | 담당자 | 구현 범위 |
 | --- | --- |
@@ -342,7 +427,7 @@ AdminController
 
 ---
 
-## 8. 에러 코드 목록
+## 10. 에러 코드 목록
 
 | Error Code | HTTP | 메시지 초안 |
 | --- | --- | --- |
@@ -361,7 +446,7 @@ AdminController
 
 ---
 
-## 9. 팀 회의에서 최종 확정할 항목
+## 11. 팀 회의에서 최종 확정할 항목
 
 - [ ] 최초 관리자 계정을 어떤 방식으로 준비할지
 - [ ] 실제 인증 객체에서 권한을 어떤 형태로 제공할지
