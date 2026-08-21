@@ -25,6 +25,7 @@ import org.springframework.data.domain.PageRequest;
 import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -33,6 +34,9 @@ class AccommodationServiceTest {
 
     @Mock
     private AccommodationRepository accommodationRepository;
+
+    @Mock
+    private RoomRepository roomRepository;
 
     @Mock
     private PopularAccommodationCacheEvictionService
@@ -145,6 +149,9 @@ class AccommodationServiceTest {
         then(popularAccommodationCacheEvictionService)
             .should()
             .evictAll();
+        then(roomRepository)
+            .should()
+            .deactivateAllByAccommodationId(accommodationId);
     }
 
     private Accommodation createAccommodation() {

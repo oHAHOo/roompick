@@ -106,24 +106,46 @@ class RoomRepositoryTest {
     }
 
     @Test
-    @DisplayName("숙소 ID로 해당 숙소의 객실 목록을 조회한다")
-    void findAllByAccommodationId() {
+    @DisplayName("숙소의 ACTIVE 객실을 벌크 UPDATE로 비활성화한다")
+    void deactivateAllByAccommodationId() {
         // given
-        Accommodation accommodation = accommodationRepository.save(createAccommodation());
-        roomRepository.save(createRoom(accommodation));
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        Room activeRoom = createRoom(accommodation);
+        activeRoom.activate();
+        roomRepository.save(activeRoom);
+        Room inactiveRoom = Room.create(
+            accommodation,
+            "102",
+            "이미 비공개된 객실",
+            "비공개 객실 설명",
+            120_000L,
+            2,
+            2
+        );
+        roomRepository.save(inactiveRoom);
 
         entityManager.flush();
         entityManager.clear();
 
         // when
-        List<Room> rooms = roomRepository.findAllByAccommodationId(
-            accommodation.getId()
-        );
+        int updatedCount =
+            roomRepository.deactivateAllByAccommodationId(
+                accommodation.getId()
+            );
 
         // then
-        assertThat(rooms).hasSize(1);
-        assertThat(rooms.get(0).getRoomNumber()).isEqualTo("101");
-        assertThat(rooms.get(0).getName()).isEqualTo("디럭스 더블룸");
+        assertThat(updatedCount).isEqualTo(1);
+        assertThat(
+            roomRepository.findById(activeRoom.getId())
+                .orElseThrow()
+                .getStatus()
+        ).isEqualTo(RoomStatus.INACTIVE);
+        assertThat(
+            roomRepository.findById(inactiveRoom.getId())
+                .orElseThrow()
+                .getStatus()
+        ).isEqualTo(RoomStatus.INACTIVE);
     }
 
     @Test

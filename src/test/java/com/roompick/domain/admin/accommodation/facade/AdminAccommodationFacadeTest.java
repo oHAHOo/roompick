@@ -3,7 +3,6 @@ package com.roompick.domain.admin.accommodation.facade;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.inOrder;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
@@ -13,7 +12,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -22,7 +20,6 @@ import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
 import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
-import com.roompick.domain.room.service.RoomService;
 import com.roompick.global.common.s3.ImageUploader;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,9 +27,6 @@ class AdminAccommodationFacadeTest {
 
     @Mock
     private AccommodationService accommodationService;
-
-    @Mock
-    private RoomService roomService;
 
     @Mock
     private ImageUploader imageUploader;
@@ -128,16 +122,8 @@ class AdminAccommodationFacadeTest {
             accommodationId
         );
 
-        InOrder inOrder = inOrder(
-            accommodationService,
-            roomService
-        );
-
-        inOrder.verify(accommodationService)
+        then(accommodationService)
+            .should()
             .inactivateAccommodation(accommodationId);
-        inOrder.verify(roomService)
-            .deactivateAllRoomsByAccommodationId(
-                accommodationId
-            );
     }
 }

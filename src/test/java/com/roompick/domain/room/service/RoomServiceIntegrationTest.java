@@ -2,6 +2,7 @@ package com.roompick.domain.room.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.then;
 
 import java.time.LocalTime;
 
@@ -11,11 +12,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.accommodation.service.PopularAccommodationCacheEvictionService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
@@ -41,6 +44,10 @@ class RoomServiceIntegrationTest {
 
     @Autowired
     private RoomService roomService;
+
+    @MockitoBean
+    private PopularAccommodationCacheEvictionService
+        popularAccommodationCacheEvictionService;
 
     @Autowired
     private EntityManager entityManager;
@@ -105,6 +112,9 @@ class RoomServiceIntegrationTest {
             .orElseThrow();
         assertThat(persistedRoom.getStatus())
             .isEqualTo(RoomStatus.INACTIVE);
+        then(popularAccommodationCacheEvictionService)
+            .should()
+            .evictAll();
     }
 
     @Test

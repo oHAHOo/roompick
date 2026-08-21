@@ -15,6 +15,7 @@ import com.roompick.domain.accommodation.dto.AccommodationListResponseDto;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.room.repository.RoomRepository;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 public class AccommodationService {
 
     private final AccommodationRepository accommodationRepository;
+    private final RoomRepository roomRepository;
     private final PopularAccommodationCacheEvictionService
         popularAccommodationCacheEvictionService;
 
@@ -216,10 +218,10 @@ public class AccommodationService {
     }
 
     /**
-     * 숙소를 운영 중단 상태로 변경합니다.
+     * 숙소와 소속 객실을 하나의 트랜잭션에서 비활성화합니다.
      *
-     * 비공개 전환이 정상적으로 완료된 경우
-     * 기존 인기 숙소 캐시를 커밋 이후 삭제합니다.
+     * 하위 객실은 Entity 전체를 조회하지 않고 벌크 UPDATE하며,
+     * 커밋 이후 기존 인기 숙소 캐시를 삭제합니다.
      */
     @Transactional
     public void inactivateAccommodation(
@@ -229,6 +231,10 @@ public class AccommodationService {
             findById(accommodationId);
 
         accommodation.inactivate();
+
+        roomRepository.deactivateAllByAccommodationId(
+            accommodationId
+        );
 
         popularAccommodationCacheEvictionService.evictAll();
     }

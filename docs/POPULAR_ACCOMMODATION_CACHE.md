@@ -239,6 +239,7 @@ PopularAccommodationQueryService
 
 - 숙소 공개 정보 수정
 - 숙소 상태를 `INACTIVE`로 변경
+- 객실 단건 논리 삭제
 
 기간, 날짜와 `limit`별로 여러 캐시 Key가 생성될 수 있으므로
 `popularAccommodations` 캐시의 전체 항목을 삭제합니다.
