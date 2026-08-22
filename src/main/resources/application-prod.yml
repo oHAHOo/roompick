@@ -69,3 +69,6 @@ roompick:
   search:
     # 운영에서는 별도 Elasticsearch 인프라 없이 MySQL 위치 검색을 사용합니다.
     location-engine: MYSQL
+  cors:
+    # S3 정적 웹사이트 호스팅 엔드포인트(또는 CloudFront 도메인)를 콤마로 구분해 등록합니다.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}

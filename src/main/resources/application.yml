@@ -67,6 +67,10 @@ roompick:
     # WaitlistExpirationScheduler가 중복 실행되지 않게 합니다. API(프로듀서) 인스턴스와
     # 로컬 개발 환경은 기본값(true)을 그대로 사용합니다. docs/DEPLOYMENT.md 12절 참고.
     enabled: ${SCHEDULER_ENABLED:true}
+  cors:
+    # 로컬 정적 프론트(예: VS Code Live Server, `frontend/` 폴더를 직접 열었을 때의 file 오리진 대응은
+    # 브라우저 정책상 CORS로 해결할 수 없으므로 http-server 등으로 서빙하는 것을 권장합니다.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000}
   cache:
     # 동일 장소 검색의 Kakao API 반복 호출을 줄이는 단기 캐시입니다.
     place-search-ttl: ${PLACE_SEARCH_CACHE_TTL:5m}
