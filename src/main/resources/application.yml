@@ -40,6 +40,12 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    redis:
+      # 컨슈머 전용 인스턴스는 Redis를 쓰지 않으므로(대기열 처리는 DB 락만 사용)
+      # 이 인스턴스에서는 false로 꺼서 접근 불가능한 Redis 때문에 health가
+      # DOWN으로 오검되지 않게 합니다. docs/DEPLOYMENT.md 12절 참고.
+      enabled: ${REDIS_HEALTH_ENABLED:true}
   prometheus:
     metrics:
       export:
@@ -50,6 +56,12 @@ management:
         http.server.requests: true
 
 roompick:
+  kafka:
+    consumer:
+      # 프로듀서(API) 전용 인스턴스에서는 false로 꺼서 Kafka 컨슈머가 뜨지 않게 합니다.
+      # 컨슈머 전용 인스턴스와 로컬 개발 환경은 기본값(true)을 그대로 사용합니다.
+      # docs/DEPLOYMENT.md 12절 참고.
+      enabled: ${KAFKA_CONSUMER_ENABLED:true}
   cache:
     # 동일 장소 검색의 Kakao API 반복 호출을 줄이는 단기 캐시입니다.
     place-search-ttl: ${PLACE_SEARCH_CACHE_TTL:5m}

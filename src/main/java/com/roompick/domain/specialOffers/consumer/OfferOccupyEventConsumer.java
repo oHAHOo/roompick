@@ -1,6 +1,7 @@
 package com.roompick.domain.specialOffers.consumer;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +15,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(
+    prefix = "roompick.kafka.consumer",
+    name = "enabled",
+    havingValue = "true",
+    matchIfMissing = true
+)
 public class OfferOccupyEventConsumer {
 
     private final WaitlistProcessingFacade waitlistProcessingFacade;
@@ -21,7 +28,7 @@ public class OfferOccupyEventConsumer {
     @KafkaListener(
         topics = KafkaTopicConfig.OFFER_OCCUPY_REQUEST_TOPIC,
         groupId = "special-offer-occupy-consumer",
-        concurrency = "1"
+        concurrency = "6"
     )
     public void consume(ConsumerRecord<String, OfferOccupyRequestEvent> record) {
         OfferOccupyRequestEvent event = record.value();
