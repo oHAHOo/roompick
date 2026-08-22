@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,12 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @Slf4j
 @RequiredArgsConstructor
+@ConditionalOnProperty(
+    prefix = "roompick.scheduler",
+    name = "enabled",
+    havingValue = "true",
+    matchIfMissing = true
+)
 public class WaitlistExpirationScheduler {
 
     private static final ZoneId SERVICE_ZONE_ID =

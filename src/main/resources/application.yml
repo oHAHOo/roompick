@@ -62,6 +62,11 @@ roompick:
       # 컨슈머 전용 인스턴스와 로컬 개발 환경은 기본값(true)을 그대로 사용합니다.
       # docs/DEPLOYMENT.md 12절 참고.
       enabled: ${KAFKA_CONSUMER_ENABLED:true}
+  scheduler:
+    # 컨슈머 전용 인스턴스에서는 false로 꺼서 TimeSaleScheduler·SpecialOfferScheduler·
+    # WaitlistExpirationScheduler가 중복 실행되지 않게 합니다. API(프로듀서) 인스턴스와
+    # 로컬 개발 환경은 기본값(true)을 그대로 사용합니다. docs/DEPLOYMENT.md 12절 참고.
+    enabled: ${SCHEDULER_ENABLED:true}
   cache:
     # 동일 장소 검색의 Kakao API 반복 호출을 줄이는 단기 캐시입니다.
     place-search-ttl: ${PLACE_SEARCH_CACHE_TTL:5m}

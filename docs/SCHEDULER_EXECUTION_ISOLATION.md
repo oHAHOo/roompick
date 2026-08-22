@@ -277,6 +277,21 @@ scheduler.setAwaitTerminationSeconds(10);
 
 다중 인스턴스 중복 실행 방지는 별도의 분산 락 작업으로 분리합니다.
 
+**갱신(프로듀서·컨슈머 인스턴스 분리 이후):** 위 원칙은 여전히 유효하지만, 실제로
+인스턴스가 2개 뜨는 배포(`docs/DEPLOYMENT.md` 12절)가 생기면서 분산 락 없이도
+막아야 하는 최소한의 안전장치가 필요해졌습니다. `roompick.scheduler.enabled`
+프로퍼티(env var `SCHEDULER_ENABLED`, 기본값 `true`)로 세 스케줄러
+(`TimeSaleScheduler`, `SpecialOfferScheduler`, `WaitlistExpirationScheduler`)를
+인스턴스별로 통째로 켜고 끌 수 있습니다 — API(프로듀서) 인스턴스는 계속 켜두고,
+컨슈머 전용 인스턴스는 끕니다.
+
+이건 분산 락이 아니라 **배포 시점에 역할을 고정하는 정적인 방법**입니다. 두
+인스턴스 모두 `SCHEDULER_ENABLED=true`(또는 미설정)로 배포하면 여전히
+중복 실행됩니다 — 이 프로퍼티는 값을 올바르게 나눠 설정하는 것을 운영자에게
+맡길 뿐, 스스로 검증하거나 강제하지 않습니다. 인스턴스가 3개 이상으로 늘거나
+스케줄러 담당 인스턴스가 여러 대가 될 계획이 있다면, 그때는 이 절의 원래
+결론대로 ShedLock 등 별도의 분산 락이 필요합니다.
+
 ### 10.4 특가 종료와 대기열 승계
 
 실행기를 분리하면 `SpecialOfferScheduler`와
