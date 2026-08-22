@@ -343,9 +343,20 @@ curl http://localhost:9090/api/v1/targets   # roompick-backend 수집 대상이 
 완료 메일 발송, 특가 점유 처리)를 동시에 했다. 이제 인스턴스를 2대로 나눠서,
 한쪽은 API만, 다른 쪽은 이벤트 처리만 하게 한다.
 
-**핵심은 환경변수 하나다.** `KAFKA_CONSUMER_ENABLED`를 `false`로 두면
-그 인스턴스는 이벤트를 처리하지 않고 API만 한다. 안 건드리면(기본값
-`true`) 이벤트도 처리한다.
+**핵심은 환경변수 두 개다.**
+
+| 환경변수 | `false`로 두면 | 안 건드리면(기본값 `true`) |
+| --- | --- | --- |
+| `KAFKA_CONSUMER_ENABLED` | 결제·특가 이벤트를 처리하지 않는다 | 이벤트도 처리한다 |
+| `SCHEDULER_ENABLED` | 타임세일·특가·대기열 만료 스케줄러가 안 뜬다 | 스케줄러도 실행한다 |
+
+`SCHEDULER_ENABLED`가 필요한 이유: `@EnableScheduling`은 앱 전역 설정이라
+이 값을 안 나누면 세 스케줄러(`TimeSaleScheduler`, `SpecialOfferScheduler`,
+`WaitlistExpirationScheduler`)가 **두 인스턴스 모두에서 각자 실행**된다.
+특히 `WaitlistExpirationScheduler`는 대기열 만료→취소→다음 순번 승격→예약
+생성까지 하는 상태 변경 작업이라, 두 인스턴스가 동시에 같은 대상을 조회하면
+불필요한 락 대기나 재처리가 생길 수 있다. 그래서 스케줄러는 API 인스턴스에만
+남기고, 새로 만드는 인스턴스에서는 끈다.
 
 **준비 (AWS 콘솔, 계정 소유자가 직접)**
 
@@ -359,13 +370,43 @@ curl http://localhost:9090/api/v1/targets   # roompick-backend 수집 대상이 
 이 인스턴스는 외부 공개 IP가 없어서, 기존 인스턴스를 거쳐야 SSH로
 들어갈 수 있다.
 
+**배포 전 확인: 파티션 확장 시점**
+
+이번 배포에는 `offer-occupy-request` 토픽의 파티션을 1 → 6으로 늘리는
+변경도 같이 들어있다(Kafka는 파티션을 늘릴 수는 있어도 되돌릴 수는 없다).
+파티션이 늘어나는 순간 밀려있는 메시지가 있으면, 그 메시지와 이후 들어오는
+같은 offerId의 메시지가 서로 다른 파티션에 배정돼 처리 순서가 꼬일 수
+있다. 밀려있는 메시지가 없으면 이 문제 자체가 생기지 않으므로, 그래서
+**처리 중인 특가 점유 요청이 없는(컨슈머 랙 0) 시점에만** 아래 배포를
+진행한다.
+
+```bash
+# 배포 전 roompick-backend에서 랙 확인 (Kafka 브로커에 접속 가능한 곳에서)
+kafka-consumer-groups.sh --bootstrap-server <Kafka 브로커>:9092 \
+  --describe --group special-offer-occupy-consumer
+# LAG 컬럼이 전부 0인지 확인
+```
+
 **배포 (코드가 `develop`에 merge된 뒤)**
 
-1. merge하면 CD가 자동으로 **기존 `roompick-backend`에만** 새 버전을 배포한다
-2. 기존 `roompick-backend`에는 `KAFKA_CONSUMER_ENABLED=false`를 수동으로
-   추가하고 재시작한다 — 이제부터 API만 처리
-3. 새 인스턴스(`roompick-app-consumer`)에는 기존 설정 파일을 그대로
-   복사해서 같은 이미지를 실행한다 — 이제부터 이벤트만 처리
+1. merge하면 CD가 자동으로 **기존 `roompick-backend`에만** 새 버전을
+   배포한다 — 이 순간 파티션도 1 → 6으로 늘어난다
+2. 기존 `roompick-backend`의 설정에 아래 두 값을 추가하고 재시작한다 —
+   이제부터 API·스케줄러만 처리
+   ```
+   KAFKA_CONSUMER_ENABLED=false
+   ```
+   (`SCHEDULER_ENABLED`는 기본값 `true`라 안 건드려도 된다)
+3. 새 인스턴스(`roompick-app-consumer`)의 설정에는 아래 두 값을
+   **명시적으로** 넣는다 — 이제부터 이벤트 처리만
+   ```
+   KAFKA_CONSUMER_ENABLED=true
+   SCHEDULER_ENABLED=false
+   ```
+   ⚠️ 기존 `roompick-backend`의 설정 파일을 복사해서 쓰는 경우, 그 파일에는
+   이미 2번에서 넣은 `KAFKA_CONSUMER_ENABLED=false`가 들어있다. 그 값을
+   지우지 않고 그대로 두면 두 인스턴스 모두 이벤트를 처리하지 않게 되므로,
+   반드시 `true`로 다시 바꿔야 한다.
 4. 결제·특가 이벤트를 하나 만들어서, 새 인스턴스 쪽에서만 처리 로그가
    찍히는지 확인
 
