@@ -13,7 +13,7 @@ public class KafkaTopicConfig {
 
     @Bean
     public NewTopic offerOccupyRequestTopic() {
-        return TopicBuilder.name(OFFER_OCCUPY_REQUEST_TOPIC).partitions(1).replicas(1).build();
+        return TopicBuilder.name(OFFER_OCCUPY_REQUEST_TOPIC).partitions(6).replicas(1).build();
     }
 
     @Bean
