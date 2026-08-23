@@ -11,6 +11,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -131,7 +132,7 @@ class AccommodationServiceTest {
         Long accommodationId = 1L;
         Accommodation accommodation = createAccommodation();
 
-        given(accommodationRepository.findById(accommodationId))
+        given(accommodationRepository.findByIdForUpdate(accommodationId))
             .willReturn(Optional.of(accommodation));
 
         // when: 숙소를 운영 중단 상태로 변경합니다.
@@ -152,6 +153,102 @@ class AccommodationServiceTest {
         then(roomRepository)
             .should()
             .deactivateAllByAccommodationId(accommodationId);
+    }
+
+    @Test
+    @DisplayName("비공개 숙소를 다시 공개하면 소속 객실 상태는 건드리지 않는다")
+    void 숙소를_다시_공개해도_객실_상태는_유지한다() {
+        // given: 비공개 상태인 숙소가 존재합니다.
+        Long accommodationId = 1L;
+        Accommodation accommodation = createAccommodation();
+        accommodation.inactivate();
+
+        given(accommodationRepository.findByIdForUpdate(accommodationId))
+            .willReturn(Optional.of(accommodation));
+
+        // when: 숙소를 다시 운영 중 상태로 되돌립니다.
+        Accommodation result =
+            accommodationService.activateAccommodation(accommodationId);
+
+        // then: 숙소만 ACTIVE로 바뀌고 객실 상태 변경은 요청하지 않습니다.
+        assertThat(result.getStatus())
+            .isEqualTo(
+                com.roompick.domain.accommodation.entity
+                    .AccommodationStatus.ACTIVE
+            );
+
+        then(popularAccommodationCacheEvictionService)
+            .should()
+            .evictAll();
+        then(roomRepository)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 숙소는 상태 변경 락 조회에 실패한다")
+    void 존재하지_않는_숙소는_상태_변경_락_조회에_실패한다() {
+        // given
+        Long accommodationId = 999L;
+
+        given(accommodationRepository.findByIdForUpdate(accommodationId))
+            .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(
+            () -> accommodationService.activateAccommodation(accommodationId)
+        )
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ACCOMMODATION_NOT_FOUND);
+
+        then(popularAccommodationCacheEvictionService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("숙소 상태 변경 락 조회는 기존 트랜잭션 안에서만 실행된다")
+    void 숙소_상태_변경_락_조회는_기존_트랜잭션을_요구한다()
+        throws NoSuchMethodException {
+        // given
+        org.springframework.transaction.annotation.Transactional transactional =
+            AccommodationService.class
+                .getMethod("findByIdForStatusUpdate", Long.class)
+                .getAnnotation(
+                    org.springframework.transaction.annotation.Transactional.class
+                );
+
+        // when & then
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation())
+            .isEqualTo(
+                org.springframework.transaction.annotation.Propagation.MANDATORY
+            );
+    }
+
+    @Test
+    @DisplayName("운영 상태와 무관하게 이미지와 함께 숙소를 조회한다")
+    void 운영_상태와_무관하게_이미지와_함께_숙소를_조회한다() {
+        // given: 비공개 상태인 숙소가 존재합니다.
+        Long accommodationId = 1L;
+        Accommodation accommodation = createAccommodation();
+        accommodation.inactivate();
+
+        given(accommodationRepository.findByIdWithImages(accommodationId))
+            .willReturn(Optional.of(accommodation));
+
+        // when: 관리자 상세 조회 전용 메서드로 조회합니다.
+        Accommodation result =
+            accommodationService.findAnyByIdWithImages(accommodationId);
+
+        // then: INACTIVE 숙소도 그대로 반환됩니다.
+        assertThat(result).isSameAs(accommodation);
+        assertThat(result.getStatus())
+            .isEqualTo(
+                com.roompick.domain.accommodation.entity
+                    .AccommodationStatus.INACTIVE
+            );
     }
 
     private Accommodation createAccommodation() {

@@ -35,7 +35,10 @@ import com.roompick.domain.accommodation.service.PopularAccommodationRankingServ
 import com.roompick.domain.accommodation.service.PopularAccommodationSingleFlightService;
 import com.roompick.domain.accommodation.type.AccommodationLocationSearchEngine;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+import com.roompick.domain.room.dto.RoomListResponseDto;
+import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.service.RoomService;
+import com.roompick.domain.timesale.service.TimeSalePriceService;
 import com.roompick.global.common.BusinessException;
 import com.roompick.global.common.ErrorCode;
 
@@ -75,6 +78,9 @@ class AccommodationFacadeTest {
     @Mock
     private PopularAccommodationQueryService
         popularAccommodationQueryService;
+
+    @Mock
+    private TimeSalePriceService timeSalePriceService;
 
     @InjectMocks
     private AccommodationFacade accommodationFacade;
@@ -345,6 +351,58 @@ class AccommodationFacadeTest {
     }
 
     @Test
+    @DisplayName("관리자 숙소 상세 조회는 INACTIVE도 포함하고 인기 점수를 기록하지 않는다")
+    void 관리자_숙소_상세_조회는_INACTIVE도_포함하고_인기_점수를_기록하지_않는다() {
+        Long accommodationId = 1L;
+        LocalTime checkInTime = LocalTime.of(15, 0);
+        LocalTime checkOutTime = LocalTime.of(11, 0);
+
+        Accommodation accommodation =
+            Accommodation.create(
+                "룸픽 호텔",
+                "서울특별시 중구",
+                "관리자 조회 테스트용 숙소",
+                checkInTime,
+                checkOutTime
+            );
+        accommodation.inactivate();
+
+        given(
+            accommodationService.findAnyByIdWithImages(
+                accommodationId
+            )
+        ).willReturn(accommodation);
+
+        AccommodationDetailResponseDto response =
+            accommodationFacade.getAccommodationDetail(
+                accommodationId,
+                true
+            );
+
+        assertThat(response.status())
+            .isEqualTo(
+                com.roompick.domain.accommodation.entity
+                    .AccommodationStatus.INACTIVE
+            );
+
+        then(accommodationService)
+            .should()
+            .findAnyByIdWithImages(accommodationId);
+
+        then(accommodationService)
+            .should(org.mockito.Mockito.never())
+            .findActiveByIdWithImages(accommodationId);
+
+        /*
+         * 관리자의 관리 목적 조회까지 인기 점수에 반영되면
+         * 실제 사용자 인기도와 무관하게 랭킹이 왜곡될 수 있어
+         * 관리자 조회에서는 점수를 기록하지 않는다.
+         */
+        then(popularAccommodationRankingService)
+            .shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("숙소 상세 조회에 실패하면 인기 점수를 기록하지 않는다")
     void 숙소_상세_조회에_실패하면_인기_점수를_기록하지_않는다() {
         Long accommodationId = 999L;
@@ -369,6 +427,101 @@ class AccommodationFacadeTest {
 
         then(popularAccommodationRankingService)
             .shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("일반 사용자의 객실 목록 조회는 운영 중인 숙소·객실만 대상으로 한다")
+    void 일반_사용자의_객실_목록_조회는_운영_중인_객실만_조회한다() {
+        // given
+        Long accommodationId = 1L;
+
+        List<RoomListResponseDto> rooms = List.of(
+            new RoomListResponseDto(
+                10L, "디럭스룸", 100_000L, 2, 2, null
+            )
+        );
+
+        given(
+            roomService.findAllActiveSummaryByAccommodationId(
+                accommodationId
+            )
+        ).willReturn(rooms);
+
+        given(
+            timeSalePriceService.calculateRoomListPrices(
+                accommodationId,
+                rooms
+            )
+        ).willReturn(java.util.Map.of(10L, 100_000L));
+
+        // when
+        List<RoomListResponseDto> result =
+            accommodationFacade.getRoomList(accommodationId, false);
+
+        // then
+        assertThat(result).hasSize(1);
+
+        then(accommodationService)
+            .should()
+            .findActiveById(accommodationId);
+
+        then(accommodationService)
+            .should(org.mockito.Mockito.never())
+            .findById(accommodationId);
+
+        then(roomService)
+            .should(org.mockito.Mockito.never())
+            .findAllSummaryByAccommodationIdForAdmin(accommodationId);
+    }
+
+    @Test
+    @DisplayName("관리자의 객실 목록 조회는 숙소·객실 운영 상태와 무관하게 전체를 조회한다")
+    void 관리자의_객실_목록_조회는_전체_객실을_조회한다() {
+        // given
+        Long accommodationId = 1L;
+
+        List<RoomListResponseDto> rooms = List.of(
+            new RoomListResponseDto(
+                10L, "디럭스룸", 100_000L, 2, 2, null, RoomStatus.ACTIVE
+            ),
+            new RoomListResponseDto(
+                11L, "스위트룸", 200_000L, 2, 4, null, RoomStatus.INACTIVE
+            )
+        );
+
+        given(
+            roomService.findAllSummaryByAccommodationIdForAdmin(
+                accommodationId
+            )
+        ).willReturn(rooms);
+
+        given(
+            timeSalePriceService.calculateRoomListPrices(
+                accommodationId,
+                rooms
+            )
+        ).willReturn(java.util.Map.of(10L, 100_000L, 11L, 200_000L));
+
+        // when
+        List<RoomListResponseDto> result =
+            accommodationFacade.getRoomList(accommodationId, true);
+
+        // then
+        assertThat(result)
+            .extracting(RoomListResponseDto::status)
+            .containsExactly(RoomStatus.ACTIVE, RoomStatus.INACTIVE);
+
+        then(accommodationService)
+            .should()
+            .findById(accommodationId);
+
+        then(accommodationService)
+            .should(org.mockito.Mockito.never())
+            .findActiveById(accommodationId);
+
+        then(roomService)
+            .should(org.mockito.Mockito.never())
+            .findAllActiveSummaryByAccommodationId(accommodationId);
     }
 
     @Test

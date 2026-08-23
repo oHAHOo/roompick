@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationCacheEvictionService;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
@@ -32,7 +33,8 @@ import jakarta.persistence.EntityManager;
 @DataJpaTest
 @Import({
     JpaConfig.class,
-    RoomService.class
+    RoomService.class,
+    AccommodationService.class
 })
 class RoomServiceIntegrationTest {
 

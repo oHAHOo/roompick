@@ -23,7 +23,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
+import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationCacheEvictionService;
+import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
@@ -35,6 +37,9 @@ class RoomServiceTest {
 
     @Mock
     private RoomRepository roomRepository;
+
+    @Mock
+    private AccommodationService accommodationService;
 
     @Mock
     private PopularAccommodationCacheEvictionService
@@ -404,7 +409,11 @@ class RoomServiceTest {
         room.deactivate();
 
         given(
-            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+            accommodationService.findByIdForStatusUpdate(accommodationId)
+        ).willReturn(room.getAccommodation());
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
                 roomId,
                 accommodationId
             )
@@ -461,11 +470,8 @@ class RoomServiceTest {
         deactivateAccommodation(room);
 
         given(
-            roomRepository.findByIdAndAccommodationIdWithAccommodation(
-                roomId,
-                accommodationId
-            )
-        ).willReturn(Optional.of(room));
+            accommodationService.findByIdForStatusUpdate(accommodationId)
+        ).willReturn(room.getAccommodation());
 
         // when & then
         assertThatThrownBy(() ->
@@ -478,6 +484,13 @@ class RoomServiceTest {
             .isEqualTo(ErrorCode.ACCOMMODATION_INACTIVE);
 
         assertThat(room.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+        /*
+         * 숙소 상태 검증에서 먼저 걸러지므로
+         * 객실 조회 자체가 실행되지 않습니다.
+         */
+        then(roomRepository)
+            .should(never())
+            .findByIdAndAccommodationId(any(), any());
         then(roomRepository).should(never()).save(any(Room.class));
     }
 
@@ -490,7 +503,11 @@ class RoomServiceTest {
         Room room = createRoom();
 
         given(
-            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+            accommodationService.findByIdForStatusUpdate(accommodationId)
+        ).willReturn(room.getAccommodation());
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
                 roomId,
                 accommodationId
             )
@@ -532,6 +549,74 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("관리자는 운영 상태와 무관하게 객실 상세를 조회할 수 있다")
+    void 관리자는_비공개_객실도_상세_조회할_수_있다() {
+        // given
+        Long roomId = 10L;
+        Room room = createRoom();
+        room.deactivate();
+
+        given(roomRepository.findAnyByIdForAdmin(roomId))
+            .willReturn(Optional.of(room));
+
+        // when
+        Room result = roomService.findAnyByIdForAdmin(roomId);
+
+        // then
+        assertThat(result).isSameAs(room);
+        assertThat(result.getStatus()).isEqualTo(RoomStatus.INACTIVE);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 객실은 관리자도 조회할 수 없다")
+    void 존재하지_않는_객실은_관리자도_조회할_수_없다() {
+        // given
+        Long roomId = 999L;
+
+        given(roomRepository.findAnyByIdForAdmin(roomId))
+            .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> roomService.findAnyByIdForAdmin(roomId))
+            .isInstanceOf(BusinessException.class)
+            .extracting(exception ->
+                ((BusinessException) exception).getErrorCode()
+            )
+            .isEqualTo(ErrorCode.ROOM_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("관리자는 운영 상태와 무관하게 숙소의 전체 객실 목록을 조회할 수 있다")
+    void 관리자는_비공개_객실을_포함한_전체_목록을_조회할_수_있다() {
+        // given
+        Long accommodationId = 1L;
+
+        List<RoomListResponseDto> expected = List.of(
+            new RoomListResponseDto(
+                10L, "디럭스룸", 100_000L, 2, 2, null, RoomStatus.ACTIVE
+            ),
+            new RoomListResponseDto(
+                11L, "스위트룸", 200_000L, 2, 4, null, RoomStatus.INACTIVE
+            )
+        );
+
+        given(
+            roomRepository.findAllSummaryByAccommodationIdForAdmin(
+                accommodationId
+            )
+        ).willReturn(expected);
+
+        // when
+        List<RoomListResponseDto> result =
+            roomService.findAllSummaryByAccommodationIdForAdmin(
+                accommodationId
+            );
+
+        // then
+        assertThat(result).isSameAs(expected);
+    }
+
+    @Test
     @DisplayName("다른 숙소에 소속된 객실의 상태 변경 요청은 404로 처리한다")
     void 다른_숙소의_객실은_상태를_변경할_수_없다() {
         // given
@@ -539,7 +624,13 @@ class RoomServiceTest {
         Long roomId = 10L;
 
         given(
-            roomRepository.findByIdAndAccommodationIdWithAccommodation(
+            accommodationService.findByIdForStatusUpdate(accommodationId)
+        ).willReturn(accommodation);
+        given(accommodation.getStatus())
+            .willReturn(AccommodationStatus.ACTIVE);
+
+        given(
+            roomRepository.findByIdAndAccommodationId(
                 roomId,
                 accommodationId
             )

@@ -247,9 +247,15 @@ public class AccommodationFacade {
                 ? AccommodationDetailResponseDto.forAdmin(accommodation)
                 : AccommodationDetailResponseDto.from(accommodation);
 
-        popularAccommodationRankingService.recordView(
-            accommodationId
-        );
+        /*
+         * 관리자의 관리 목적 조회(INACTIVE 포함)까지 인기 점수에 반영되면
+         * 실제 사용자 인기도와 무관하게 랭킹이 왜곡될 수 있어 사용자 조회만 기록한다.
+         */
+        if (!admin) {
+            popularAccommodationRankingService.recordView(
+                accommodationId
+            );
+        }
 
         return response;
     }

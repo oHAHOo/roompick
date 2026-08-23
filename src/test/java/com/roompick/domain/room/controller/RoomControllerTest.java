@@ -9,10 +9,12 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
 import com.roompick.domain.member.entity.Member;
+import com.roompick.domain.member.entity.MemberRole;
 import com.roompick.domain.member.repository.MemberRepository;
 import com.roompick.domain.reservation.entity.Reservation;
 import com.roompick.domain.reservation.repository.ReservationRepository;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.repository.RoomRepository;
+import com.roompick.global.security.JwtTokenProvider;
 
 @ActiveProfiles("test")
 @SpringBootTest
@@ -49,6 +53,9 @@ class RoomControllerTest {
 
     @Autowired
     private RoomRepository roomRepository;
+
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
 
     @Test
     void 객실_상세_조회에_성공한다() throws Exception {
@@ -145,6 +152,77 @@ class RoomControllerTest {
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.code")
                 .value("ROOM_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("일반 회원 토큰으로도 비공개 객실은 조회할 수 없다")
+    void 일반_회원은_비공개_객실을_상세_조회할_수_없다() throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+
+        Room room = roomRepository.save(
+            Room.create(
+                accommodation,
+                "102",
+                "비공개 객실",
+                "아직 공개하지 않은 객실",
+                100000L,
+                2,
+                2
+            )
+        );
+
+        String userToken =
+            jwtTokenProvider.createAccessToken(1L, MemberRole.USER);
+
+        // when & then
+        mockMvc.perform(
+                get("/api/v1/rooms/{roomId}", room.getId())
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + userToken
+                    )
+            )
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code")
+                .value("ROOM_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("관리자는 비공개 객실 상세를 상태와 함께 조회할 수 있다")
+    void 관리자는_비공개_객실을_상세_조회할_수_있다() throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+
+        Room room = roomRepository.save(
+            Room.create(
+                accommodation,
+                "102",
+                "비공개 객실",
+                "아직 공개하지 않은 객실",
+                100000L,
+                2,
+                2
+            )
+        );
+
+        String adminToken =
+            jwtTokenProvider.createAccessToken(1L, MemberRole.ADMIN);
+
+        // when & then
+        mockMvc.perform(
+                get("/api/v1/rooms/{roomId}", room.getId())
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + adminToken
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.roomId").value(room.getId()))
+            .andExpect(jsonPath("$.data.status").value("INACTIVE"));
     }
 
     @Test
