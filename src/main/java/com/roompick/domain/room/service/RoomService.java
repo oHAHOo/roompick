@@ -61,6 +61,35 @@ public class RoomService {
     }
 
     /**
+     * 관리자 상세 조회에서 운영 상태와 무관하게 객실을 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public Room findAnyByIdForAdmin(Long roomId) {
+        return roomRepository
+            .findAnyByIdForAdmin(roomId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
+            );
+    }
+
+    /**
+     * 관리자 목록 조회에서 운영 상태와 무관하게
+     * 특정 숙소에 소속된 모든 객실 목록을 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<RoomListResponseDto>
+    findAllSummaryByAccommodationIdForAdmin(
+        Long accommodationId
+    ) {
+        return roomRepository
+            .findAllSummaryByAccommodationIdForAdmin(
+                accommodationId
+            );
+    }
+
+    /**
      * 예약 가능 여부 확인에 필요한 객실을 조회하고
      * 객실 상태와 요청 인원을 검증합니다.
      */

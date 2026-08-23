@@ -25,6 +25,7 @@
 10. Controller는 Facade만 호출하고, AdminFacade가 숙소·객실 Service를 조율한다.
 11. 관리자 기능에서 숙소·객실 Repository를 직접 호출하지 않는다.
 12. 객실 공개·비공개 상태는 관리자 상태 변경 API로 전환한다.
+13. 숙소 공개·비공개 상태도 관리자 상태 변경 API로 왕복 전환할 수 있다(논리 삭제는 `INACTIVE` 전환의 별칭이다).
 
 ---
 
@@ -72,8 +73,9 @@ Content-Type: application/json
 | 1 | `POST` | `/api/v1/admin/accommodations` | 관리자 숙소 등록 | `ADMIN` 필요 |
 | 2 | `POST` | `/api/v1/admin/accommodations/{accommodationId}/rooms` | 관리자 객실 등록 | `ADMIN` 필요 |
 | 3 | `PATCH` | `/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}/status` | 관리자 객실 공개 상태 변경 | `ADMIN` 필요 |
-| 4 | `DELETE` | `/api/v1/admin/accommodations/{accommodationId}` | 관리자 숙소 논리 삭제 | `ADMIN` 필요 |
-| 5 | `DELETE` | `/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}` | 관리자 객실 논리 삭제 | `ADMIN` 필요 |
+| 4 | `PATCH` | `/api/v1/admin/accommodations/{accommodationId}/status` | 관리자 숙소 공개 상태 변경 | `ADMIN` 필요 |
+| 5 | `DELETE` | `/api/v1/admin/accommodations/{accommodationId}` | 관리자 숙소 논리 삭제 | `ADMIN` 필요 |
+| 6 | `DELETE` | `/api/v1/admin/accommodations/{accommodationId}/rooms/{roomId}` | 관리자 객실 논리 삭제 | `ADMIN` 필요 |
 
 ---
 
@@ -319,7 +321,66 @@ Content-Type: application/json
 
 ---
 
-## 7. 관리자 숙소 논리 삭제
+## 7. 관리자 숙소 공개 상태 변경
+
+인증된 관리자가 숙소를 공개하거나 비공개로 변경한다. 논리 삭제(8번)와 반대 방향으로 전환할 수 있는 유일한 API다 — `DELETE`는 `INACTIVE`로만 보내지만, 이 API는 `ACTIVE`/`INACTIVE`를 양방향으로 요청할 수 있다.
+
+### Request — ACTIVE
+
+```http
+PATCH /api/v1/admin/accommodations/1/status
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "ACTIVE"
+}
+```
+
+### Request — INACTIVE
+
+```json
+{
+  "status": "INACTIVE"
+}
+```
+
+`status`에는 `ACTIVE`, `INACTIVE`만 요청할 수 있다.
+
+### Response — 200 OK
+
+```json
+{
+  "success": true,
+  "message": "숙소 상태가 변경되었습니다.",
+  "data": {
+    "accommodationId": 1,
+    "status": "ACTIVE"
+  }
+}
+```
+
+### Error
+
+| HTTP | Error Code | 조건 |
+| --- | --- | --- |
+| `400` | `INVALID_INPUT_VALUE` | `status`가 누락되거나 `ACTIVE`, `INACTIVE` 이외의 값인 경우 |
+| `401` | `UNAUTHORIZED` | 인증되지 않은 요청 |
+| `403` | `FORBIDDEN` | 일반 회원이 관리자 API를 호출한 경우 |
+| `404` | `ACCOMMODATION_NOT_FOUND` | 숙소가 존재하지 않는 경우 |
+
+### 상태 변경 정책
+
+- 같은 상태를 다시 요청해도 `200 OK`를 반환하는 멱등 API다.
+- 숙소를 `INACTIVE`로 변경하면 소속 객실도 모두 `INACTIVE`로 함께 변경한다(8번 논리 삭제와 동일한 처리).
+- 숙소를 `ACTIVE`로 변경해도 소속 객실 상태는 건드리지 않는다. 비공개 전환 시 함께 내려간 객실은 관리자가 6번 API로 필요한 객실만 골라 다시 공개해야 한다.
+- 인기 숙소 캐시는 트랜잭션 커밋 이후 무효화한다.
+
+---
+
+## 8. 관리자 숙소 논리 삭제
 
 인증된 관리자가 숙소를 삭제한다. 거래 이력을 보존하기 위해 DB 행을 물리 삭제하지 않고 숙소와 소속 객실을 모두 `INACTIVE`로 변경한다.
 
@@ -361,7 +422,7 @@ Request Body는 사용하지 않는다.
 
 ---
 
-## 8. 관리자 객실 논리 삭제
+## 9. 관리자 객실 논리 삭제
 
 인증된 관리자가 지정한 숙소에 소속된 객실을 삭제한다. 객실 DB 행은 유지하고 상태만 `INACTIVE`로 변경한다.
 
@@ -403,7 +464,7 @@ Request Body는 사용하지 않는다.
 
 ---
 
-## 9. 담당자별 구현 경계
+## 10. 담당자별 구현 경계
 
 | 담당자 | 구현 범위 |
 | --- | --- |
@@ -428,7 +489,7 @@ AdminController
 
 ---
 
-## 10. 에러 코드 목록
+## 11. 에러 코드 목록
 
 | Error Code | HTTP | 메시지 초안 |
 | --- | --- | --- |
@@ -447,7 +508,7 @@ AdminController
 
 ---
 
-## 11. 팀 회의에서 최종 확정할 항목
+## 12. 팀 회의에서 최종 확정할 항목
 
 - [ ] 최초 관리자 계정을 어떤 방식으로 준비할지
 - [ ] 실제 인증 객체에서 권한을 어떤 형태로 제공할지

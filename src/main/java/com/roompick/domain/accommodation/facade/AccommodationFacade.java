@@ -234,17 +234,18 @@ public class AccommodationFacade {
      * 숙소 상세 조회에서는 불필요한 객실 조회를 수행하지 않습니다.
      */
     public AccommodationDetailResponseDto getAccommodationDetail(
-        Long accommodationId
+        Long accommodationId,
+        boolean admin
     ) {
         Accommodation accommodation =
-            accommodationService.findActiveByIdWithImages(
-                accommodationId
-            );
+            admin
+                ? accommodationService.findAnyByIdWithImages(accommodationId)
+                : accommodationService.findActiveByIdWithImages(accommodationId);
 
         AccommodationDetailResponseDto response =
-            AccommodationDetailResponseDto.from(
-                accommodation
-            );
+            admin
+                ? AccommodationDetailResponseDto.forAdmin(accommodation)
+                : AccommodationDetailResponseDto.from(accommodation);
 
         popularAccommodationRankingService.recordView(
             accommodationId
@@ -260,17 +261,19 @@ public class AccommodationFacade {
      * 현재 적용되는 타임세일 가격을 계산해 응답합니다.
      */
     public List<RoomListResponseDto> getRoomList(
-        Long accommodationId
+        Long accommodationId,
+        boolean admin
     ) {
-        accommodationService.findActiveById(
-            accommodationId
-        );
+        if (admin) {
+            accommodationService.findById(accommodationId);
+        } else {
+            accommodationService.findActiveById(accommodationId);
+        }
 
         List<RoomListResponseDto> rooms =
-            roomService
-                .findAllActiveSummaryByAccommodationId(
-                    accommodationId
-                );
+            admin
+                ? roomService.findAllSummaryByAccommodationIdForAdmin(accommodationId)
+                : roomService.findAllActiveSummaryByAccommodationId(accommodationId);
 
         Map<Long, Long> appliedPrices =
             timeSalePriceService

@@ -118,6 +118,24 @@ public class AccommodationService {
     }
 
     /**
+     * 운영 상태와 무관하게 숙소를 이미지 전체 목록과 함께 조회합니다.
+     *
+     * 관리자 상세 조회 전용이며, INACTIVE 숙소도 그대로 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public Accommodation findAnyByIdWithImages(
+        Long accommodationId
+    ) {
+        return accommodationRepository
+            .findByIdWithImages(accommodationId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ACCOMMODATION_NOT_FOUND
+                )
+            );
+    }
+
+    /**
      * 운영 중인 숙소 목록을 페이지 단위로 조회합니다.
      *
      * 페이지 요청값을 검증한 뒤 목록 화면에 필요한 필드만
@@ -224,7 +242,7 @@ public class AccommodationService {
      * 커밋 이후 기존 인기 숙소 캐시를 삭제합니다.
      */
     @Transactional
-    public void inactivateAccommodation(
+    public Accommodation inactivateAccommodation(
         Long accommodationId
     ) {
         Accommodation accommodation =
@@ -237,6 +255,28 @@ public class AccommodationService {
         );
 
         popularAccommodationCacheEvictionService.evictAll();
+
+        return accommodation;
+    }
+
+    /**
+     * 비공개 처리된 숙소를 다시 운영 중 상태로 되돌립니다.
+     *
+     * 소속 객실은 건드리지 않는다 — 비공개 전환 시 함께 내려간 객실들은
+     * 관리자가 필요한 객실만 골라 다시 공개해야 한다.
+     */
+    @Transactional
+    public Accommodation activateAccommodation(
+        Long accommodationId
+    ) {
+        Accommodation accommodation =
+            findById(accommodationId);
+
+        accommodation.activate();
+
+        popularAccommodationCacheEvictionService.evictAll();
+
+        return accommodation;
     }
 
     @Transactional

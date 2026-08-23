@@ -312,7 +312,8 @@ class AccommodationFacadeTest {
 
         AccommodationDetailResponseDto response =
             accommodationFacade.getAccommodationDetail(
-                accommodationId
+                accommodationId,
+                false
             );
 
         assertThat(response.name())
@@ -361,7 +362,8 @@ class AccommodationFacadeTest {
 
         assertThatThrownBy(
             () -> accommodationFacade.getAccommodationDetail(
-                accommodationId
+                accommodationId,
+                false
             )
         ).isSameAs(exception);
 

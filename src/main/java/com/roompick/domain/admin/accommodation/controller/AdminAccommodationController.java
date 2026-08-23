@@ -7,15 +7,19 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
+import com.roompick.domain.admin.accommodation.dto.request.AccommodationStatusUpdateRequestDto;
 import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
+import com.roompick.domain.admin.accommodation.dto.response.AccommodationStatusUpdateResponseDto;
 import com.roompick.domain.admin.accommodation.facade.AdminAccommodationFacade;
 import com.roompick.global.common.ApiResponseDto;
 
@@ -49,6 +53,31 @@ public class AdminAccommodationController {
                 .body(
                     ApiResponseDto.success(
                         "숙소가 등록되었습니다.",
+                        response
+                    )
+                );
+
+        return result;
+    }
+
+    @PatchMapping("/{accommodationId}/status")
+    public ResponseEntity<ApiResponseDto<AccommodationStatusUpdateResponseDto>>
+    updateAccommodationStatus(
+        @PathVariable Long accommodationId,
+        @Valid @RequestBody AccommodationStatusUpdateRequestDto request
+    ) {
+        AccommodationStatusUpdateResponseDto response =
+            adminAccommodationFacade.updateAccommodationStatus(
+                accommodationId,
+                request
+            );
+
+        ResponseEntity<ApiResponseDto<AccommodationStatusUpdateResponseDto>> result =
+            ResponseEntity
+                .status(HttpStatus.OK)
+                .body(
+                    ApiResponseDto.success(
+                        "숙소 상태가 변경되었습니다.",
                         response
                     )
                 );

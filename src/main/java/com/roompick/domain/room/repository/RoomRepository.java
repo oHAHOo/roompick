@@ -122,6 +122,47 @@ public interface RoomRepository
     );
 
     /**
+     * 관리자 상세 조회에서 운영 상태와 무관하게 객실을 조회합니다.
+     *
+     * 상세 응답에 이미지 전체 목록이 필요하므로 fetch join으로 함께 가져옵니다.
+     */
+    @Query("""
+        SELECT room
+        FROM Room room
+        LEFT JOIN FETCH room.images
+        WHERE room.id = :roomId
+        """)
+    Optional<Room> findAnyByIdForAdmin(
+        @Param("roomId") Long roomId
+    );
+
+    /**
+     * 관리자 목록 조회에서 운영 상태와 무관하게
+     * 특정 숙소에 소속된 모든 객실을 목록 DTO로 조회합니다.
+     */
+    @Query("""
+        SELECT new com.roompick.domain.room.dto.RoomListResponseDto(
+            room.id,
+            room.name,
+            room.pricePerNight,
+            room.standardCapacity,
+            room.maxCapacity,
+            image.imageUrl,
+            room.status
+        )
+        FROM Room room
+        LEFT JOIN room.images image
+            ON image.sortOrder = 0
+        WHERE room.accommodation.id = :accommodationId
+        ORDER BY room.roomNumber ASC, room.id ASC
+        """)
+    List<RoomListResponseDto>
+    findAllSummaryByAccommodationIdForAdmin(
+        @Param("accommodationId")
+        Long accommodationId
+    );
+
+    /**
      * 숙소 논리 삭제 시 소속 객실을 한 번의 벌크 UPDATE로
      * 모두 비활성화합니다.
      *
