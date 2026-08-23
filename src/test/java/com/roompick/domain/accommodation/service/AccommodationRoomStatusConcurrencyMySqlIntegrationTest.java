@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -107,6 +108,16 @@ class AccommodationRoomStatusConcurrencyMySqlIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    /*
+     * 인기 숙소 캐시 삭제는 Redis에 의존하는데, 이 테스트가 검증하려는 것은
+     * 숙소·객실 상태 락 순서이지 캐시 삭제 자체가 아니다. CI의 MySQL
+     * 통합 테스트 환경에는 Redis가 없으므로 실제 호출 대신 Mock으로
+     * 대체해 캐시 계층과 무관하게 동작하도록 한다.
+     */
+    @MockitoBean
+    private PopularAccommodationCacheEvictionService
+        popularAccommodationCacheEvictionService;
 
     @AfterEach
     void tearDown() {
