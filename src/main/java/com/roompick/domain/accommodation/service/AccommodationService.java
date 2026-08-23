@@ -61,6 +61,28 @@ public class AccommodationService {
     }
 
     /**
+     * 숙소 상태 변경과 소속 객실 공개 전환처럼 숙소 단위로 직렬화해야 하는
+     * 관리자 작업에서 대상 숙소 행에 비관적 쓰기 락을 획득합니다.
+     *
+     * 숙소를 INACTIVE로 바꾸는 트랜잭션과 개별 객실을 ACTIVE로 바꾸는
+     * 트랜잭션이 같은 숙소 행을 두고 경쟁하면, 락 없이는 숙소가 INACTIVE로
+     * 확정된 뒤에도 객실만 ACTIVE로 남는 상태가 만들어질 수 있다. 두 경로
+     * 모두 이 메서드로 같은 행을 먼저 잠가 순서를 강제한다.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Accommodation findByIdForStatusUpdate(
+        Long accommodationId
+    ) {
+        return accommodationRepository
+            .findByIdForUpdate(accommodationId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ACCOMMODATION_NOT_FOUND
+                )
+            );
+    }
+
+    /**
      * 운영 중인 숙소를 ID로 조회합니다.
      *
      * 존재하지 않는 숙소는 숙소 없음 예외를 발생시키고,
@@ -115,6 +137,24 @@ public class AccommodationService {
         }
 
         return accommodation;
+    }
+
+    /**
+     * 운영 상태와 무관하게 숙소를 이미지 전체 목록과 함께 조회합니다.
+     *
+     * 관리자 상세 조회 전용이며, INACTIVE 숙소도 그대로 반환합니다.
+     */
+    @Transactional(readOnly = true)
+    public Accommodation findAnyByIdWithImages(
+        Long accommodationId
+    ) {
+        return accommodationRepository
+            .findByIdWithImages(accommodationId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ACCOMMODATION_NOT_FOUND
+                )
+            );
     }
 
     /**
@@ -224,11 +264,11 @@ public class AccommodationService {
      * 커밋 이후 기존 인기 숙소 캐시를 삭제합니다.
      */
     @Transactional
-    public void inactivateAccommodation(
+    public Accommodation inactivateAccommodation(
         Long accommodationId
     ) {
         Accommodation accommodation =
-            findById(accommodationId);
+            findByIdForStatusUpdate(accommodationId);
 
         accommodation.inactivate();
 
@@ -237,6 +277,28 @@ public class AccommodationService {
         );
 
         popularAccommodationCacheEvictionService.evictAll();
+
+        return accommodation;
+    }
+
+    /**
+     * 비공개 처리된 숙소를 다시 운영 중 상태로 되돌립니다.
+     *
+     * 소속 객실은 건드리지 않는다 — 비공개 전환 시 함께 내려간 객실들은
+     * 관리자가 필요한 객실만 골라 다시 공개해야 한다.
+     */
+    @Transactional
+    public Accommodation activateAccommodation(
+        Long accommodationId
+    ) {
+        Accommodation accommodation =
+            findByIdForStatusUpdate(accommodationId);
+
+        accommodation.activate();
+
+        popularAccommodationCacheEvictionService.evictAll();
+
+        return accommodation;
     }
 
     @Transactional

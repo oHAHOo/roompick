@@ -210,7 +210,8 @@ class PopularAccommodationRedisFailureIntegrationTest {
          */
         AccommodationDetailResponseDto response =
             accommodationFacade.getAccommodationDetail(
-                accommodationId
+                accommodationId,
+                false
             );
 
         /*

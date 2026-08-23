@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
+import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.accommodation.service.PopularAccommodationCacheEvictionService;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.domain.room.entity.Room;
@@ -24,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class RoomService {
 
     private final RoomRepository roomRepository;
+    private final AccommodationService accommodationService;
     private final PopularAccommodationCacheEvictionService
         popularAccommodationCacheEvictionService;
 
@@ -56,6 +58,35 @@ public class RoomService {
     ) {
         return roomRepository
             .findAllActiveSummaryByAccommodationId(
+                accommodationId
+            );
+    }
+
+    /**
+     * 관리자 상세 조회에서 운영 상태와 무관하게 객실을 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public Room findAnyByIdForAdmin(Long roomId) {
+        return roomRepository
+            .findAnyByIdForAdmin(roomId)
+            .orElseThrow(() ->
+                new BusinessException(
+                    ErrorCode.ROOM_NOT_FOUND
+                )
+            );
+    }
+
+    /**
+     * 관리자 목록 조회에서 운영 상태와 무관하게
+     * 특정 숙소에 소속된 모든 객실 목록을 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<RoomListResponseDto>
+    findAllSummaryByAccommodationIdForAdmin(
+        Long accommodationId
+    ) {
+        return roomRepository
+            .findAllSummaryByAccommodationIdForAdmin(
                 accommodationId
             );
     }
@@ -166,21 +197,29 @@ public class RoomService {
     /**
      * 지정한 숙소에 실제로 소속된 객실을
      * 사용자에게 공개합니다.
+     *
+     * 숙소를 INACTIVE로 바꾸는 관리자 작업과 같은 숙소 행을 두고 경쟁할 수
+     * 있으므로, 객실을 조회하기 전에 먼저 숙소 행에 비관적 쓰기 락을 건다.
+     * 락이 없으면 숙소가 방금 INACTIVE로 확정된 직후에도 이 트랜잭션이
+     * "숙소는 ACTIVE"라는 낡은 값을 근거로 객실을 ACTIVE로 바꿔버릴 수 있다.
      */
     @Transactional
     public Room activateRoom(
         Long accommodationId,
         Long roomId
     ) {
+        Accommodation accommodation =
+            accommodationService.findByIdForStatusUpdate(
+                accommodationId
+            );
+
+        validateAccommodationActive(accommodation);
+
         Room room =
-            findByIdAndAccommodationIdWithAccommodation(
+            findByIdAndAccommodationId(
                 accommodationId,
                 roomId
             );
-
-        validateAccommodationActive(
-            room.getAccommodation()
-        );
 
         room.activate();
 

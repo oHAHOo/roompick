@@ -19,7 +19,9 @@ import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
+import com.roompick.domain.admin.accommodation.dto.request.AccommodationStatusUpdateRequestDto;
 import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
+import com.roompick.domain.admin.accommodation.dto.response.AccommodationStatusUpdateResponseDto;
 import com.roompick.global.common.s3.ImageUploader;
 
 @ExtendWith(MockitoExtension.class)
@@ -125,5 +127,88 @@ class AdminAccommodationFacadeTest {
         then(accommodationService)
             .should()
             .inactivateAccommodation(accommodationId);
+    }
+
+    @Test
+    @DisplayName("관리자 숙소 공개 요청을 처리한다")
+    void 관리자_숙소_공개_요청을_처리한다() {
+        // given
+        Long accommodationId = 1L;
+        AccommodationStatusUpdateRequestDto request =
+            new AccommodationStatusUpdateRequestDto(AccommodationStatus.ACTIVE);
+
+        Accommodation accommodation =
+            Accommodation.create(
+                "룸픽 호텔",
+                "서울특별시 중구",
+                "테스트 숙소",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0)
+            );
+
+        given(
+            accommodationService.activateAccommodation(accommodationId)
+        ).willReturn(accommodation);
+
+        // when
+        AccommodationStatusUpdateResponseDto response =
+            adminAccommodationFacade.updateAccommodationStatus(
+                accommodationId,
+                request
+            );
+
+        // then
+        assertThat(response.status())
+            .isEqualTo(AccommodationStatus.ACTIVE);
+
+        then(accommodationService)
+            .should()
+            .activateAccommodation(accommodationId);
+
+        then(accommodationService)
+            .should(org.mockito.Mockito.never())
+            .inactivateAccommodation(accommodationId);
+    }
+
+    @Test
+    @DisplayName("관리자 숙소 비공개 요청을 처리한다")
+    void 관리자_숙소_비공개_요청을_처리한다() {
+        // given
+        Long accommodationId = 1L;
+        AccommodationStatusUpdateRequestDto request =
+            new AccommodationStatusUpdateRequestDto(AccommodationStatus.INACTIVE);
+
+        Accommodation accommodation =
+            Accommodation.create(
+                "룸픽 호텔",
+                "서울특별시 중구",
+                "테스트 숙소",
+                LocalTime.of(15, 0),
+                LocalTime.of(11, 0)
+            );
+        accommodation.inactivate();
+
+        given(
+            accommodationService.inactivateAccommodation(accommodationId)
+        ).willReturn(accommodation);
+
+        // when
+        AccommodationStatusUpdateResponseDto response =
+            adminAccommodationFacade.updateAccommodationStatus(
+                accommodationId,
+                request
+            );
+
+        // then
+        assertThat(response.status())
+            .isEqualTo(AccommodationStatus.INACTIVE);
+
+        then(accommodationService)
+            .should()
+            .inactivateAccommodation(accommodationId);
+
+        then(accommodationService)
+            .should(org.mockito.Mockito.never())
+            .activateAccommodation(accommodationId);
     }
 }

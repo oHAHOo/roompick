@@ -233,6 +233,16 @@ public class Accommodation extends BaseTimeEntity {
     }
 
     /**
+     * 숙소를 다시 운영 중 상태로 되돌립니다.
+     *
+     * 소속 객실 상태는 건드리지 않는다 — 비공개 전환 시 함께 내려간 객실들은
+     * 관리자가 필요한 객실만 골라 다시 공개해야 한다.
+     */
+    public void activate() {
+        this.status = AccommodationStatus.ACTIVE;
+    }
+
+    /**
      * 등록 시점에 업로드된 이미지 URL을 순서대로 추가합니다.
      */
     public void addImages(List<String> imageUrls) {

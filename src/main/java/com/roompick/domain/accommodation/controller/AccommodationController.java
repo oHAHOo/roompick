@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,8 +17,10 @@ import com.roompick.domain.accommodation.dto.AccommodationPageResponseDto;
 import com.roompick.domain.accommodation.dto.PopularAccommodationResponseDto;
 import com.roompick.domain.accommodation.facade.AccommodationFacade;
 import com.roompick.domain.accommodation.type.PopularAccommodationPeriod;
+import com.roompick.domain.member.entity.MemberRole;
 import com.roompick.domain.room.dto.RoomListResponseDto;
 import com.roompick.global.common.ApiResponseDto;
+import com.roompick.global.security.AuthMember;
 
 import lombok.RequiredArgsConstructor;
 
@@ -175,15 +178,23 @@ public class AccommodationController {
      *
      * 숙소와 객실이 모두 운영 중인 경우에만
      * 와이어프레임에 필요한 객실 요약 정보를 반환합니다.
+     *
+     * ADMIN으로 로그인한 요청은 INACTIVE 숙소·객실도 조회할 수 있습니다.
      */
     @GetMapping("/{accommodationId}/rooms")
     public ResponseEntity<ApiResponseDto<List<RoomListResponseDto>>>
     getRoomList(
-        @PathVariable Long accommodationId
+        @PathVariable Long accommodationId,
+        @AuthenticationPrincipal AuthMember authMember
     ) {
+        boolean admin =
+            authMember != null
+                && authMember.role() == MemberRole.ADMIN;
+
         List<RoomListResponseDto> result =
             accommodationFacade.getRoomList(
-                accommodationId
+                accommodationId,
+                admin
             );
 
         ResponseEntity<ApiResponseDto<List<RoomListResponseDto>>> response =
@@ -204,15 +215,24 @@ public class AccommodationController {
      *
      * 객실 목록은 숙소별 객실 목록 조회 API에서
      * 별도로 제공합니다.
+     *
+     * ADMIN으로 로그인한 요청은 INACTIVE 숙소도 조회할 수 있고,
+     * 응답에 운영 상태가 포함됩니다.
      */
     @GetMapping("/{accommodationId}")
     public ResponseEntity<ApiResponseDto<AccommodationDetailResponseDto>>
     getAccommodationDetail(
-        @PathVariable Long accommodationId
+        @PathVariable Long accommodationId,
+        @AuthenticationPrincipal AuthMember authMember
     ) {
+        boolean admin =
+            authMember != null
+                && authMember.role() == MemberRole.ADMIN;
+
         AccommodationDetailResponseDto result =
             accommodationFacade.getAccommodationDetail(
-                accommodationId
+                accommodationId,
+                admin
             );
 
         ResponseEntity<ApiResponseDto<AccommodationDetailResponseDto>> response =

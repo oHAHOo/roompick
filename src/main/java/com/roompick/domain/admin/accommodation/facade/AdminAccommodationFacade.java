@@ -8,7 +8,9 @@ import org.springframework.web.multipart.MultipartFile;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.service.AccommodationService;
 import com.roompick.domain.admin.accommodation.dto.request.AccommodationCreateRequestDto;
+import com.roompick.domain.admin.accommodation.dto.request.AccommodationStatusUpdateRequestDto;
 import com.roompick.domain.admin.accommodation.dto.response.AccommodationCreateResponseDto;
+import com.roompick.domain.admin.accommodation.dto.response.AccommodationStatusUpdateResponseDto;
 import com.roompick.global.common.s3.ImageUploader;
 
 import lombok.RequiredArgsConstructor;
@@ -59,6 +61,18 @@ public class AdminAccommodationFacade {
         accommodationService.inactivateAccommodation(
             accommodationId
         );
+    }
+
+    public AccommodationStatusUpdateResponseDto updateAccommodationStatus(
+        Long accommodationId,
+        AccommodationStatusUpdateRequestDto request
+    ) {
+        Accommodation accommodation = switch (request.status()) {
+            case ACTIVE -> accommodationService.activateAccommodation(accommodationId);
+            case INACTIVE -> accommodationService.inactivateAccommodation(accommodationId);
+        };
+
+        return AccommodationStatusUpdateResponseDto.from(accommodation);
     }
 
     private List<String> uploadImages(

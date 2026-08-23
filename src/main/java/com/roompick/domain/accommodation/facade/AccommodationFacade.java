@@ -234,21 +234,28 @@ public class AccommodationFacade {
      * 숙소 상세 조회에서는 불필요한 객실 조회를 수행하지 않습니다.
      */
     public AccommodationDetailResponseDto getAccommodationDetail(
-        Long accommodationId
+        Long accommodationId,
+        boolean admin
     ) {
         Accommodation accommodation =
-            accommodationService.findActiveByIdWithImages(
-                accommodationId
-            );
+            admin
+                ? accommodationService.findAnyByIdWithImages(accommodationId)
+                : accommodationService.findActiveByIdWithImages(accommodationId);
 
         AccommodationDetailResponseDto response =
-            AccommodationDetailResponseDto.from(
-                accommodation
-            );
+            admin
+                ? AccommodationDetailResponseDto.forAdmin(accommodation)
+                : AccommodationDetailResponseDto.from(accommodation);
 
-        popularAccommodationRankingService.recordView(
-            accommodationId
-        );
+        /*
+         * 관리자의 관리 목적 조회(INACTIVE 포함)까지 인기 점수에 반영되면
+         * 실제 사용자 인기도와 무관하게 랭킹이 왜곡될 수 있어 사용자 조회만 기록한다.
+         */
+        if (!admin) {
+            popularAccommodationRankingService.recordView(
+                accommodationId
+            );
+        }
 
         return response;
     }
@@ -260,17 +267,19 @@ public class AccommodationFacade {
      * 현재 적용되는 타임세일 가격을 계산해 응답합니다.
      */
     public List<RoomListResponseDto> getRoomList(
-        Long accommodationId
+        Long accommodationId,
+        boolean admin
     ) {
-        accommodationService.findActiveById(
-            accommodationId
-        );
+        if (admin) {
+            accommodationService.findById(accommodationId);
+        } else {
+            accommodationService.findActiveById(accommodationId);
+        }
 
         List<RoomListResponseDto> rooms =
-            roomService
-                .findAllActiveSummaryByAccommodationId(
-                    accommodationId
-                );
+            admin
+                ? roomService.findAllSummaryByAccommodationIdForAdmin(accommodationId)
+                : roomService.findAllActiveSummaryByAccommodationId(accommodationId);
 
         Map<Long, Long> appliedPrices =
             timeSalePriceService

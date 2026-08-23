@@ -29,14 +29,18 @@ public class RoomFacade {
 
     /**
      * 객실 상세 정보와 현재 적용 가격을 조회합니다.
+     *
+     * 관리자는 INACTIVE 객실도 조회할 수 있고,
+     * 응답에 운영 상태가 포함됩니다.
      */
     public RoomDetailResponseDto getRoomDetail(
-        Long roomId
+        Long roomId,
+        boolean admin
     ) {
         Room room =
-            roomService.findActiveById(
-                roomId
-            );
+            admin
+                ? roomService.findAnyByIdForAdmin(roomId)
+                : roomService.findActiveById(roomId);
 
         long appliedPricePerNight =
             timeSalePriceService
@@ -44,10 +48,9 @@ public class RoomFacade {
                     room
                 );
 
-        return RoomDetailResponseDto.from(
-            room,
-            appliedPricePerNight
-        );
+        return admin
+            ? RoomDetailResponseDto.forAdmin(room, appliedPricePerNight)
+            : RoomDetailResponseDto.from(room, appliedPricePerNight);
     }
 
     /**

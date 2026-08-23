@@ -49,6 +49,62 @@ class RoomFacadeTest {
     private RoomFacade roomFacade;
 
     @Test
+    @DisplayName("일반 사용자는 운영 중인 객실 상세만 조회할 수 있다")
+    void 일반_사용자는_운영_중인_객실_상세만_조회할_수_있다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom(roomId);
+
+        given(roomService.findActiveById(roomId))
+            .willReturn(room);
+
+        given(
+            timeSalePriceService.calculatePricePerNight(room)
+        ).willReturn(100_000L);
+
+        // when
+        var response = roomFacade.getRoomDetail(roomId, false);
+
+        // then
+        assertThat(response.roomId()).isEqualTo(roomId);
+        assertThat(response.status()).isNull();
+
+        then(roomService)
+            .should(org.mockito.Mockito.never())
+            .findAnyByIdForAdmin(roomId);
+    }
+
+    @Test
+    @DisplayName("관리자는 비공개 객실 상세도 상태를 포함해 조회할 수 있다")
+    void 관리자는_비공개_객실_상세도_조회할_수_있다() {
+        // given
+        Long roomId = 1L;
+        Room room = createRoom(roomId);
+        room.deactivate();
+
+        given(roomService.findAnyByIdForAdmin(roomId))
+            .willReturn(room);
+
+        given(
+            timeSalePriceService.calculatePricePerNight(room)
+        ).willReturn(100_000L);
+
+        // when
+        var response = roomFacade.getRoomDetail(roomId, true);
+
+        // then
+        assertThat(response.roomId()).isEqualTo(roomId);
+        assertThat(response.status())
+            .isEqualTo(
+                com.roompick.domain.room.entity.RoomStatus.INACTIVE
+            );
+
+        then(roomService)
+            .should(org.mockito.Mockito.never())
+            .findActiveById(roomId);
+    }
+
+    @Test
     @DisplayName(
         "객실을 예약할 수 있으면 예상 금액과 available true를 반환한다"
     )

@@ -6,10 +6,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalTime;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,9 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.roompick.domain.accommodation.entity.Accommodation;
 import com.roompick.domain.accommodation.entity.AccommodationStatus;
 import com.roompick.domain.accommodation.repository.AccommodationRepository;
+import com.roompick.domain.member.entity.MemberRole;
 import com.roompick.domain.room.entity.Room;
 import com.roompick.domain.room.entity.RoomStatus;
 import com.roompick.domain.room.repository.RoomRepository;
+import com.roompick.global.security.JwtTokenProvider;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -41,6 +45,9 @@ class AccommodationControllerTest {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
 
     @Test
     void 전체_숙소_목록_조회에_성공한다() throws Exception {
@@ -141,6 +148,86 @@ class AccommodationControllerTest {
                 .doesNotExist())
             .andExpect(jsonPath("$.data.rooms")
                 .doesNotExist());
+    }
+
+    @Test
+    @DisplayName("비공개 숙소 상세는 익명 요청에서 운영 중지 오류를 반환한다")
+    void 비공개_숙소_상세는_익명_요청에서_운영_중지_오류를_반환한다()
+        throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        deactivateAccommodation(accommodation);
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/accommodations/{accommodationId}",
+                    accommodation.getId()
+                )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code")
+                .value("ACCOMMODATION_INACTIVE"));
+    }
+
+    @Test
+    @DisplayName("비공개 숙소 상세는 일반 회원 요청에서도 운영 중지 오류를 반환한다")
+    void 비공개_숙소_상세는_일반_회원_요청에서도_운영_중지_오류를_반환한다()
+        throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        deactivateAccommodation(accommodation);
+
+        String userToken =
+            jwtTokenProvider.createAccessToken(1L, MemberRole.USER);
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/accommodations/{accommodationId}",
+                    accommodation.getId()
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + userToken
+                    )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code")
+                .value("ACCOMMODATION_INACTIVE"));
+    }
+
+    @Test
+    @DisplayName("관리자는 비공개 숙소 상세를 상태와 함께 조회할 수 있다")
+    void 관리자는_비공개_숙소_상세를_조회할_수_있다()
+        throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        deactivateAccommodation(accommodation);
+
+        String adminToken =
+            jwtTokenProvider.createAccessToken(1L, MemberRole.ADMIN);
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/accommodations/{accommodationId}",
+                    accommodation.getId()
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + adminToken
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.accommodationId")
+                .value(accommodation.getId()))
+            .andExpect(jsonPath("$.data.status")
+                .value("INACTIVE"));
     }
 
     @Test
@@ -405,7 +492,7 @@ class AccommodationControllerTest {
         entityManager.clear();
 
         // when & then:
-        // 숙소별 객실 목록에는 ACTIVE 객실만 포함됩니다.
+        // 숙소별 객실 목록에는 ACTIVE 객실만 포함되고, status 필드는 노출되지 않습니다.
         mockMvc.perform(
                 get(
                     "/api/v1/accommodations/{accommodationId}/rooms",
@@ -420,7 +507,91 @@ class AccommodationControllerTest {
             .andExpect(jsonPath("$.data[0].roomId")
                 .value(activeRoom.getId()))
             .andExpect(jsonPath("$.data[0].name")
-                .value("운영 중인 객실"));
+                .value("운영 중인 객실"))
+            .andExpect(jsonPath("$.data[0].status")
+                .doesNotExist());
+    }
+
+    @Test
+    @DisplayName("비공개 숙소의 객실 목록은 익명 요청에서 운영 중지 오류를 반환한다")
+    void 비공개_숙소의_객실_목록은_익명_요청에서_운영_중지_오류를_반환한다()
+        throws Exception {
+        // given
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+        deactivateAccommodation(accommodation);
+
+        // when & then
+        mockMvc.perform(
+                get(
+                    "/api/v1/accommodations/{accommodationId}/rooms",
+                    accommodation.getId()
+                )
+            )
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code")
+                .value("ACCOMMODATION_INACTIVE"));
+    }
+
+    @Test
+    @DisplayName("관리자는 비공개 숙소의 객실 목록을 상태와 함께 조회할 수 있다")
+    void 관리자는_비공개_숙소의_객실_목록을_조회할_수_있다()
+        throws Exception {
+        // given: 비공개 숙소에 ACTIVE 객실과 INACTIVE 객실이 함께 있습니다.
+        Accommodation accommodation =
+            accommodationRepository.save(createAccommodation());
+
+        Room activeRoom = Room.create(
+            accommodation,
+            "101",
+            "운영 중인 객실",
+            "운영 중인 테스트 객실",
+            100000L,
+            2,
+            2
+        );
+        activeRoom.activate();
+        roomRepository.save(activeRoom);
+
+        Room inactiveRoom = roomRepository.save(
+            Room.create(
+                accommodation,
+                "202",
+                "운영 중단 객실",
+                "운영 중단 테스트 객실",
+                200000L,
+                2,
+                4
+            )
+        );
+
+        deactivateAccommodation(accommodation);
+
+        String adminToken =
+            jwtTokenProvider.createAccessToken(1L, MemberRole.ADMIN);
+
+        // when & then: 숙소가 비공개여도 관리자는 소속 객실 전체를 조회할 수 있습니다.
+        mockMvc.perform(
+                get(
+                    "/api/v1/accommodations/{accommodationId}/rooms",
+                    accommodation.getId()
+                )
+                    .header(
+                        HttpHeaders.AUTHORIZATION,
+                        "Bearer " + adminToken
+                    )
+            )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()")
+                .value(2))
+            .andExpect(jsonPath("$.data[0].roomId")
+                .value(activeRoom.getId()))
+            .andExpect(jsonPath("$.data[0].status")
+                .value("ACTIVE"))
+            .andExpect(jsonPath("$.data[1].roomId")
+                .value(inactiveRoom.getId()))
+            .andExpect(jsonPath("$.data[1].status")
+                .value("INACTIVE"));
     }
 
     private Accommodation createAccommodation() {
@@ -431,6 +602,13 @@ class AccommodationControllerTest {
             LocalTime.of(15, 0),
             LocalTime.of(11, 0)
         );
+    }
+
+    private void deactivateAccommodation(
+        Accommodation accommodation
+    ) {
+        accommodation.inactivate();
+        accommodationRepository.save(accommodation);
     }
 
     private Room createRoom(Accommodation accommodation) {
