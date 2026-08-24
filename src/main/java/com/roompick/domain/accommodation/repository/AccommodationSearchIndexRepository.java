@@ -40,8 +40,11 @@ public interface AccommodationSearchIndexRepository
             accommodation.address AS address,
             accommodation.status AS status,
             accommodation.latitude AS latitude,
-            accommodation.longitude AS longitude
+            accommodation.longitude AS longitude,
+            image.imageUrl AS imageUrl
         FROM Accommodation accommodation
+        LEFT JOIN accommodation.images image
+            ON image.sortOrder = 0
         WHERE accommodation.id > :lastAccommodationId
         AND accommodation.latitude IS NOT NULL
         AND accommodation.longitude IS NOT NULL

@@ -124,7 +124,8 @@ class AccommodationFacadeTest {
                     "서울특별시 중구",
                     37.5658,
                     126.9785,
-                    0.85
+                    0.85,
+                    "https://images.roompick.example.com/accommodations/1.jpg"
                 )
             );
 
@@ -200,7 +201,8 @@ class AccommodationFacadeTest {
                     "서울특별시 중구",
                     37.5658,
                     126.9785,
-                    0.85
+                    0.85,
+                    "https://images.roompick.example.com/accommodations/1.jpg"
                 )
             );
 

@@ -54,7 +54,8 @@ class AccommodationElasticsearchLocationSearchServiceTest {
                 "서울특별시 중구",
                 "ACTIVE",
                 37.5658,
-                126.9785
+                126.9785,
+                "https://images.roompick.example.com/accommodations/1.jpg"
             );
 
         AccommodationElasticsearchLocationSearchResult searchResult =
@@ -108,6 +109,9 @@ class AccommodationElasticsearchLocationSearchServiceTest {
 
         assertThat(response.distanceKm())
             .isEqualTo(0.85);
+
+        assertThat(response.imageUrl())
+            .isEqualTo("https://images.roompick.example.com/accommodations/1.jpg");
     }
 
     @Test

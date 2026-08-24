@@ -53,7 +53,8 @@ class AccommodationLocationSearchControllerTest {
                 "서울특별시 중구",
                 37.565800,
                 126.978500,
-                0.85
+                0.85,
+                "https://images.roompick.example.com/accommodations/1.jpg"
             );
 
         given(
@@ -95,7 +96,9 @@ class AccommodationLocationSearchControllerTest {
             .andExpect(jsonPath("$.data[0].longitude")
                 .value(126.978500))
             .andExpect(jsonPath("$.data[0].distanceKm")
-                .value(0.85));
+                .value(0.85))
+            .andExpect(jsonPath("$.data[0].imageUrl")
+                .value("https://images.roompick.example.com/accommodations/1.jpg"));
 
         then(accommodationFacade)
             .should()

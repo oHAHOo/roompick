@@ -19,4 +19,6 @@ public interface AccommodationLocationSearchProjection {
     Double getLongitude();
 
     Double getDistanceMeters();
+
+    String getImageUrl();
 }
