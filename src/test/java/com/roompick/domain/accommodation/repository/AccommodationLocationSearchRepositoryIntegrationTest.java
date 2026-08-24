@@ -207,6 +207,75 @@ class AccommodationLocationSearchRepositoryIntegrationTest {
 
     @Test
     @DisplayName(
+        "검색 결과에 대표(0번) 이미지 URL을 포함하고, 이미지가 없으면 null을 반환한다"
+    )
+    void searchNearbyIncludesRepresentativeImageUrl() {
+        // given: 이미지가 두 장인 숙소와 이미지가 없는 숙소가 있습니다.
+        Accommodation accommodationWithImages =
+            saveAccommodation(
+                "시청 룸픽 호텔",
+                "서울특별시 중구 세종대로",
+                "37.565800",
+                "126.978500"
+            );
+        accommodationWithImages.addImages(
+            List.of(
+                "https://images.example.com/representative.jpg",
+                "https://images.example.com/second.jpg"
+            )
+        );
+        accommodationRepository.save(accommodationWithImages);
+
+        Accommodation accommodationWithoutImages =
+            saveAccommodation(
+                "명동 룸픽 호텔",
+                "서울특별시 중구 명동",
+                "37.560900",
+                "126.986000"
+            );
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        List<AccommodationLocationSearchProjection> result =
+            searchNearby(
+                null,
+                SEOUL_CITY_HALL_LATITUDE,
+                SEOUL_CITY_HALL_LONGITUDE,
+                2.0,
+                10
+            );
+
+        // then
+        assertThat(result)
+            .hasSize(2);
+
+        AccommodationLocationSearchProjection withImages =
+            result.stream()
+                .filter(projection ->
+                    projection.getAccommodationId()
+                        .equals(accommodationWithImages.getId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(withImages.getImageUrl())
+            .isEqualTo("https://images.example.com/representative.jpg");
+
+        AccommodationLocationSearchProjection withoutImages =
+            result.stream()
+                .filter(projection ->
+                    projection.getAccommodationId()
+                        .equals(accommodationWithoutImages.getId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(withoutImages.getImageUrl())
+            .isNull();
+    }
+
+    @Test
+    @DisplayName(
         "위치 조건과 숙소명 또는 주소 keyword 조건을 함께 적용한다"
     )
     void searchNearbyWithKeyword() {

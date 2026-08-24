@@ -24,4 +24,6 @@ public interface AccommodationSearchIndexProjection {
     BigDecimal getLatitude();
 
     BigDecimal getLongitude();
+
+    String getImageUrl();
 }

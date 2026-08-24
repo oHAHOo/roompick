@@ -66,18 +66,29 @@ public class AccommodationSearchDocument {
     @GeoPointField
     private GeoPoint location;
 
+    /**
+     * 대표(썸네일) 이미지 URL입니다.
+     *
+     * 검색 조건으로 사용하지 않고 응답에 그대로 반환하는 값이라
+     * 분석 없이 저장만 하는 Keyword 타입을 사용합니다.
+     */
+    @Field(type = FieldType.Keyword)
+    private String imageUrl;
+
     private AccommodationSearchDocument(
         Long accommodationId,
         String name,
         String address,
         String status,
-        GeoPoint location
+        GeoPoint location,
+        String imageUrl
     ) {
         this.accommodationId = accommodationId;
         this.name = name;
         this.address = address;
         this.status = status;
         this.location = location;
+        this.imageUrl = imageUrl;
     }
 
     /**
@@ -89,7 +100,8 @@ public class AccommodationSearchDocument {
         String address,
         String status,
         double latitude,
-        double longitude
+        double longitude,
+        String imageUrl
     ) {
         return new AccommodationSearchDocument(
             accommodationId,
@@ -99,7 +111,8 @@ public class AccommodationSearchDocument {
             new GeoPoint(
                 latitude,
                 longitude
-            )
+            ),
+            imageUrl
         );
     }
 }

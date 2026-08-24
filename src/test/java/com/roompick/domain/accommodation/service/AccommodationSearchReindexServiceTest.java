@@ -558,6 +558,11 @@ class AccommodationSearchReindexServiceTest {
                     longitude
                 );
             }
+
+            @Override
+            public String getImageUrl() {
+                return null;
+            }
         };
     }
 }

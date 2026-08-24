@@ -97,7 +97,8 @@ public class AccommodationElasticsearchLocationSearchService {
             document.getAddress(),
             document.getLocation().getLat(),
             document.getLocation().getLon(),
-            searchResult.distanceKm()
+            searchResult.distanceKm(),
+            document.getImageUrl()
         );
     }
 

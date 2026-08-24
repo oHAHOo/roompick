@@ -204,7 +204,8 @@ public class AccommodationSearchReindexService {
                     .doubleValue(),
                 projection
                     .getLongitude()
-                    .doubleValue()
+                    .doubleValue(),
+                projection.getImageUrl()
             );
 
         return IndexQuery

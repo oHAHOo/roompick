@@ -12,6 +12,7 @@ public record AccommodationLocationSearchResponseDto(
     String address,
     double latitude,
     double longitude,
-    double distanceKm
+    double distanceKm,
+    String imageUrl
 ) {
 }

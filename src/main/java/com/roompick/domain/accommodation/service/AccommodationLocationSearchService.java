@@ -119,7 +119,8 @@ public class AccommodationLocationSearchService {
             projection.getAddress(),
             projection.getLatitude(),
             projection.getLongitude(),
-            projection.getDistanceMeters() / 1000.0
+            projection.getDistanceMeters() / 1000.0,
+            projection.getImageUrl()
         );
     }
 

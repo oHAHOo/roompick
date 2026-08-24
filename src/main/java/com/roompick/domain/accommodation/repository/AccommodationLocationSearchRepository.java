@@ -50,7 +50,8 @@ public interface AccommodationLocationSearchRepository
                 searched.address AS address,
                 searched.latitude AS latitude,
                 searched.longitude AS longitude,
-                searched.distanceMeters AS distanceMeters
+                searched.distanceMeters AS distanceMeters,
+                searched.imageUrl AS imageUrl
             FROM (
                 SELECT
                     accommodation.accommodation_id AS accommodationId,
@@ -67,8 +68,12 @@ public interface AccommodationLocationSearchRepository
                             :longitude,
                             :latitude
                         )
-                    ) AS distanceMeters
+                    ) AS distanceMeters,
+                    image.image_url AS imageUrl
                 FROM accommodations accommodation
+                LEFT JOIN accommodation_images image
+                    ON image.accommodation_id = accommodation.accommodation_id
+                    AND image.sort_order = 0
                 WHERE accommodation.status = 'ACTIVE'
                   AND accommodation.latitude IS NOT NULL
                   AND accommodation.longitude IS NOT NULL
