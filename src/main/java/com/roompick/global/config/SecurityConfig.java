@@ -44,7 +44,13 @@ public class SecurityConfig {
     private static final String[] PUBLIC_GET_PATHS = {
         "/api/v1/accommodations/**",
         "/api/v1/rooms/**",
-        "/api/v1/places/**"
+        "/api/v1/places/**",
+        /*
+         * 정확히 이 경로만 허용한다(와일드카드 없음). 특가 점유 요청·상태
+         * 조회(/special-offers/{id}/occupy-requests/**)는 인증이 필요하므로,
+         * 여기에 와일드카드를 쓰면 그 경로까지 함께 공개돼버린다.
+         */
+        "/api/v1/special-offers"
     };
 
     private static final String ADMIN_PATH_PATTERN = "/api/v1/admin/**";
