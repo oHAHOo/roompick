@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.roompick.domain.room.entity.Room;
+import com.roompick.domain.specialOffers.dto.SpecialOfferListResponseDto;
 import com.roompick.domain.specialOffers.entity.SpecialOffer;
 import com.roompick.domain.specialOffers.entity.SpecialOfferStatus;
 import com.roompick.domain.specialOffers.repository.SpecialOfferRepository;
@@ -126,6 +127,14 @@ public class SpecialOfferService {
         return specialOfferRepository.existsActiveOverlapping(
             roomId, SpecialOfferStatus.ACTIVE, checkInDate, checkOutDate
         );
+    }
+
+    /**
+     * 메인 화면 등에서 둘러볼 판매 중인 특가 목록을 조회합니다.
+     */
+    @Transactional(readOnly = true)
+    public List<SpecialOfferListResponseDto> findActiveSummaries() {
+        return specialOfferRepository.findActiveSummaries(SpecialOfferStatus.ACTIVE);
     }
 
     private LocalDateTime now() {

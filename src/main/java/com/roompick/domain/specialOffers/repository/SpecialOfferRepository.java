@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.roompick.domain.specialOffers.dto.SpecialOfferListResponseDto;
 import com.roompick.domain.specialOffers.entity.SpecialOffer;
 import com.roompick.domain.specialOffers.entity.SpecialOfferStatus;
 
@@ -79,6 +80,34 @@ public interface SpecialOfferRepository extends JpaRepository<SpecialOffer, Long
     List<SpecialOffer> findEndTargets(
         @Param("statuses") List<SpecialOfferStatus> statuses,
         @Param("now") LocalDateTime now
+    );
+
+    /**
+     * 메인 화면 등에서 둘러볼 판매 중인 특가 목록을 요약 DTO로 직접 조회합니다.
+     *
+     * 객실·숙소 이름 표시를 위해 room을 통해 accommodation까지 한 번에
+     * 조회하므로 별도의 N+1 쿼리가 발생하지 않습니다. 판매 종료가
+     * 임박한 순으로 정렬합니다.
+     */
+    @Query("""
+        SELECT new com.roompick.domain.specialOffers.dto.SpecialOfferListResponseDto(
+            specialOffer.id,
+            room.accommodation.id,
+            room.accommodation.name,
+            room.id,
+            room.name,
+            specialOffer.price,
+            specialOffer.checkInDate,
+            specialOffer.checkOutDate,
+            specialOffer.endsAt
+        )
+        FROM SpecialOffer specialOffer
+        JOIN specialOffer.room room
+        WHERE specialOffer.status = :status
+        ORDER BY specialOffer.endsAt ASC
+        """)
+    List<SpecialOfferListResponseDto> findActiveSummaries(
+        @Param("status") SpecialOfferStatus status
     );
 
 }
