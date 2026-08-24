@@ -51,8 +51,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Payment extends BaseTimeEntity {
 
+    /*
+     * 이니시스 V2 결제창은 주문번호(oid)로 이 값을 그대로 받는데, 길이 제한이
+     * 1~40자다. 접두사 "roompick-payment-"(17자) + 하이픈 포함 UUID(36자) =
+     * 53자로 이 제한을 넘겨 결제창 호출 자체가 거절됐다. 접두사를 줄이고
+     * UUID의 하이픈을 제거해 3 + 32 = 35자로 맞춘다.
+     */
     private static final String PORTONE_PAYMENT_ID_PREFIX =
-        "roompick-payment-";
+        "rp-";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -214,7 +220,7 @@ public class Payment extends BaseTimeEntity {
      */
     private static String generatePortOnePaymentId() {
         return PORTONE_PAYMENT_ID_PREFIX
-            + UUID.randomUUID();
+            + UUID.randomUUID().toString().replace("-", "");
     }
 
     private void validateReadyStatus() {
