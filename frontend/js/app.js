@@ -14,8 +14,10 @@ import { renderSpecialOffer } from "./pages/specialOffer.js";
 import { renderRoomCreate } from "./pages/roomCreate.js";
 import { renderTimeSaleCreate } from "./pages/timeSaleCreate.js";
 import { renderSpecialOfferCreate } from "./pages/specialOfferCreate.js";
+import { renderTravelPlan } from "./pages/travelPlan.js";
 
 route("/", renderHome);
+route("/travel-plan", renderTravelPlan);
 route("/login", renderLogin);
 route("/signup", renderSignup);
 route("/accommodations/:id", renderAccommodationDetail);
@@ -62,6 +64,7 @@ export function renderNav() {
 
   nav.innerHTML = `
     <a href="#/">숙소 찾기</a>
+    <a href="#/travel-plan">여행 계획</a>
     ${loggedIn ? `<a href="#/reservations">내 예약</a>` : ""}
     ${loggedIn && role === "ADMIN" ? `<a href="#/admin">관리자</a>` : ""}
     ${

@@ -63,6 +63,9 @@ dependencies {
     //mail
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
+    // LLM (여행 계획 생성)
+    implementation 'com.anthropic:anthropic-java:2.34.0'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 

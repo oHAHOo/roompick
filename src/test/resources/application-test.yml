@@ -47,6 +47,13 @@ place:
     connect-timeout: 200ms
     read-timeout: 200ms
 
+llm:
+  anthropic:
+    # 테스트는 실제 Claude API를 호출하지 않고 Client를 대역으로 대체합니다.
+    api-key: test-anthropic-api-key
+    model: claude-opus-5
+    timeout: 200ms
+
 roompick:
   search:
     # CI와 단위 테스트는 외부 Elasticsearch 서버 없이 실행합니다.
