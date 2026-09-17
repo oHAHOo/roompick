@@ -65,6 +65,12 @@ place:
     connect-timeout: ${KAKAO_LOCAL_API_CONNECT_TIMEOUT:2s}
     read-timeout: ${KAKAO_LOCAL_API_READ_TIMEOUT:3s}
 
+llm:
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY}
+    model: ${ANTHROPIC_MODEL:claude-opus-5}
+    timeout: ${ANTHROPIC_TIMEOUT:60s}
+
 roompick:
   search:
     # 운영에서는 별도 Elasticsearch 인프라 없이 MySQL 위치 검색을 사용합니다.

@@ -10,6 +10,7 @@
 4. `docs/ERD.md`
 5. 임선구 담당 API는 `docs/API_SPEC_OWNER.md`
 6. 관리자 담당 API는 `docs/API_SPEC_ADMIN.md`
+7. LLM 여행 계획 API는 `docs/API_SPEC_TRAVELPLAN.md`
 
 ## 고정된 MVP 범위
 

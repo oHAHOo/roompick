@@ -35,6 +35,11 @@ public class SecurityConfig {
         "/api/v1/auth/signup",
         "/api/v1/auth/login",
         "/api/v1/auth/refresh",
+        /*
+         * 여행 계획 생성은 로그인 전 탐색 단계이므로 공개한다.
+         * POST 요청이라 GET 전용 공개 목록으로는 허용되지 않는다.
+         */
+        "/api/v1/travel-plans",
         "/actuator/health",
         "/actuator/info",
         "/actuator/metrics/**",

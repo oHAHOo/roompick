@@ -4,8 +4,8 @@
 - 작성일: 2026-07-21
 - 범위: RoomPick MVP 전체 도메인
 - 최종 수정일: 2026-08-21
-- 포함 도메인: 회원·인증, 숙소, 객실, 예약, 결제
-- 제외: 검색, 리뷰, 찜, 쿠폰, 포인트, 채팅, 알림, AI, 별도 환불 이력
+- 포함 도메인: 회원·인증, 숙소, 객실, 예약, 결제, LLM 여행 계획
+- 제외: 검색, 리뷰, 찜, 쿠폰, 포인트, 채팅, 알림, AI 리뷰 요약, 별도 환불 이력
 
 ---
 
@@ -263,6 +263,62 @@ erDiagram
 
 ---
 
+## 6-3. AI_RECOMMENDATIONS
+
+LLM이 생성한 여행 계획 한 건의 이력을 저장한다.
+
+| 컬럼 | 타입 | Null | 키 | 설명 |
+| --- | --- | --- | --- | --- |
+| `ai_recommendation_id` | `BIGINT` | N | PK | 여행 계획 식별자 |
+| `latitude` | `DECIMAL(9,6)` | N |  | 여행 중심 위도 |
+| `longitude` | `DECIMAL(10,6)` | N |  | 여행 중심 경도 |
+| `check_in_date` | `DATE` | N |  | 체크인 날짜 |
+| `check_out_date` | `DATE` | N |  | 체크아웃 날짜 |
+| `guest_count` | `INT` | N |  | 여행 인원 |
+| `llm_model` | `VARCHAR(50)` | N |  | 생성에 사용한 LLM 모델 식별자 |
+| `itinerary_json` | `TEXT` | N |  | 생성된 일정 JSON |
+| `created_at` | `DATETIME(6)` | N |  | 생성 시각 |
+| `updated_at` | `DATETIME(6)` | N |  | 수정 시각 |
+
+### 제약·인덱스
+
+- `INDEX(created_at)`
+
+### 정책
+
+- 여행 계획 생성은 인증이 필요 없는 공개 API이므로 회원과 연결하지 않는다.
+- 일정은 조회·집계 대상이 아니라 생성 결과 보관이 목적이므로 JSON 문자열로 저장한다.
+
+---
+
+## 6-4. AI_RECOMMENDATION_ITEMS
+
+여행 계획에서 추천된 숙소를 순위와 추천 이유와 함께 저장한다.
+
+| 컬럼 | 타입 | Null | 키 | 설명 |
+| --- | --- | --- | --- | --- |
+| `ai_recommendation_item_id` | `BIGINT` | N | PK | 추천 항목 식별자 |
+| `ai_recommendation_id` | `BIGINT` | N | FK | 소속 여행 계획 ID |
+| `accommodation_id` | `BIGINT` | N | FK | 추천된 숙소 ID |
+| `rank_order` | `INT` | N | UK 조합 | 0부터 시작하는 추천 순위 |
+| `reason` | `TEXT` | N |  | LLM이 제시한 추천 이유 |
+| `created_at` | `DATETIME(6)` | N |  | 생성 시각 |
+| `updated_at` | `DATETIME(6)` | N |  | 수정 시각 |
+
+### 제약·인덱스
+
+- `FK ai_recommendation_id → ai_recommendations.ai_recommendation_id`
+- `FK accommodation_id → accommodations.accommodation_id`
+- `UNIQUE(ai_recommendation_id, rank_order)`
+
+### 정책
+
+- 숙소명·주소·가격을 복사해두지 않고 `accommodation_id`로만 참조한다. 추천 이력 조회 시에는 조회
+  시점의 최신 숙소 정보를 사용한다.
+- 숙소는 다른 담당자가 소유한 도메인이므로 Entity 연관 없이 ID만 보관하고, 참조 정합성은 FK로 보장한다.
+
+---
+
 ## 7. RESERVATIONS
 
 회원의 숙박 예약과 예약 당시 가격을 저장한다.
@@ -399,7 +455,10 @@ REFUNDED
 | --- | --- |
 | 임선구 | `accommodations`, `rooms`, `accommodation_images`, `room_images`, `reservations` |
 | 조민재(minjae123123) | `payments` |
-| 회원·인증 담당자 | `members` |
+| 회원·인증 담당자 | `members`, `ai_recommendations`, `ai_recommendation_items` |
+
+`ai_recommendations`와 `ai_recommendation_items`는 LLM 여행 계획 기능을 구현한 담당자가 임시로
+소유한다. 여행 계획 도메인의 최종 담당자는 팀에서 확정한다.
 
 여러 테이블을 함께 변경하는 유스케이스는 Facade에서 조율하며 다른 담당자의 Repository를 직접 사용하지 않는다.
 
@@ -416,9 +475,11 @@ REFUNDED
 | 리뷰 | `reviews` |
 | 찜 | `favorites` |
 | Refresh Token | `refresh_tokens` 또는 Redis |
-| AI 구조화 결과 | `ai_recommendations`, `review_summaries` |
+| AI 리뷰 요약 | `review_summaries` |
 | 프롬프트 외부화·이력 | `prompt_templates`, `prompt_versions` |
 | AI 요청 비용·지연 | `ai_usage_logs` 또는 메트릭 저장소 |
+
+`ai_recommendations`는 LLM 여행 계획 기능과 함께 실제 테이블로 추가되었다(6-3, 6-4 참고).
 
 ---
 

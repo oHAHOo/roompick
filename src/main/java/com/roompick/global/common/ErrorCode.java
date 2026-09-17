@@ -43,6 +43,12 @@ public enum ErrorCode {
     PLACE_API_REQUEST_FAILED(HttpStatus.BAD_GATEWAY, "PLACE_API_REQUEST_FAILED", "장소 검색 API 요청을 처리하지 못했습니다."),
     PLACE_API_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "PLACE_API_INVALID_RESPONSE", "장소 검색 API 응답이 올바르지 않습니다."),
 
+    // 여행 계획 LLM 연동 오류
+    TRAVEL_PLAN_LLM_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "TRAVEL_PLAN_LLM_TIMEOUT", "여행 계획 생성 응답 시간이 초과되었습니다."),
+    TRAVEL_PLAN_LLM_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "TRAVEL_PLAN_LLM_RATE_LIMITED", "여행 계획 생성 요청이 많습니다. 잠시 후 다시 시도해주세요."),
+    TRAVEL_PLAN_LLM_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "TRAVEL_PLAN_LLM_UNAVAILABLE", "현재 여행 계획 생성 서비스를 사용할 수 없습니다."),
+    TRAVEL_PLAN_LLM_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "TRAVEL_PLAN_LLM_INVALID_RESPONSE", "여행 계획 생성 응답이 올바르지 않습니다."),
+
     // 객실 오류
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND", "객실을 찾을 수 없습니다."),
     ROOM_INACTIVE(HttpStatus.CONFLICT, "ROOM_INACTIVE", "현재 이용할 수 없는 객실입니다."),
