@@ -183,3 +183,17 @@ Kafka가 떠 있어야 확인할 수 있습니다.
 - 숙소/객실/예약/장소 검색 — `docs/API_SPEC_OWNER.md`
 - 결제 — `docs/API_SPEC_PAYMENT.md`
 - 관리자 숙소·객실 등록/상태 변경 — `docs/API_SPEC_ADMIN.md`
+
+## AI 여행 계획 (`js/pages/travelPlan.js`)
+
+`#/travel-plan` — 장소 검색으로 좌표를 고른 뒤 숙박 날짜·인원을 입력하면 `POST /api/v1/travel-plans`로
+일정과 추천 숙소를 받아 보여줍니다. 추천 숙소 카드는 숙소 상세로 이어집니다.
+
+**호출마다 유료 LLM 요청이 발생**하므로 응답이 오기 전에는 버튼을 비활성화해 중복 제출을 막습니다.
+생성에 20초 이상 걸릴 수 있습니다.
+
+`ANTHROPIC_API_KEY`가 더미면 `503 TRAVEL_PLAN_LLM_UNAVAILABLE`로 실패합니다. 실제 키를 `.env`에
+넣고 백엔드를 다시 띄우면 동작합니다.
+
+일정과 추천 이유는 LLM이 생성한 문자열이므로 화면에서 모두 `escapeHtml`로 이스케이프합니다.
+추천 숙소의 이름·주소·거리는 LLM이 아니라 서버가 DB에서 채운 값입니다.

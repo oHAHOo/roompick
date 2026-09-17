@@ -26,19 +26,28 @@ export REDIS_PORT="${REDIS_PORT:-6379}"
 
 # 아래 값들은 .env에 실제 키가 없을 때만 더미로 채운다.
 # 더미 상태에서는 해당 기능이 실패한다:
-#   KAKAO  -> 장소 검색 502 PLACE_API_AUTHENTICATION_FAILED
-#   S3     -> 이미지 첨부 등록 502 IMAGE_004
+#   KAKAO     -> 장소 검색 502 PLACE_API_AUTHENTICATION_FAILED
+#   S3        -> 이미지 첨부 등록 502 IMAGE_004
+#   ANTHROPIC -> 여행 계획 생성 503 TRAVEL_PLAN_LLM_UNAVAILABLE
 export PORTONE_API_SECRET="${PORTONE_API_SECRET:-local-dummy-not-used}"
 export PORTONE_STORE_ID="${PORTONE_STORE_ID:-local-dummy-not-used}"
 export PORTONE_CHANNEL_KEY="${PORTONE_CHANNEL_KEY:-local-dummy-not-used}"
 export AWS_S3_ACCESS_KEY="${AWS_S3_ACCESS_KEY:-local-dummy-not-used}"
 export AWS_S3_SECRET_KEY="${AWS_S3_SECRET_KEY:-local-dummy-not-used}"
 export KAKAO_REST_API_KEY="${KAKAO_REST_API_KEY:-local-dummy-not-used}"
+# 값이 비어 있으면 애플리케이션 자체가 기동하지 않으므로 더미라도 반드시 채운다.
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-local-dummy-not-used}"
 
 if [ "$KAKAO_REST_API_KEY" = "local-dummy-not-used" ]; then
   echo "[run-backend] 경고: KAKAO_REST_API_KEY가 더미입니다. 장소 검색은 502로 실패합니다."
 else
   echo "[run-backend] KAKAO_REST_API_KEY 설정됨 (장소 검색 사용 가능)"
+fi
+
+if [ "$ANTHROPIC_API_KEY" = "local-dummy-not-used" ]; then
+  echo "[run-backend] 경고: ANTHROPIC_API_KEY가 더미입니다. 여행 계획 생성은 503으로 실패합니다."
+else
+  echo "[run-backend] ANTHROPIC_API_KEY 설정됨 (여행 계획 생성 사용 가능)"
 fi
 
 exec ./gradlew bootRun --console=plain

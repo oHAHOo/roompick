@@ -213,6 +213,19 @@ export const PlaceApi = {
     request(`/api/v1/places/search?query=${encodeURIComponent(query)}&limit=${limit}`),
 };
 
+// ---- Travel plans ----
+export const TravelPlanApi = {
+  /**
+   * 좌표는 장소 검색으로 미리 확보한 값을 그대로 넘긴다.
+   * 호출마다 유료 LLM 요청이 발생하므로 화면에서 중복 호출을 막는다.
+   */
+  create: ({ latitude, longitude, checkInDate, checkOutDate, guestCount }) =>
+    request("/api/v1/travel-plans", {
+      method: "POST",
+      body: { latitude, longitude, checkInDate, checkOutDate, guestCount },
+    }),
+};
+
 // ---- Rooms ----
 export const RoomApi = {
   /**
