@@ -10,7 +10,8 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
       TZ: Asia/Seoul
     ports:
-      - "${DB_PORT:-3307}:3306"
+      # 127.0.0.1로 묶어 외부 네트워크에 노출되지 않게 한다.
+      - "127.0.0.1:${DB_PORT:-3307}:3306"
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
@@ -28,7 +29,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -46,7 +47,7 @@ services:
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     ports:
-      - "${ELASTICSEARCH_PORT:-9200}:9200"
+      - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
