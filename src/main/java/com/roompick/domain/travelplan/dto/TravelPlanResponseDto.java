@@ -9,7 +9,6 @@ import java.util.List;
  * 반경 안에 등록된 숙소가 없으면 recommendedAccommodations는 빈 배열입니다.
  */
 public record TravelPlanResponseDto(
-    Long travelPlanId,
     LocalDate checkInDate,
     LocalDate checkOutDate,
     int guestCount,

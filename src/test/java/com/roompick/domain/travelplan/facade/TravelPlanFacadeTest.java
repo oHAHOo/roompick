@@ -41,7 +41,6 @@ class TravelPlanFacadeTest {
 
         TravelPlanResponseDto expected =
             new TravelPlanResponseDto(
-                1L,
                 request.checkInDate(),
                 request.checkOutDate(),
                 2,

@@ -1,12 +1,12 @@
 package com.roompick.domain.travelplan.service;
 
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.roompick.domain.accommodation.dto.AccommodationLocationSearchResponseDto;
 import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.travelplan.client.TravelPlanLlmClient;
@@ -30,7 +30,8 @@ import lombok.RequiredArgsConstructor;
  * 좌표 기준으로 조회한 실제 ACTIVE 숙소에서만 선택합니다.
  *
  * LLM 호출 중에는 DB 트랜잭션을 시작하지 않으며,
- * 이력 저장은 호출이 끝난 뒤 TravelPlanHistoryService에서 처리합니다.
+ * 비용 감사 로그는 호출이 끝난 뒤 AiUsageLogService에서 저장합니다.
+ * 생성된 일정과 추천 이유는 응답으로만 전달하고 저장하지 않습니다.
  */
 @Service
 @RequiredArgsConstructor
@@ -59,8 +60,7 @@ public class TravelPlanService {
     private final AccommodationLocationSearchService
         accommodationLocationSearchService;
     private final TravelPlanLlmClient travelPlanLlmClient;
-    private final TravelPlanHistoryService travelPlanHistoryService;
-    private final ObjectMapper objectMapper;
+    private final AiUsageLogService aiUsageLogService;
 
     /**
      * 좌표와 숙박 기간을 기준으로 여행 일정과 추천 숙소를 생성합니다.
@@ -69,7 +69,7 @@ public class TravelPlanService {
      * 2. 반경 내 ACTIVE 숙소 후보 조회
      * 3. LLM으로 일정·추천 생성
      * 4. LLM이 선택한 후보를 실제 숙소 데이터와 매핑
-     * 5. 이력 저장 후 응답 반환
+     * 5. 비용 감사 로그 저장 후 응답 반환
      */
     public TravelPlanResponseDto generatePlan(
         TravelPlanRequestDto request
@@ -85,6 +85,8 @@ public class TravelPlanService {
                 MAX_CANDIDATES
             );
 
+        long startedAt = System.nanoTime();
+
         TravelPlanLlmResult result =
             travelPlanLlmClient.generate(
                 new TravelPlanLlmRequest(
@@ -96,6 +98,10 @@ public class TravelPlanService {
                     toCandidates(nearbyAccommodations)
                 )
             );
+
+        long durationMs =
+            Duration.ofNanos(System.nanoTime() - startedAt)
+                .toMillis();
 
         List<ItineraryDayDto> itinerary =
             result.itinerary()
@@ -109,20 +115,21 @@ public class TravelPlanService {
                 nearbyAccommodations
             );
 
-        Long travelPlanId =
-            travelPlanHistoryService.save(
-                request.latitude(),
-                request.longitude(),
+        aiUsageLogService.save(
+            travelPlanLlmClient.modelName(),
+            result.tokenUsage().inputTokens(),
+            result.tokenUsage().outputTokens(),
+            durationMs,
+            (int) ChronoUnit.DAYS.between(
                 request.checkInDate(),
-                request.checkOutDate(),
-                request.guestCount(),
-                travelPlanLlmClient.modelName(),
-                writeItineraryJson(itinerary),
-                recommendations
-            );
+                request.checkOutDate()
+            ),
+            request.guestCount(),
+            nearbyAccommodations.size(),
+            recommendations.size()
+        );
 
         return new TravelPlanResponseDto(
-            travelPlanId,
             request.checkInDate(),
             request.checkOutDate(),
             request.guestCount(),
@@ -175,22 +182,6 @@ public class TravelPlanService {
                 selection.reason()
             ))
             .toList();
-    }
-
-    /**
-     * 이력 저장용으로 일정을 JSON 문자열로 변환합니다.
-     */
-    private String writeItineraryJson(
-        List<ItineraryDayDto> itinerary
-    ) {
-        try {
-            return objectMapper.writeValueAsString(itinerary);
-        } catch (JsonProcessingException exception) {
-            throw new BusinessException(
-                ErrorCode.INTERNAL_SERVER_ERROR,
-                exception
-            );
-        }
     }
 
     /**

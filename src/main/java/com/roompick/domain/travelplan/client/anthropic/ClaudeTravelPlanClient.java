@@ -109,7 +109,8 @@ public class ClaudeTravelPlanClient implements TravelPlanLlmClient {
 
             return toResult(
                 extractText(message),
-                request.candidates().size()
+                request.candidates().size(),
+                toTokenUsage(message)
             );
         } catch (ClaudeTravelPlanException exception) {
             throw new BusinessException(
@@ -240,7 +241,8 @@ public class ClaudeTravelPlanClient implements TravelPlanLlmClient {
      */
     private TravelPlanLlmResult toResult(
         String text,
-        int candidateCount
+        int candidateCount,
+        TravelPlanLlmResult.TokenUsage tokenUsage
     ) {
         ClaudeTravelPlanPayloadDto payload =
             parsePayload(text);
@@ -287,7 +289,22 @@ public class ClaudeTravelPlanClient implements TravelPlanLlmClient {
 
         return new TravelPlanLlmResult(
             itinerary,
-            selections
+            selections,
+            tokenUsage
+        );
+    }
+
+    /**
+     * 응답의 사용량 정보를 비용 감사용 토큰 수로 변환합니다.
+     *
+     * thinking 토큰은 출력 토큰에 포함되어 집계됩니다.
+     */
+    private TravelPlanLlmResult.TokenUsage toTokenUsage(
+        Message message
+    ) {
+        return new TravelPlanLlmResult.TokenUsage(
+            (int) message.usage().inputTokens(),
+            (int) message.usage().outputTokens()
         );
     }
 
