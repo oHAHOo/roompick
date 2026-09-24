@@ -25,3 +25,6 @@ src/main/resources/application-secret.yml
 
 ### AWS ###
 *.pem
+
+### 로컬 실행 로그 ###
+*.log
