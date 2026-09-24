@@ -47,7 +47,6 @@ Content-Type: application/json
   "success": true,
   "message": "여행 계획 생성에 성공했습니다.",
   "data": {
-    "travelPlanId": 1,
     "checkInDate": "2026-10-01",
     "checkOutDate": "2026-10-03",
     "guestCount": 2,
@@ -93,15 +92,16 @@ Content-Type: application/json
 
 ### 구현 메모
 
-- 호출 순서는 `요청 검증 → 반경 내 ACTIVE 숙소 조회 → LLM 호출 → 실제 숙소와 매핑 → 이력 저장`이다.
+- 호출 순서는 `요청 검증 → 반경 내 ACTIVE 숙소 조회 → LLM 호출 → 실제 숙소와 매핑 → 감사 로그 저장`이다.
 - 숙소 후보 조회는 기존 `AccommodationLocationSearchService.searchNearby()`를 재사용하며
   반경은 10km, 후보는 최대 5개다.
 - LLM에는 후보 숙소의 이름·주소·거리만 전달하고, 추천은 후보 목록의 `candidateIndex`로만 받는다.
   후보 범위를 벗어난 인덱스는 버려지므로 LLM이 등록되지 않은 숙소를 만들어내도 응답에 반영되지 않는다.
-- LLM 호출 중에는 DB 트랜잭션을 시작하지 않는다. 이력 저장은 호출이 끝난 뒤
-  `TravelPlanHistoryService`의 트랜잭션에서 수행한다.
-- 생성 이력은 `ai_recommendations`와 `ai_recommendation_items`에 저장한다. 공개 API이므로 회원과
-  연결하지 않는다.
+- LLM 호출 중에는 DB 트랜잭션을 시작하지 않는다. 감사 로그 저장은 호출이 끝난 뒤
+  `AiUsageLogService`의 트랜잭션에서 수행한다.
+- **생성된 일정과 추천 이유는 저장하지 않는다.** 응답으로만 전달한다. 저장하는 값은 `ai_usage_logs`의
+  모델명·토큰 수·소요 시간·요청 규모(숙박일수, 인원, 후보 수, 추천 수)뿐이며, 요청 좌표도 남기지 않는다.
+  따라서 같은 요청을 다시 보내면 이전과 다른 일정이 생성될 수 있고, 지난 계획을 다시 조회할 수 없다.
 - 모델과 API Key는 `ANTHROPIC_MODEL`, `ANTHROPIC_API_KEY` 환경변수로 관리하며 응답이나 로그에
   노출하지 않는다.
 - 현재는 요청 인원이나 날짜 기준 객실 예약 가능 여부를 반영하지 않는다. 즉 추천된 숙소가 해당 날짜에

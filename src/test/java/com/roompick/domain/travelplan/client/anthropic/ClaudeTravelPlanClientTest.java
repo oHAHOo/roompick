@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -23,6 +24,7 @@ import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.TextBlock;
+import com.anthropic.models.messages.Usage;
 import com.anthropic.services.blocking.MessageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.roompick.domain.travelplan.model.TravelPlanCandidate;
@@ -93,6 +95,23 @@ class ClaudeTravelPlanClientTest {
         assertThat(result.selections().get(0).candidateIndex()).isZero();
         assertThat(result.selections().get(0).reason())
             .isEqualTo("일정 동선과 가깝습니다.");
+    }
+
+    @Test
+    @DisplayName("응답의 토큰 사용량을 비용 감사용으로 추출한다")
+    void extractTokenUsageForCostAudit() {
+        // given
+        givenClaudeResponse(
+            "{\"itinerary\": [], \"recommendations\": []}"
+        );
+
+        // when
+        TravelPlanLlmResult result =
+            claudeTravelPlanClient.generate(request());
+
+        // then
+        assertThat(result.tokenUsage().inputTokens()).isEqualTo(1200);
+        assertThat(result.tokenUsage().outputTokens()).isEqualTo(800);
     }
 
     @Test
@@ -225,8 +244,11 @@ class ClaudeTravelPlanClientTest {
     }
 
     /**
-     * 응답 본문 파싱만 검증하므로 Usage 등 나머지 필수 필드 대신
-     * content만 제공하는 Message 대역을 사용합니다.
+     * 응답 본문 파싱과 토큰 사용량 추출만 검증하므로
+     * content와 usage만 제공하는 Message 대역을 사용합니다.
+     *
+     * 본문이 비어 있는 경우에는 사용량 추출까지 도달하지 않으므로
+     * usage 스텁은 lenient로 둡니다.
      */
     private Message message(
         String text
@@ -244,6 +266,11 @@ class ClaudeTravelPlanClientTest {
                     )
                 )
             );
+
+        Usage usage = org.mockito.Mockito.mock(Usage.class);
+        lenient().when(usage.inputTokens()).thenReturn(1200L);
+        lenient().when(usage.outputTokens()).thenReturn(800L);
+        lenient().when(message.usage()).thenReturn(usage);
 
         return message;
     }

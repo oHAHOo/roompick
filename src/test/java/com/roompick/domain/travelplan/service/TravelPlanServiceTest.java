@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 
 import java.time.LocalDate;
@@ -22,10 +22,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.roompick.domain.accommodation.dto.AccommodationLocationSearchResponseDto;
 import com.roompick.domain.accommodation.service.AccommodationLocationSearchService;
 import com.roompick.domain.travelplan.client.TravelPlanLlmClient;
@@ -53,19 +51,13 @@ class TravelPlanServiceTest {
     private TravelPlanLlmClient travelPlanLlmClient;
 
     @Mock
-    private TravelPlanHistoryService travelPlanHistoryService;
-
-    @Spy
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private AiUsageLogService aiUsageLogService;
 
     @InjectMocks
     private TravelPlanService travelPlanService;
 
     @Captor
     private ArgumentCaptor<TravelPlanLlmRequest> llmRequestCaptor;
-
-    @Captor
-    private ArgumentCaptor<List<RecommendedAccommodationDto>> recommendationsCaptor;
 
     @Test
     @DisplayName("LLM이 선택한 후보를 실제 숙소 조회 결과와 매핑해 반환한다")
@@ -107,6 +99,10 @@ class TravelPlanServiceTest {
                             0,
                             "일정 중심지와 가깝습니다."
                         )
+                    ),
+                    new TravelPlanLlmResult.TokenUsage(
+                        1200,
+                        800
                     )
                 )
             );
@@ -114,25 +110,11 @@ class TravelPlanServiceTest {
         given(travelPlanLlmClient.modelName())
             .willReturn("claude-opus-5");
 
-        given(
-            travelPlanHistoryService.save(
-                anyDouble(),
-                anyDouble(),
-                any(),
-                any(),
-                anyInt(),
-                anyString(),
-                anyString(),
-                anyList()
-            )
-        ).willReturn(99L);
-
         // when
         TravelPlanResponseDto response =
             travelPlanService.generatePlan(request());
 
         // then
-        assertThat(response.travelPlanId()).isEqualTo(99L);
         assertThat(response.itinerary()).hasSize(1);
         assertThat(response.itinerary().get(0).activities())
             .containsExactly("경복궁 관람");
@@ -148,6 +130,69 @@ class TravelPlanServiceTest {
         assertThat(recommended.distanceKm()).isEqualTo(1.2);
         assertThat(recommended.reason())
             .isEqualTo("일정 중심지와 가깝습니다.");
+    }
+
+    @Test
+    @DisplayName("토큰 사용량과 요청 규모를 감사 로그로 저장한다")
+    void saveTokenUsageToAuditLog() {
+        // given
+        given(
+            accommodationLocationSearchService.searchNearby(
+                eq(null),
+                anyDouble(),
+                anyDouble(),
+                anyDouble(),
+                anyInt()
+            )
+        ).willReturn(
+            List.of(
+                nearbyAccommodation(10L),
+                nearbyAccommodation(11L)
+            )
+        );
+
+        given(travelPlanLlmClient.generate(any()))
+            .willReturn(
+                new TravelPlanLlmResult(
+                    List.of(
+                        new TravelPlanLlmResult.ItineraryDay(
+                            1,
+                            "첫째 날",
+                            List.of("경복궁 관람")
+                        )
+                    ),
+                    List.of(
+                        new TravelPlanLlmResult.CandidateSelection(
+                            1,
+                            "일정과 가깝습니다."
+                        )
+                    ),
+                    new TravelPlanLlmResult.TokenUsage(
+                        1234,
+                        567
+                    )
+                )
+            );
+
+        given(travelPlanLlmClient.modelName())
+            .willReturn("claude-opus-5");
+
+        // when
+        travelPlanService.generatePlan(request());
+
+        // then
+        then(aiUsageLogService)
+            .should()
+            .save(
+                eq("claude-opus-5"),
+                eq(1234),
+                eq(567),
+                anyLong(),
+                eq(2),
+                eq(2),
+                eq(2),
+                eq(1)
+            );
     }
 
     @Test
@@ -174,25 +219,16 @@ class TravelPlanServiceTest {
                             List.of("해변 산책")
                         )
                     ),
-                    List.of()
+                    List.of(),
+                    new TravelPlanLlmResult.TokenUsage(
+                        900,
+                        400
+                    )
                 )
             );
 
         given(travelPlanLlmClient.modelName())
             .willReturn("claude-opus-5");
-
-        given(
-            travelPlanHistoryService.save(
-                anyDouble(),
-                anyDouble(),
-                any(),
-                any(),
-                anyInt(),
-                anyString(),
-                anyString(),
-                anyList()
-            )
-        ).willReturn(100L);
 
         // when
         TravelPlanResponseDto response =
@@ -208,20 +244,22 @@ class TravelPlanServiceTest {
 
         assertThat(llmRequestCaptor.getValue().candidates()).isEmpty();
 
-        then(travelPlanHistoryService)
+        /*
+         * 후보가 없어도 LLM 호출은 발생했으므로 비용은 기록되어야 한다.
+         * candidate_count와 recommended_count는 0으로 남는다.
+         */
+        then(aiUsageLogService)
             .should()
             .save(
-                anyDouble(),
-                anyDouble(),
-                any(),
-                any(),
+                anyString(),
+                eq(900),
+                eq(400),
+                anyLong(),
                 anyInt(),
-                anyString(),
-                anyString(),
-                recommendationsCaptor.capture()
+                anyInt(),
+                eq(0),
+                eq(0)
             );
-
-        assertThat(recommendationsCaptor.getValue()).isEmpty();
     }
 
     @Test
@@ -311,6 +349,20 @@ class TravelPlanServiceTest {
         then(travelPlanLlmClient)
             .should(never())
             .generate(any());
+    }
+
+    private AccommodationLocationSearchResponseDto nearbyAccommodation(
+        Long accommodationId
+    ) {
+        return new AccommodationLocationSearchResponseDto(
+            accommodationId,
+            "룸픽 호텔 " + accommodationId,
+            "서울특별시",
+            LATITUDE,
+            LONGITUDE,
+            1.2,
+            null
+        );
     }
 
     private TravelPlanRequestDto request() {
